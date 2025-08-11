@@ -1884,7 +1884,31 @@ router.get('/pending-reviews', verifyTokenforevaluator, async (req, res) => {
       .populate('setId', 'name')
       .sort({ submittedAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean();
+
+    // Attach question documents dynamically based on testType
+    for (const review of pendingReviews) {
+      try {
+        if (review.testType === 'aiswb') {
+          const question = await AiswbQuestion.findById(review.questionId)
+            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .lean();
+          if (question) review.questionId = question;
+        } else if (review.testType === 'subjective') {
+          const question = await SubjectiveTestQuestion.findById(review.questionId)
+            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .lean();
+          if (question) review.questionId = question;
+        }
+        else{
+          const question = await AiswbQuestion.findById(review.questionId)
+            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .lean();
+          if (question) review.questionId = question;
+        }
+      } catch (_) { /* ignore populate errors per item */ }
+    }
 
     // Get total count for pagination
     const total = await UserAnswer.countDocuments(filter);
@@ -1897,6 +1921,7 @@ router.get('/pending-reviews', verifyTokenforevaluator, async (req, res) => {
         }
       }
     }
+
 
     // Format response data
     const formattedReviews = pendingReviews.map(review => ({
@@ -1919,6 +1944,7 @@ router.get('/pending-reviews', verifyTokenforevaluator, async (req, res) => {
       reviewAssignedAt: review.reviewAssignedAt,
       reviewCompletedAt: review.reviewCompletedAt,
     }));
+
 
     res.json({
       success: true,
@@ -1978,7 +2004,31 @@ router.get('/accepted-reviews', verifyTokenforevaluator, async (req, res) => {
       .populate('setId', 'name')
       .sort({ submittedAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean();
+
+    // Attach question documents dynamically based on testType
+    for (const review of acceptedReviews) {
+      try {
+        if (review.testType === 'aiswb') {
+          const question = await AiswbQuestion.findById(review.questionId)
+            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .lean();
+          if (question) review.questionId = question;
+        } else if (review.testType === 'subjective') {
+          const question = await SubjectiveTestQuestion.findById(review.questionId)
+            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .lean();
+          if (question) review.questionId = question;
+        }
+        else{
+          const question = await AiswbQuestion.findById(review.questionId)
+            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .lean();
+          if (question) review.questionId = question;
+        }
+      } catch (_) { /* ignore populate errors per item */ }
+    }
 
     // Get total count for pagination
     const total = await UserAnswer.countDocuments(filter);
@@ -2067,7 +2117,31 @@ router.get('/completed-reviews', verifyTokenforevaluator, async (req, res) => {
       .populate('setId', 'name')
       .sort({ submittedAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean();
+
+    // Attach question documents dynamically based on testType
+    for (const review of completedReviews) {
+      try {
+        if (review.testType === 'aiswb') {
+          const question = await AiswbQuestion.findById(review.questionId)
+            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .lean();
+          if (question) review.questionId = question;
+        } else if (review.testType === 'subjective') {
+          const question = await SubjectiveTestQuestion.findById(review.questionId)
+            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .lean();
+          if (question) review.questionId = question;
+        }
+        else{
+          const question = await AiswbQuestion.findById(review.questionId)
+            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .lean();
+          if (question) review.questionId = question;
+        }
+      } catch (_) { /* ignore populate errors per item */ }
+    }
 
     // Get total count for pagination
     const total = await UserAnswer.countDocuments(filter);
@@ -2174,6 +2248,8 @@ router.post('/:requestId/accept', verifyTokenforevaluator, async (req, res) => {
     if (answer) {
       answer.reviewStatus = 'review_accepted';
       answer.reviewAssignedAt = request.assignedAt;
+      // ensure evaluator-based filters work for pending/accepted lists
+      answer.reviewedByEvaluator = evaluatorId;
       await answer.save();
     }
 
