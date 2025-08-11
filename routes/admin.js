@@ -278,19 +278,32 @@ router.post('/paytm/callback',async (req, res) => {
         console.error('Error crediting account post-payment:', creditErr);
       }
   
-      // Redirect to frontend with payment status
-      const frontendUrl = process.env.FRONTEND_URL;
-      const redirectUrl = `${frontendUrl}/admin/credit-account/?payment_status=${paymentStatus}&orderId=${orderId}&transactionId=${updateData.transactionId}`;
-      
-      console.log('Redirecting to:', redirectUrl);
-      res.redirect(redirectUrl);
-  
-    } catch (error) {
-      console.error('Payment callback error:', error);
-      const frontendUrl = process.env.FRONTEND_URL;
-      const redirectUrl = `${frontendUrl}/admin/credit-account/?payment_status=FAILED&orderId=${req.body.ORDERID || 'unknown'}`;
-      res.redirect(redirectUrl);
-    }
+       // Return JSON response with payment details
+    res.json({
+      success: true,
+      message: 'Payment processed successfully',
+      orderId,
+      status: paymentStatus,
+      transactionId: updateData.transactionId,
+      responseCode: paytmResponse.RESPCODE,
+      responseMsg: paytmResponse.RESPMSG,
+      paymentMode: paytmResponse.PAYMENTMODE,
+      bankName: paytmResponse.BANKNAME,
+      amount: payment.amount,
+      customerEmail: payment.customerEmail,
+      customerName: payment.customerName,
+      projectId: payment.projectId,
+      redirectUrl: `${process.env.FRONTEND_URL}/admin/orderId=${orderId}&status=${paymentStatus}`
+    });
+
+  } catch (error) {
+    console.error('Payment callback error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Payment processing error',
+      error: error.message
+    });
+  }
 });
 
 module.exports = router;
