@@ -253,15 +253,7 @@ router.post('/callback', async (req, res) => {
       customerEmail: payment.customerEmail,
       customerName: payment.customerName,
       projectId: payment.projectId,
-      // redirectUrl: `${process.env.FRONTEND_URL}?orderId=${orderId}&status=${paymentStatus}`
     });
-
-    // // Redirect to frontend with payment status
-    // const frontendUrl = process.env.FRONTEND_URL;
-    // const redirectUrl = `${frontendUrl}/admin/credit-account?payment_status=${paymentStatus}&orderId=${orderId}&transactionId=${updateData.transactionId}`;
-    
-    // console.log('Redirecting to:', redirectUrl);
-    // res.redirect(redirectUrl);
 
   } catch (error) {
     console.error('Payment callback error:', error);
