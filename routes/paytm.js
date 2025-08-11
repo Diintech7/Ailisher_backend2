@@ -173,9 +173,6 @@ router.post('/callback', async (req, res) => {
       // Fetch current payment after update
       const paymentDoc = await Payment.findOne({ orderId });
       if (paymentDoc && paymentDoc.status === 'SUCCESS') {
-        // Check if transaction already exists for this order
-        const existingTx = await CreditTransaction.findOne({ userId: paymentDoc.userId });
-        if (!existingTx) {
           // Resolve user and credit account
           let creditAccount = null;
           if (paymentDoc.userId) {
@@ -223,16 +220,14 @@ router.post('/callback', async (req, res) => {
               credits: creditsToAdd,
               balanceAfter
             });
-          } else {
+          } 
+          else {
             console.warn('CreditAccount not found for payment; skipping crediting', {
               orderId,
               userId: paymentDoc.userId,
               phone: paymentDoc.customerPhone
             });
           }
-        } else {
-          console.log('CreditTransaction already exists for this order; skipping duplicate credit');
-        }
       }
     } catch (creditErr) {
       console.error('Error crediting account post-payment:', creditErr);

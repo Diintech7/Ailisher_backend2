@@ -212,9 +212,6 @@ router.post('/paytm/callback',async (req, res) => {
         let creditAccount = null;
         const paymentDoc = await Payment.findOne({ orderId });
         if (paymentDoc && paymentDoc.status === 'SUCCESS') {
-          // Check if transaction already exists for this order
-          const existingTx = await CreditTransaction.findOne({ userId: paymentDoc.userId });
-          if (!existingTx) {
             // Resolve user and credit account
             if (paymentDoc.userId) {
               creditAccount = await CreditAccount.findOne({ userId: paymentDoc.userId });
@@ -270,9 +267,6 @@ router.post('/paytm/callback',async (req, res) => {
                 phone: paymentDoc.customerPhone
               });
             }
-          } else {
-            console.log('CreditTransaction already exists for this order; skipping duplicate credit');
-          }
         }
       } catch (creditErr) {
         console.error('Error crediting account post-payment:', creditErr);
@@ -293,7 +287,7 @@ router.post('/paytm/callback',async (req, res) => {
       customerEmail: payment.customerEmail,
       customerName: payment.customerName,
       projectId: payment.projectId,
-      redirectUrl: `${process.env.FRONTEND_URL}/admin/orderId=${orderId}&status=${paymentStatus}`
+      redirectUrl: `${process.env.FRONTEND_URL}/orderId=${orderId}&status=${paymentStatus}`
     });
 
   } catch (error) {
