@@ -14,7 +14,7 @@ const Topic = require('../models/Topic');
 const SubTopic = require('../models/SubTopic');
 const Workbook = require('../models/Workbook');
 const { authenticateMobileUser } = require('../middleware/mobileAuth');
-const { generateAnnotatedImageUrl } = require('../utils/s3');
+const { generateAnnotatedImageUrl, generateGetPresignedUrl } = require('../utils/s3');
 
 // Apply authentication middleware to all routes
 router.use(authenticateMobileUser);
@@ -204,7 +204,7 @@ router.get('/', async (req, res) => {
         // Populate test info
         if (answer.testId) {
           populatedTest = await SubjectiveTest.findById(answer.testId)
-            .select('name description category subcategory Estimated_time imageUrl instructions')
+            .select('name description category subcategory Estimated_time imageKey imageUrl instructions')
             .lean();
         }
       } else {
@@ -263,6 +263,10 @@ router.get('/', async (req, res) => {
           modalAnswer: answer.questionId?.modalAnswer,
           answerVideoUrls: answer.questionId?.answerVideoUrls || []
         };
+        console.log("answer.testId", answer.testId);
+        if(answer.testId?.imageKey){
+          answer.testId.imageUrl = await generateGetPresignedUrl(answer.testId.imageKey, 31536000);
+        }
         
         testInfo = {
           id: answer.testId?._id,
@@ -438,7 +442,7 @@ router.get('/:answerId', async (req, res) => {
       // Populate test info
       if (userAnswer.testId) {
         test = await SubjectiveTest.findById(userAnswer.testId)
-          .select('name description category subcategory Estimated_time imageUrl instructions')
+          .select('name description category subcategory Estimated_time imageKey imageUrl instructions')
           .lean();
       }
     } 
@@ -512,6 +516,9 @@ router.get('/:answerId', async (req, res) => {
         languageMode: question?.languageMode,
         evaluationMode: question?.evaluationMode
       };
+      if(test?.imageKey){
+        test.imageUrl = await generateGetPresignedUrl(test.imageKey, 31536000);
+      }
       
       testInfo = {
         id: test?._id,

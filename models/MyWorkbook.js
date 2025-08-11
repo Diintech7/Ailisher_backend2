@@ -144,7 +144,7 @@ MyWorkbookSchema.pre(/^find/, function(next) {
   if (!this.getOptions().skipPopulate) {
     this.populate({
       path: 'workbookId',
-      select: 'title author publisher description coverImage rating ratingCount mainCategory subCategory exam paper subject tags viewCount createdAt'
+      select: 'title author publisher description coverImageKey coverImageUrl rating ratingCount mainCategory subCategory exam paper subject tags viewCount createdAt'
     });
   }
   next();

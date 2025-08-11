@@ -427,7 +427,7 @@ router.get('/summary/:projectId', async (req, res) => {
   }
 });
 
-// Health check endpoint
+// 7. Health check endpoint
 router.get('/health', (req, res) => {
   res.json({
     success: true,
@@ -441,5 +441,24 @@ router.get('/health', (req, res) => {
     }
   });
 });
+
+// 8. Get all transactions
+router.get('/transactions', async (req, res) => {
+  try {
+    const transactions = await CreditTransaction.find({}).sort({ createdAt: -1 });
+    res.json({
+      success: true,
+      transactions
+    });
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch transactions',
+      error: error.message
+    });
+  }
+});
+
 
 module.exports = router;        

@@ -287,7 +287,7 @@ router.post('/paytm/callback',async (req, res) => {
       customerEmail: payment.customerEmail,
       customerName: payment.customerName,
       projectId: payment.projectId,
-      redirectUrl: `${process.env.FRONTEND_URL}/orderId=${orderId}&status=${paymentStatus}`
+      // redirectUrl: `${process.env.FRONTEND_URL}/orderId=${orderId}&status=${paymentStatus}`
     });
 
   } catch (error) {
@@ -299,5 +299,50 @@ router.post('/paytm/callback',async (req, res) => {
     });
   }
 });
+
+// 3. Check Payment Status
+router.get('/paytm/status/:orderId', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    
+    const payment = await Payment.findOne({ orderId });
+    
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Payment not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      payment: {
+        orderId: payment.orderId,
+        amount: payment.amount,
+        status: payment.status,
+        transactionId: payment.transactionId,
+        customerEmail: payment.customerEmail,
+        customerName: payment.customerName,
+        customerPhone: payment.customerPhone,
+        projectId: payment.projectId,
+        paymentMode: payment.paymentMode,
+        bankName: payment.bankName,
+        responseCode: payment.responseCode,
+        responseMsg: payment.responseMsg,
+        createdAt: payment.createdAt,
+        updatedAt: payment.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Status check error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Status check failed',
+      error: error.message
+    });
+  }
+});
+
 
 module.exports = router;
