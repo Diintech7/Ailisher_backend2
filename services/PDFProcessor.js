@@ -387,7 +387,7 @@ class EnhancedPDFProcessor {
 
     const options = {
       sort: { $vector: questionEmbedding },
-      limit: Math.max(1, limit || this.maxContextChunks),
+      limit: Math.max(1, limit || 1000),
       projection: {
         text_content: 1,
         $vector: 1,
@@ -402,13 +402,13 @@ class EnhancedPDFProcessor {
     // Partitioned execution to reduce tail latency: first top-k fast; if empty, widen
     try {
       results = await this.collection.find(searchFilter, options).toArray()
-      if (!results || results.length === 0) {
-        // Widen slightly if nothing found
-        results = await this.collection.find(searchFilter, { ...options, limit: Math.max(options.limit * 3, 10) }).toArray()
-      }
+              if (!results || results.length === 0) {
+          // Widen slightly if nothing found
+          results = await this.collection.find(searchFilter, { ...options, limit: Math.max(options.limit * 2, 1000) }).toArray()
+        }
     } catch (err) {
-      // Fallback minimal
-      results = await this.collection.find(searchFilter).limit(options.limit).toArray()
+              // Fallback minimal
+        results = await this.collection.find(searchFilter).limit(1000).toArray()
     }
 
     // Compute similarity locally if server didn't attach one
@@ -468,8 +468,8 @@ class EnhancedPDFProcessor {
       const retrievalStart = Date.now()
       let relevantResults = []
       try {
-        // Keep server-side vector search top-k small to reduce latency
-        relevantResults = await this.dbVectorSearch(question, searchFilter, this.maxContextChunks)
+        // Get all chunks for this book to ensure comprehensive coverage
+        relevantResults = await this.dbVectorSearch(question, searchFilter, 1000)
       } catch (_) {
         // Fallback to old approach when vector sort is not available
         const allDocs = await this.collection.find(searchFilter).limit(50).toArray()
@@ -488,16 +488,14 @@ class EnhancedPDFProcessor {
           timing: timingMetrics,
           modelUsed: this.chatModelName,
           tokensUsed: 0,
-          chunkDetails: [],
-          maxContextChunks: this.maxContextChunks,
-        }
+                  chunkDetails: [],
+      }
       }
       // With DB-side vector search, processing is minimal
       timingMetrics.processing = 0
 
       const generationStart = Date.now()
-      const topK = relevantResults.slice(0, this.maxContextChunks)
-      const answerResult = await this.generateUltraFastAnswer(question, topK, bookId)
+      const answerResult = await this.generateUltraFastAnswer(question, relevantResults, bookId)
       timingMetrics.generation = Date.now() - generationStart
       timingMetrics.total = Date.now() - startTime
 
@@ -514,7 +512,6 @@ class EnhancedPDFProcessor {
         modelUsed: this.chatModelName,
         tokensUsed: answerResult.tokensUsed,
         chunkDetails: answerResult.chunkDetails,
-        maxContextChunks: this.maxContextChunks,
       }
     } catch (error) {
       timingMetrics.total = Date.now() - startTime
@@ -526,14 +523,13 @@ class EnhancedPDFProcessor {
         modelUsed: this.chatModelName,
         tokensUsed: 0,
         chunkDetails: [],
-        maxContextChunks: this.maxContextChunks,
       }
     }
   }
 
   async generateUltraFastAnswer(question, relevantChunks, bookId) {
     try {
-      const topChunks = relevantChunks.slice(0, this.maxContextChunks)
+      const topChunks = relevantChunks.slice(0, Math.min(relevantChunks.length, 10))
       const chunkDetails = []
 
       const context = topChunks
