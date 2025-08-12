@@ -291,7 +291,19 @@ exports.getAllTestsForMobile = async (req, res) => {
             );
           }
         }
-        return test;
+        const questions = await ObjectiveTestQuestion.find({test:test._id})
+        const totalQuestions = questions.length;
+
+        const testMaximumMarks = questions.reduce((sum,question)=>{
+          return sum+=(question.positiveMarks)
+        },0)
+        console.log("total",totalQuestions)
+        console.log(testMaximumMarks)
+        return {
+          ...test.toObject(),
+          totalQuestions:totalQuestions,
+          testMaximumMarks: testMaximumMarks,
+        };
       })
     );
 
@@ -309,8 +321,11 @@ exports.getAllTestsForMobile = async (req, res) => {
       is_trending: test.isTrending,
       is_highlighted: test.isHighlighted,
       is_active: test.isActive,
+      totalQuestions:test.totalQuestions,
+      testMaximumMarks:test.testMaximumMarks,
       created_at: test.createdAt,
       updated_at: test.updatedAt,
+      
     });
 
     // Group tests by category and subcategory
@@ -596,13 +611,30 @@ exports.submitTest = async (req, res) => {
       L3: { total: 0, correct: 0, score: 0 },
     };
 
+    // New metrics (do not alter existing fields/behavior)
+    let totalMarksEarned = 0;
+    let attemptedQuestionsCount = 0;
+    let wrongAnswersCount = 0;
+
     // Process each question
     questions.forEach((question) => {
       const userAnswer = answers[question._id];
       const isCorrect = userAnswer === question.correctAnswer;
+      const hasAnswered = userAnswer !== undefined && userAnswer !== null && userAnswer !== '';
       console.log(userAnswer, question.correctAnswer);
       if (isCorrect) {
         correctAnswers++;
+      }
+
+      // Update new metrics
+      if (hasAnswered) {
+        attemptedQuestionsCount++;
+        if (isCorrect) {
+          totalMarksEarned += (question.positiveMarks || 0);
+        } else {
+          totalMarksEarned -= (question.negativeMarks || 0);
+          wrongAnswersCount++;
+        }
       }
 
       // Update level breakdown
@@ -665,7 +697,11 @@ exports.submitTest = async (req, res) => {
         startTime: existingResult.startTime,
         completionTime: existingResult.completionTime, // Raw milliseconds
         submittedAt: existingResult.submittedAt,
-        remainingAttempts: existingResult.maxAttempts - existingResult.attemptNumber
+        remainingAttempts: existingResult.maxAttempts - existingResult.attemptNumber,
+        // New fields (non-breaking additions)
+        marksEarned: totalMarksEarned,
+        wrongAnswers: wrongAnswersCount,
+        skippedQuestions: Math.max(0, totalQuestions - attemptedQuestionsCount)
       },
     });
   } catch (error) {

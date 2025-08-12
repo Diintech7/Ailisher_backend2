@@ -396,7 +396,6 @@ exports.getAllTestsForMobile = async (req, res) => {
 
         // Calculate total marks
         const testMaximumMarks = questions.reduce((sum, question) => {
-            console.log(question.metadata)
           return sum + (question.metadata?.maximumMarks || 0);
         }, 0);
         // Get user's answers for this test
@@ -405,6 +404,15 @@ exports.getAllTestsForMobile = async (req, res) => {
           testId: test._id,
           testType: "subjective",
         });
+
+        // Calculate user's total score (you already have this)
+        const totalScore = userAnswers.reduce((sum, answer) => {
+          return sum + (answer.evaluation?.score || 0);
+        }, 0);
+
+        // Calculate percentage
+        const percentage = testMaximumMarks > 0 ? (totalScore / testMaximumMarks) * 100 : 0;
+
         console.log(questions.length);
         console.log(userId);
         console.log(userAnswers);
@@ -415,7 +423,9 @@ exports.getAllTestsForMobile = async (req, res) => {
         return {
           ...test.toObject(),
           userTestStatus: testStatus,
-          testMaximumMarks:testMaximumMarks
+          testMaximumMarks: testMaximumMarks,
+          totalScore:totalScore,
+          percentage: Math.round(percentage * 100) / 100, // Round to 2 decimal places
         };
       })
     );
@@ -434,7 +444,9 @@ exports.getAllTestsForMobile = async (req, res) => {
       is_trending: test.isTrending,
       is_highlighted: test.isHighlighted,
       is_active: test.isActive,
-      testMaximumMarks:test.testMaximumMarks,
+      testMaximumMarks: test.testMaximumMarks,
+      totalScore:test.totalScore,
+      percentage:test.percentage,
       created_at: test.createdAt,
       updated_at: test.updatedAt,
       userTestStatus: test.userTestStatus, // Include user status
