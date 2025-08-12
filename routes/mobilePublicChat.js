@@ -60,6 +60,7 @@ router.post("/ask/:bookId", async (req, res) => {
       modelUsed: result.modelUsed,
       tokensUsed: result.tokensUsed,
       bookId: result.bookId,
+      noInformationFound: result.noInformationFound || false,
       timing: {
         init: (result.timing.init || 0) + "ms",
         retrieval: result.timing.retrieval + "ms",
@@ -79,5 +80,4 @@ router.post("/ask/:bookId", async (req, res) => {
 })
 
 module.exports = router
-
 
