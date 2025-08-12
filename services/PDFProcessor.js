@@ -23,6 +23,12 @@ class EnhancedPDFProcessor {
       keyspace: config.keyspace,
     })
     this.baseCollectionName = config.collectionName || "book_knowledge_base"
+
+    // Caches to reduce latency on repeated requests
+    this.collectionCache = new Map() // bookId(string) -> { name, collection }
+    this.knownCollections = new Map() // collectionName -> { dimension }
+    this.collectionsLoaded = false
+    this.collectionsLoadPromise = null
   }
 
   getBookCollectionName(bookId) {
@@ -39,32 +45,84 @@ class EnhancedPDFProcessor {
         throw new Error("Book ID is required for initialization")
       }
 
-      const collectionName = this.getBookCollectionName(bookId)
-      const collections = await this.db.listCollections()
-      const existingCollection = collections.find((col) => col.name === collectionName)
+      // Return cached handle if available
+      const cached = this.collectionCache.get(bookId.toString())
+      if (cached) {
+        this.collection = cached.collection
+        this.currentBookId = bookId
+        this.currentCollectionName = cached.name
+        return cached.name
+      }
 
-      if (existingCollection) {
-        const existingDimension = existingCollection.options?.vector?.dimension
+      const desiredCollectionName = this.getBookCollectionName(bookId)
+
+      // Load known collections once per process to avoid repeated list calls
+      if (!this.collectionsLoaded) {
+        if (!this.collectionsLoadPromise) {
+          this.collectionsLoadPromise = (async () => {
+            const collections = await this.db.listCollections()
+            collections.forEach((col) => {
+              const dim = col.options?.vector?.dimension
+              this.knownCollections.set(col.name, { dimension: dim })
+            })
+            this.collectionsLoaded = true
+          })()
+        }
+        await this.collectionsLoadPromise
+      }
+
+      // Prefer exact match; otherwise, try to find best legacy/truncated match
+      let resolvedName = desiredCollectionName
+      let known = this.knownCollections.get(resolvedName)
+
+      if (!known) {
+        const prefix = `${this.baseCollectionName}_book_`
+        const cleanBookId = bookId.toString().replace(/[^a-zA-Z0-9_]/g, "_")
+
+        let bestMatchName = null
+        let bestScore = -1
+
+        for (const name of this.knownCollections.keys()) {
+          if (!name.startsWith(prefix)) continue
+          const suffix = name.slice(prefix.length)
+          // Score by longest common prefix with the cleanBookId
+          const maxLen = Math.min(suffix.length, cleanBookId.length)
+          let lcp = 0
+          while (lcp < maxLen && suffix[lcp] === cleanBookId[lcp]) lcp++
+          if (lcp > bestScore) {
+            bestScore = lcp
+            bestMatchName = name
+          }
+        }
+
+        if (bestMatchName) {
+          resolvedName = bestMatchName
+          known = this.knownCollections.get(resolvedName)
+        }
+      }
+
+      if (known) {
+        const existingDimension = known.dimension
         if (existingDimension && existingDimension !== this.vectorDimensions) {
-          console.log(
-            `Adjusting vector dimensions from ${this.vectorDimensions} to ${existingDimension} for existing collection`
-          )
           this.vectorDimensions = existingDimension
         }
       } else {
         const modelDimensions = this.getModelDimensions(this.embeddingModelName)
         if (modelDimensions !== this.vectorDimensions) {
-          console.log(`Setting vector dimensions to ${modelDimensions} for model ${this.embeddingModelName}`)
           this.vectorDimensions = modelDimensions
         }
-        await this.createBookCollection(collectionName)
+        await this.createBookCollection(resolvedName)
+        // Mark as known now
+        this.knownCollections.set(resolvedName, { dimension: this.vectorDimensions })
       }
 
-      this.collection = this.db.collection(collectionName)
+      const collection = this.db.collection(resolvedName)
+      this.collection = collection
       this.currentBookId = bookId
-      this.currentCollectionName = collectionName
+      this.currentCollectionName = resolvedName
+      this.collectionCache.set(bookId.toString(), { name: resolvedName, collection })
 
-      return collectionName
+      return resolvedName
     } catch (error) {
       throw error
     }
@@ -321,6 +379,48 @@ class EnhancedPDFProcessor {
     }
   }
 
+  async dbVectorSearch(question, searchFilter, limit) {
+    // Use Astra server-side vector sort to reduce latency and payload
+    const embeddingModel = this.genAI.getGenerativeModel({ model: this.embeddingModelName })
+    const questionEmbeddingResult = await embeddingModel.embedContent(question)
+    const questionEmbedding = questionEmbeddingResult.embedding.values
+
+    const options = {
+      sort: { $vector: questionEmbedding },
+      limit: Math.max(1, limit || this.maxContextChunks),
+      projection: {
+        text_content: 1,
+        $vector: 1,
+        file_name: 1,
+        chunk_index: 1,
+        word_count: 1,
+      },
+    }
+
+    // Some driver versions accept options as second param. If not, fallback without projection
+    let results
+    // Partitioned execution to reduce tail latency: first top-k fast; if empty, widen
+    try {
+      results = await this.collection.find(searchFilter, options).toArray()
+      if (!results || results.length === 0) {
+        // Widen slightly if nothing found
+        results = await this.collection.find(searchFilter, { ...options, limit: Math.max(options.limit * 3, 10) }).toArray()
+      }
+    } catch (err) {
+      // Fallback minimal
+      results = await this.collection.find(searchFilter).limit(options.limit).toArray()
+    }
+
+    // Compute similarity locally if server didn't attach one
+    const sims = results.map((doc) => {
+      const sim = this.cosineSimilarity(questionEmbedding, doc.$vector)
+      return { ...doc, $similarity: sim }
+    })
+
+    sims.sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
+    return sims
+  }
+
   cosineSimilarity(vecA, vecB) {
     if (!vecA || !vecB || vecA.length !== vecB.length) return 0
     const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0)
@@ -329,9 +429,17 @@ class EnhancedPDFProcessor {
     return magnitudeA && magnitudeB ? dotProduct / (magnitudeA * magnitudeB) : 0
   }
 
-  async answerQuestion(question, fileName = null, userId = null, requireAuth = false, bookId = null) {
+  async answerQuestion(
+    question,
+    fileName = null,
+    userId = null,
+    requireAuth = false,
+    bookId = null,
+    options = {},
+  ) {
     const startTime = Date.now()
     const timingMetrics = {
+      init: 0,
       retrieval: 0,
       processing: 0,
       generation: 0,
@@ -343,20 +451,36 @@ class EnhancedPDFProcessor {
     }
 
     try {
+      const initStart = Date.now()
       await this.initializeBookDB(bookId)
+      timingMetrics.init = Date.now() - initStart
 
       const searchFilter = { book_id: bookId }
       if (fileName) searchFilter.file_name = fileName
       if (userId && requireAuth) searchFilter.user_id = userId
-      if (!requireAuth && !userId) {
-        searchFilter.$or = [{ is_public: true }, { access_level: "public" }]
+      if (!requireAuth) {
+        const includePrivateWhenUnauth = options.includePrivateWhenUnauthenticated === true
+        if (!userId && !includePrivateWhenUnauth) {
+          searchFilter.$or = [{ is_public: true }, { access_level: "public" }]
+        }
       }
 
       const retrievalStart = Date.now()
-      const allDocs = await this.collection.find(searchFilter).limit(50).toArray()
+      let relevantResults = []
+      try {
+        // Keep server-side vector search top-k small to reduce latency
+        relevantResults = await this.dbVectorSearch(question, searchFilter, this.maxContextChunks)
+      } catch (_) {
+        // Fallback to old approach when vector sort is not available
+        const allDocs = await this.collection.find(searchFilter).limit(50).toArray()
+        if (allDocs.length > 0) {
+          relevantResults = await this.performFastRetrieval(question, allDocs)
+        }
+      }
       timingMetrics.retrieval = Date.now() - retrievalStart
 
-      if (allDocs.length === 0) {
+      if (relevantResults.length === 0) {
+        timingMetrics.total = Date.now() - startTime
         return {
           answer: `No relevant documents found in this book's knowledge base.`,
           confidence: 0,
@@ -368,13 +492,12 @@ class EnhancedPDFProcessor {
           maxContextChunks: this.maxContextChunks,
         }
       }
-
-      const processingStart = Date.now()
-      const relevantResults = await this.performFastRetrieval(question, allDocs)
-      timingMetrics.processing = Date.now() - processingStart
+      // With DB-side vector search, processing is minimal
+      timingMetrics.processing = 0
 
       const generationStart = Date.now()
-      const answerResult = await this.generateUltraFastAnswer(question, relevantResults, bookId)
+      const topK = relevantResults.slice(0, this.maxContextChunks)
+      const answerResult = await this.generateUltraFastAnswer(question, topK, bookId)
       timingMetrics.generation = Date.now() - generationStart
       timingMetrics.total = Date.now() - startTime
 

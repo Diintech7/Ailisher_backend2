@@ -27,12 +27,12 @@ const processor = new EnhancedPDFProcessor({
   astraApiEndpoint: process.env.ASTRA_API_ENDPOINT,
   keyspace: process.env.ASTRA_KEYSPACE,
   collectionName: process.env.ASTRA_COLLECTION,
-  embeddingModel: process.env.EMBEDDING_MODEL || "text-embedding-004", // Gemini embedding model
-  chatModel: process.env.CHAT_MODEL || "gemini-1.5-flash", // Gemini chat model
-  vectorDimensions: process.env.VECTOR_DIMENSIONS || "768",
-  chunkSize: process.env.CHUNK_SIZE || "200",
-  chunkOverlap: process.env.CHUNK_OVERLAP || "30",
-  maxContextChunks: process.env.MAX_CONTEXT_CHUNKS || "5",
+  embeddingModel: process.env.EMBEDDING_MODEL, // Gemini embedding model
+  chatModel: process.env.CHAT_MODEL, // Gemini chat model
+  vectorDimensions: process.env.VECTOR_DIMENSIONS,
+  chunkSize: process.env.CHUNK_SIZE,
+  chunkOverlap: process.env.CHUNK_OVERLAP,
+  maxContextChunks: process.env.MAX_CONTEXT_CHUNKS,
 })
 
 router.get("/chat-health/:itemId", optionalAuth, async (req, res) => {

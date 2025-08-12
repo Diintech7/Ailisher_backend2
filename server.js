@@ -118,6 +118,9 @@ app.use('/api/paytm',paytmRoutes)
 app.use("/api/enhanced-pdf-embedding", require("./routes/pdfEmbedding"))
 app.use("/api/enhanced-pdf-chat", require("./routes/pdfChat"))
 
+// Public mobile chat endpoints (no token) — bookId only
+app.use("/api/mobile/public-chat", require("./routes/mobilePublicChat"))
+
 
 // Global Evaluation routes (accessible without client-specific middleware)
 app.use("/api/aiswb", evaluationRoutes)
