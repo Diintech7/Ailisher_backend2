@@ -29,6 +29,7 @@ class EnhancedPDFProcessor {
     this.knownCollections = new Map() // collectionName -> { dimension }
     this.collectionsLoaded = false
     this.collectionsLoadPromise = null
+    this.embeddingCache = new Map() // question -> embedding (simple cache for repeated questions)
   }
 
   getBookCollectionName(bookId) {
@@ -361,9 +362,17 @@ class EnhancedPDFProcessor {
 
   async performFastRetrieval(question, documents) {
     try {
-      const embeddingModel = this.genAI.getGenerativeModel({ model: this.embeddingModelName })
-      const questionEmbeddingResult = await embeddingModel.embedContent(question)
-      const questionEmbedding = questionEmbeddingResult.embedding.values
+      let questionEmbedding = this.embeddingCache.get(question)
+      
+      if (!questionEmbedding) {
+        const embeddingModel = this.genAI.getGenerativeModel({ model: this.embeddingModelName })
+        const questionEmbeddingResult = await embeddingModel.embedContent(question)
+        questionEmbedding = questionEmbeddingResult.embedding.values
+        // Cache the embedding for future use (limit cache size)
+        if (this.embeddingCache.size < 100) {
+          this.embeddingCache.set(question, questionEmbedding)
+        }
+      }
 
       const similarities = documents.map((doc) => {
         const docEmbedding = doc.$vector
@@ -381,9 +390,17 @@ class EnhancedPDFProcessor {
 
   async dbVectorSearch(question, searchFilter, limit) {
     // Use Astra server-side vector sort to reduce latency and payload
-    const embeddingModel = this.genAI.getGenerativeModel({ model: this.embeddingModelName })
-    const questionEmbeddingResult = await embeddingModel.embedContent(question)
-    const questionEmbedding = questionEmbeddingResult.embedding.values
+    let questionEmbedding = this.embeddingCache.get(question)
+    
+    if (!questionEmbedding) {
+      const embeddingModel = this.genAI.getGenerativeModel({ model: this.embeddingModelName })
+      const questionEmbeddingResult = await embeddingModel.embedContent(question)
+      questionEmbedding = questionEmbeddingResult.embedding.values
+      // Cache the embedding for future use (limit cache size)
+      if (this.embeddingCache.size < 100) {
+        this.embeddingCache.set(question, questionEmbedding)
+      }
+    }
 
     const options = {
       sort: { $vector: questionEmbedding },
@@ -397,18 +414,22 @@ class EnhancedPDFProcessor {
       },
     }
 
-    // Some driver versions accept options as second param. If not, fallback without projection
+    // Optimized execution: try once with smaller limit first
     let results
-    // Partitioned execution to reduce tail latency: first top-k fast; if empty, widen
     try {
       results = await this.collection.find(searchFilter, options).toArray()
-              if (!results || results.length === 0) {
-          // Widen slightly if nothing found
-          results = await this.collection.find(searchFilter, { ...options, limit: Math.max(options.limit * 2, 1000) }).toArray()
+      
+      // Only widen search if we have very few results
+      if (!results || results.length < 5) {
+        const widerOptions = { ...options, limit: Math.min(options.limit * 1.5, 1500) }
+        const additionalResults = await this.collection.find(searchFilter, widerOptions).toArray()
+        if (additionalResults.length > results.length) {
+          results = additionalResults
         }
+      }
     } catch (err) {
-              // Fallback minimal
-        results = await this.collection.find(searchFilter).limit(1000).toArray()
+      // Fallback minimal
+      results = await this.collection.find(searchFilter).limit(500).toArray()
     }
 
     // Compute similarity locally if server didn't attach one
@@ -641,12 +662,27 @@ Please provide a detailed answer that covers the relevant information from the b
       const retrievalStart = Date.now()
       let relevantResults = []
       try {
-        // Get maximum chunks for comprehensive book coverage
-        relevantResults = await this.dbVectorSearch(question, searchFilter, 3000)
+              // Optimized search: start with smaller limit for faster response
+      const searchLimit = options.fastMode ? 500 : (options.enhancedMode ? 1500 : 1000)
+      relevantResults = await this.dbVectorSearch(question, searchFilter, searchLimit)
+        
+        // If we don't have enough diverse results, try a bit more
+        if (relevantResults.length < 10) {
+          const additionalResults = await this.dbVectorSearch(question, searchFilter, 2000)
+          relevantResults = [...relevantResults, ...additionalResults]
+          // Remove duplicates and re-sort
+          const seen = new Set()
+          relevantResults = relevantResults.filter(result => {
+            const key = `${result.file_name}-${result.chunk_index}`
+            if (seen.has(key)) return false
+            seen.add(key)
+            return true
+          }).sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
+        }
       } catch (error) {
         console.error("Vector search failed, falling back to basic search:", error.message)
-        // Fallback to basic search
-        const allDocs = await this.collection.find(searchFilter).limit(200).toArray()
+        // Fallback to basic search with smaller limit
+        const allDocs = await this.collection.find(searchFilter).limit(100).toArray()
         if (allDocs.length > 0) {
           relevantResults = await this.performFastRetrieval(question, allDocs)
         }
@@ -682,18 +718,18 @@ Please provide a detailed answer that covers the relevant information from the b
       Object.keys(fileGroups).forEach(fileName => {
         const fileResults = fileGroups[fileName]
           .sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
-          .slice(0, 5) // Top 5 from each file
+          .slice(0, options.fastMode ? 2 : 3) // Further reduced for fast mode
         diverseResults.push(...fileResults)
       })
 
       // Sort by similarity and take top overall
       diverseResults.sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
-      const finalResults = diverseResults.slice(0, 25) // Use top 25 diverse results
+      const finalResults = diverseResults.slice(0, options.fastMode ? 12 : 18) // Further reduced for fast mode
 
       timingMetrics.processing = 0
 
       const generationStart = Date.now()
-      const answerResult = await this.generateBookLevelAnswer(question, finalResults, bookId)
+      const answerResult = await this.generateBookLevelAnswer(question, finalResults, bookId, options)
       timingMetrics.generation = Date.now() - generationStart
       timingMetrics.total = Date.now() - startTime
 
@@ -728,7 +764,7 @@ Please provide a detailed answer that covers the relevant information from the b
     }
   }
 
-  async generateBookLevelAnswer(question, relevantChunks, bookId) {
+  async generateBookLevelAnswer(question, relevantChunks, bookId, options = {}) {
     try {
       const chunkDetails = []
 
@@ -742,21 +778,23 @@ Please provide a detailed answer that covers the relevant information from the b
         fileGroups[fileName].push(chunk)
       })
 
-      // Create organized context
+      // Create optimized context with shorter text chunks
       let contextParts = []
       Object.keys(fileGroups).forEach((fileName, fileIndex) => {
         const fileChunks = fileGroups[fileName]
         const fileContext = fileChunks
           .map((chunk, index) => {
             const similarity = Math.round((chunk.$similarity || 0) * 100)
-            const text = chunk.text_content.substring(0, 400)
+            // Reduced text length from 400 to 250 for faster processing, even shorter for fast mode
+            const maxLength = options.fastMode ? 150 : 250
+            const text = chunk.text_content.substring(0, maxLength)
             chunkDetails.push({
               chunkIndex: contextParts.length + index + 1,
               fileName: fileName,
               similarity: similarity,
               fileIndex: fileIndex + 1
             })
-            return `[${contextParts.length + index + 1}] ${text}... (${similarity}% match)`
+            return `[${contextParts.length + index + 1}] ${text}... (${similarity}%)`
           })
           .join("\n")
         
@@ -765,21 +803,15 @@ Please provide a detailed answer that covers the relevant information from the b
 
       const context = contextParts.join("\n\n")
 
-      // Enhanced prompt for book-level questions
-      const prompt = `You are analyzing a book with multiple documents. Based on the following context from various parts of the book, please provide a comprehensive answer to the question.
+      // Optimized prompt for faster generation
+      const prompt = `Based on this book context, answer the question concisely but comprehensively:
 
-Context from the book:
+Context:
 ${context}
 
 Question: ${question}
 
-Instructions:
-1. Provide a detailed, comprehensive answer using information from multiple sources if available
-2. If the information is not available in the provided context, clearly state that
-3. Reference specific parts of the book when possible
-4. Organize your answer logically and thoroughly
-
-Answer:`
+Provide a detailed answer using available information. If information is not available, state that clearly.`
 
       const generationStart = Date.now()
       const result = await this.chatModel.generateContent({
