@@ -50,6 +50,9 @@ class EnhancedPDFProcessor {
     this.collectionsLoaded = false
     this.collectionsLoadPromise = null
     this.embeddingCache = new Map() // question -> embedding (simple cache for repeated questions)
+    // Cache of distinct file names per book to avoid repeated projection queries
+    this.fileNamesCache = new Map() // bookId(string) -> { files: string[], cachedAt: number }
+    this.fileNamesCacheTTL = Number.parseInt(process.env.FILENAMES_CACHE_TTL_MS || "300000") // 5 minutes
   }
 
   getBookCollectionName(bookId) {
@@ -172,6 +175,53 @@ class EnhancedPDFProcessor {
     }
 
     return dimensionMap[modelName] || 768
+  }
+
+  // Returns distinct file names for a book with caching
+  async getDistinctFileNames(bookId, searchFilter, fallbackFileGroups = null) {
+    try {
+      const cacheKey = bookId.toString()
+      const cached = this.fileNamesCache.get(cacheKey)
+      const now = Date.now()
+      if (cached && now - cached.cachedAt < this.fileNamesCacheTTL) {
+        return cached.files
+      }
+
+      // Query only file_name field for performance
+      const fileDocs = await this.collection
+        .find(searchFilter, { projection: { file_name: 1, _id: 0 }, limit: 1000 })
+        .toArray()
+      const files = [...new Set(fileDocs.map((d) => d.file_name).filter(Boolean))]
+
+      this.fileNamesCache.set(cacheKey, { files, cachedAt: now })
+      return files
+    } catch (error) {
+      // Fallback to file groups keys if provided
+      if (fallbackFileGroups) {
+        const files = Object.keys(fallbackFileGroups)
+        this.fileNamesCache.set(bookId.toString(), { files, cachedAt: Date.now() })
+        return files
+      }
+      return []
+    }
+  }
+
+  // Simple concurrency limiter to run async tasks with a fixed concurrency
+  async runWithConcurrency(items, concurrency, taskFn) {
+    const results = []
+    let index = 0
+    const workers = new Array(Math.max(1, concurrency)).fill(0).map(async () => {
+      while (index < items.length) {
+        const currentIndex = index++
+        try {
+          results[currentIndex] = await taskFn(items[currentIndex])
+        } catch (err) {
+          results[currentIndex] = null
+        }
+      }
+    })
+    await Promise.all(workers)
+    return results
   }
 
   async createBookCollection(collectionName) {
@@ -778,20 +828,8 @@ Please provide a detailed answer that covers the relevant information from the b
         fileGroups[fileName].push(result)
       })
 
-             // Get all available files in the book to ensure we don't miss any
-       // Use a faster approach: just get distinct file names without full documents
-       let allFilesInBook = []
-       try {
-         // Try to get file names efficiently
-         const fileDocs = await this.collection.find(searchFilter, { 
-           projection: { file_name: 1, _id: 0 },
-           limit: 1000 
-         }).toArray()
-         allFilesInBook = [...new Set(fileDocs.map(doc => doc.file_name))]
-       } catch (error) {
-         console.log("Could not get all files, using found files only:", error.message)
-         allFilesInBook = Object.keys(fileGroups)
-       }
+      // Get all available files in the book using cache (fast)
+      const allFilesInBook = await this.getDistinctFileNames(bookId, searchFilter, fileGroups)
       
       // Ensure we have at least one result from each file, even if similarity is low
       const diverseResults = []
@@ -804,44 +842,36 @@ Please provide a detailed answer that covers the relevant information from the b
         diverseResults.push(...fileResults)
       })
       
-      // Then, for files that have no results, get at least one sample
+      // Then, for files that have no results, get at least one sample (parallel, limited)
       const filesWithResults = new Set(Object.keys(fileGroups))
       const filesWithoutResults = allFilesInBook.filter(fileName => !filesWithResults.has(fileName))
       
-      for (const fileName of filesWithoutResults) {
+      // Limit the number of missing files we probe in fast mode to reduce DB calls
+      const filesToProbe = options.fastMode ? filesWithoutResults.slice(0, 4) : filesWithoutResults
+      const questionEmbedding = this.embeddingCache.get(question)
+      const sampleResults = await this.runWithConcurrency(filesToProbe, options.fastMode ? 3 : 5, async (fileName) => {
         try {
-          // Get a sample from files that weren't found in vector search
-          const sampleDocs = await this.collection.find({ 
-            ...searchFilter, 
-            file_name: fileName 
-          }).limit(2).toArray()
-          
-          if (sampleDocs.length > 0) {
-            // Calculate similarity for these samples
-            const questionEmbedding = this.embeddingCache.get(question)
-            if (questionEmbedding) {
-              const samplesWithSimilarity = sampleDocs.map(doc => ({
-                ...doc,
-                $similarity: this.cosineSimilarity(questionEmbedding, doc.$vector)
-              }))
-              diverseResults.push(...samplesWithSimilarity)
-            } else {
-              // If no cached embedding, add with default similarity
-              const samplesWithSimilarity = sampleDocs.map(doc => ({
-                ...doc,
-                $similarity: 0.1 // Low similarity but still included
-              }))
-              diverseResults.push(...samplesWithSimilarity)
-            }
+          const sampleDocs = await this.collection
+            .find({ ...searchFilter, file_name: fileName })
+            .limit(options.fastMode ? 1 : 2)
+            .toArray()
+          if (!sampleDocs || sampleDocs.length === 0) return []
+          if (questionEmbedding) {
+            return sampleDocs.map(doc => ({
+              ...doc,
+              $similarity: this.cosineSimilarity(questionEmbedding, doc.$vector)
+            }))
           }
-        } catch (error) {
-          console.error(`Error getting sample from ${fileName}:`, error.message)
+          return sampleDocs.map(doc => ({ ...doc, $similarity: 0.1 }))
+        } catch (err) {
+          return []
         }
-      }
+      })
+      sampleResults.forEach(arr => { if (arr && arr.length) diverseResults.push(...arr) })
 
       // Sort by similarity and take top overall, but ensure diversity
       diverseResults.sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
-      const finalResults = diverseResults.slice(0, options.fastMode ? 15 : 20) // Increased limit to accommodate more files
+      const finalResults = diverseResults.slice(0, options.fastMode ? 12 : 18)
 
       timingMetrics.processing = 0
 
@@ -862,7 +892,7 @@ Please provide a detailed answer that covers the relevant information from the b
         method: "enhanced-book-level",
         modelUsed: this.chatModelName,
         tokensUsed: answerResult.tokensUsed,
-        chunkDetails: answerResult.chunkDetails,
+        chunkDetails: options.fastMode ? [] : (answerResult.chunkDetails || []),
         filesUsed: [...new Set(finalResults.map(r => r.file_name))],
         totalFilesAvailable: allFilesInBook.length
       }
@@ -902,15 +932,17 @@ Please provide a detailed answer that covers the relevant information from the b
         const fileContext = fileChunks
           .map((chunk, index) => {
             const similarity = Math.round((chunk.$similarity || 0) * 100)
-            // Reduced text length from 400 to 250 for faster processing, even shorter for fast mode
-            const maxLength = options.fastMode ? 150 : 250
+            // Reduced text length for faster processing
+            const maxLength = options.fastMode ? 120 : 220
             const text = chunk.text_content.substring(0, maxLength)
-            chunkDetails.push({
-              chunkIndex: contextParts.length + index + 1,
-              fileName: fileName,
-              similarity: similarity,
-              fileIndex: fileIndex + 1
-            })
+            if (!options.fastMode) {
+              chunkDetails.push({
+                chunkIndex: contextParts.length + index + 1,
+                fileName: fileName,
+                similarity: similarity,
+                fileIndex: fileIndex + 1
+              })
+            }
             return `[${contextParts.length + index + 1}] ${text}... (${similarity}%)`
           })
           .join("\n")
@@ -921,21 +953,21 @@ Please provide a detailed answer that covers the relevant information from the b
       const context = contextParts.join("\n\n")
 
       // Optimized prompt for faster generation
-      const prompt = `Based on this book context, answer the question concisely but comprehensively:
+      const prompt = `Answer based on this book context. Be concise but comprehensive:
 
 Context:
 ${context}
 
 Question: ${question}
 
-Provide a detailed answer using available information. If information is not available, state that clearly.`
+If information is not available, say so clearly.`
 
       const generationStart = Date.now()
       const result = await this.chatModel.generateContent({
         contents: [
           {
             parts: [
-              { text: "You are a knowledgeable AI assistant that provides comprehensive, well-structured answers based on book content. Always be thorough and accurate." },
+              { text: options.fastMode ? "Answer directly from the provided context. Be brief and precise. If unknown, say you don't know." : "You are a knowledgeable AI assistant that provides comprehensive, well-structured answers based on book content. Always be thorough and accurate." },
               { text: prompt }
             ]
           }
