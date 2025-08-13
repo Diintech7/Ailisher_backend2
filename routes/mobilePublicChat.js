@@ -18,6 +18,13 @@ const processor = new EnhancedPDFProcessor({
   maxContextChunks: process.env.MAX_CONTEXT_CHUNKS,
 })
 
+// Debug Astra DB configuration
+console.log("Astra DB Configuration:")
+console.log("ASTRA_TOKEN:", process.env.ASTRA_TOKEN ? "SET" : "NOT SET")
+console.log("ASTRA_API_ENDPOINT:", process.env.ASTRA_API_ENDPOINT || "NOT SET")
+console.log("ASTRA_KEYSPACE:", process.env.ASTRA_KEYSPACE || "NOT SET")
+console.log("ASTRA_COLLECTION:", process.env.ASTRA_COLLECTION || "NOT SET")
+
 // Health/status of a book's knowledge base (no auth)
 router.get("/health/:bookId", async (req, res) => {
   try {

@@ -14,14 +14,34 @@ class EnhancedPDFProcessor {
     this.chunkOverlap = Number.parseInt(config.chunkOverlap) || 30
     this.maxContextChunks = Number.parseInt(config.maxContextChunks) || 5
 
+    // Validate required configuration
+    if (!config.geminiApiKey) {
+      throw new Error("GEMINI_API_KEY is required")
+    }
+    if (!config.astraToken) {
+      throw new Error("ASTRA_TOKEN is required")
+    }
+    if (!config.astraApiEndpoint) {
+      throw new Error("ASTRA_API_ENDPOINT is required")
+    }
+    if (!config.keyspace) {
+      throw new Error("ASTRA_KEYSPACE is required")
+    }
+
     // Initialize Gemini AI
     this.genAI = new GoogleGenerativeAI(config.geminiApiKey)
     this.chatModel = this.genAI.getGenerativeModel({ model: this.chatModelName })
 
-    this.astraClient = new DataAPIClient(config.astraToken)
-    this.db = this.astraClient.db(config.astraApiEndpoint, {
-      keyspace: config.keyspace,
-    })
+    try {
+      this.astraClient = new DataAPIClient(config.astraToken)
+      this.db = this.astraClient.db(config.astraApiEndpoint, {
+        keyspace: config.keyspace,
+      })
+    } catch (error) {
+      console.error("Failed to initialize Astra DB client:", error.message)
+      throw new Error(`Astra DB initialization failed: ${error.message}. Please check your ASTRA_TOKEN, ASTRA_API_ENDPOINT, and ASTRA_KEYSPACE configuration.`)
+    }
+
     this.baseCollectionName = config.collectionName || "book_knowledge_base"
 
     // Caches to reduce latency on repeated requests
@@ -46,6 +66,14 @@ class EnhancedPDFProcessor {
         throw new Error("Book ID is required for initialization")
       }
 
+      // Validate Astra DB configuration
+      if (!this.astraClient) {
+        throw new Error("Astra DB client not initialized. Check ASTRA_TOKEN configuration.")
+      }
+      if (!this.db) {
+        throw new Error("Astra DB database not initialized. Check ASTRA_API_ENDPOINT and ASTRA_KEYSPACE configuration.")
+      }
+
       // Return cached handle if available
       const cached = this.collectionCache.get(bookId.toString())
       if (cached) {
@@ -61,12 +89,17 @@ class EnhancedPDFProcessor {
       if (!this.collectionsLoaded) {
         if (!this.collectionsLoadPromise) {
           this.collectionsLoadPromise = (async () => {
-            const collections = await this.db.listCollections()
-            collections.forEach((col) => {
-              const dim = col.options?.vector?.dimension
-              this.knownCollections.set(col.name, { dimension: dim })
-            })
-            this.collectionsLoaded = true
+            try {
+              const collections = await this.db.listCollections()
+              collections.forEach((col) => {
+                const dim = col.options?.vector?.dimension
+                this.knownCollections.set(col.name, { dimension: dim })
+              })
+              this.collectionsLoaded = true
+            } catch (error) {
+              console.error("Failed to list Astra DB collections:", error.message)
+              throw new Error(`Astra DB connection failed: ${error.message}. Please check your ASTRA_TOKEN, ASTRA_API_ENDPOINT, and ASTRA_KEYSPACE configuration.`)
+            }
           })()
         }
         await this.collectionsLoadPromise
@@ -381,7 +414,8 @@ class EnhancedPDFProcessor {
       })
 
       similarities.sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
-      return similarities.slice(0, this.maxContextChunks)
+      // Return more results to ensure file diversity
+      return similarities.slice(0, Math.max(this.maxContextChunks * 2, 20))
     } catch (error) {
       console.error("Retrieval error:", error)
       return []
@@ -404,7 +438,7 @@ class EnhancedPDFProcessor {
 
     const options = {
       sort: { $vector: questionEmbedding },
-      limit: Math.max(1, limit || 1000),
+      limit: Math.max(1, limit || 500), // Reduced default limit
       projection: {
         text_content: 1,
         $vector: 1,
@@ -414,22 +448,42 @@ class EnhancedPDFProcessor {
       },
     }
 
-    // Optimized execution: try once with smaller limit first
+    // Add timeout wrapper to prevent hanging
+    const searchWithTimeout = async () => {
+      try {
+        const results = await this.collection.find(searchFilter, options).toArray()
+        
+        // Only widen search if we have very few results and limit is small
+        if ((!results || results.length < 5) && options.limit < 800) {
+          const widerOptions = { ...options, limit: Math.min(options.limit * 1.5, 800) }
+          const additionalResults = await this.collection.find(searchFilter, widerOptions).toArray()
+          if (additionalResults.length > results.length) {
+            return additionalResults
+          }
+        }
+        return results
+      } catch (err) {
+        console.log("Vector search failed, using fallback:", err.message)
+        // Fallback minimal
+        return await this.collection.find(searchFilter).limit(300).toArray()
+      }
+    }
+
+    // Execute with timeout
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Vector search timeout")), 15000) // 15 second timeout
+    })
+
     let results
     try {
-      results = await this.collection.find(searchFilter, options).toArray()
-      
-      // Only widen search if we have very few results
-      if (!results || results.length < 5) {
-        const widerOptions = { ...options, limit: Math.min(options.limit * 1.5, 1500) }
-        const additionalResults = await this.collection.find(searchFilter, widerOptions).toArray()
-        if (additionalResults.length > results.length) {
-          results = additionalResults
-        }
+      results = await Promise.race([searchWithTimeout(), timeoutPromise])
+    } catch (error) {
+      if (error.message === "Vector search timeout") {
+        console.log("Vector search timed out, using minimal fallback")
+        results = await this.collection.find(searchFilter).limit(200).toArray()
+      } else {
+        throw error
       }
-    } catch (err) {
-      // Fallback minimal
-      results = await this.collection.find(searchFilter).limit(500).toArray()
     }
 
     // Compute similarity locally if server didn't attach one
@@ -661,32 +715,43 @@ Please provide a detailed answer that covers the relevant information from the b
 
       const retrievalStart = Date.now()
       let relevantResults = []
-      try {
-              // Optimized search: start with smaller limit for faster response
-      const searchLimit = options.fastMode ? 500 : (options.enhancedMode ? 1500 : 1000)
-      relevantResults = await this.dbVectorSearch(question, searchFilter, searchLimit)
-        
-        // If we don't have enough diverse results, try a bit more
-        if (relevantResults.length < 10) {
-          const additionalResults = await this.dbVectorSearch(question, searchFilter, 2000)
-          relevantResults = [...relevantResults, ...additionalResults]
-          // Remove duplicates and re-sort
-          const seen = new Set()
-          relevantResults = relevantResults.filter(result => {
-            const key = `${result.file_name}-${result.chunk_index}`
-            if (seen.has(key)) return false
-            seen.add(key)
-            return true
-          }).sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
-        }
-      } catch (error) {
-        console.error("Vector search failed, falling back to basic search:", error.message)
-        // Fallback to basic search with smaller limit
-        const allDocs = await this.collection.find(searchFilter).limit(100).toArray()
-        if (allDocs.length > 0) {
-          relevantResults = await this.performFastRetrieval(question, allDocs)
-        }
-      }
+            try {
+         // Fast mode: use smaller, more targeted search to avoid timeouts
+         const searchLimit = options.fastMode ? 300 : (options.enhancedMode ? 800 : 500)
+         relevantResults = await this.dbVectorSearch(question, searchFilter, searchLimit)
+         
+         // Only do additional search if absolutely necessary and results are very poor
+         const uniqueFilesFound = new Set(relevantResults.map(r => r.file_name))
+         if (relevantResults.length < 8 || uniqueFilesFound.size < 2) {
+           try {
+             const additionalResults = await this.dbVectorSearch(question, searchFilter, 500)
+             relevantResults = [...relevantResults, ...additionalResults]
+             // Remove duplicates and re-sort
+             const seen = new Set()
+             relevantResults = relevantResults.filter(result => {
+               const key = `${result.file_name}-${result.chunk_index}`
+               if (seen.has(key)) return false
+               seen.add(key)
+               return true
+             }).sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
+           } catch (additionalError) {
+             console.log("Additional search failed, proceeding with initial results:", additionalError.message)
+           }
+         }
+             } catch (error) {
+         console.error("Vector search failed, falling back to basic search:", error.message)
+         // Fast fallback: use smaller limit to avoid timeouts
+         try {
+           const allDocs = await this.collection.find(searchFilter).limit(100).toArray()
+           if (allDocs.length > 0) {
+             relevantResults = await this.performFastRetrieval(question, allDocs)
+           }
+         } catch (fallbackError) {
+           console.error("Fallback search also failed:", fallbackError.message)
+           // Return empty results rather than failing completely
+           relevantResults = []
+         }
+       }
       timingMetrics.retrieval = Date.now() - retrievalStart
 
       if (relevantResults.length === 0) {
@@ -713,18 +778,70 @@ Please provide a detailed answer that covers the relevant information from the b
         fileGroups[fileName].push(result)
       })
 
-      // Take top results from each file to ensure comprehensive coverage
+             // Get all available files in the book to ensure we don't miss any
+       // Use a faster approach: just get distinct file names without full documents
+       let allFilesInBook = []
+       try {
+         // Try to get file names efficiently
+         const fileDocs = await this.collection.find(searchFilter, { 
+           projection: { file_name: 1, _id: 0 },
+           limit: 1000 
+         }).toArray()
+         allFilesInBook = [...new Set(fileDocs.map(doc => doc.file_name))]
+       } catch (error) {
+         console.log("Could not get all files, using found files only:", error.message)
+         allFilesInBook = Object.keys(fileGroups)
+       }
+      
+      // Ensure we have at least one result from each file, even if similarity is low
       const diverseResults = []
+      
+      // First, add top results from files that have high similarity
       Object.keys(fileGroups).forEach(fileName => {
         const fileResults = fileGroups[fileName]
           .sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
-          .slice(0, options.fastMode ? 2 : 3) // Further reduced for fast mode
+          .slice(0, options.fastMode ? 2 : 3)
         diverseResults.push(...fileResults)
       })
+      
+      // Then, for files that have no results, get at least one sample
+      const filesWithResults = new Set(Object.keys(fileGroups))
+      const filesWithoutResults = allFilesInBook.filter(fileName => !filesWithResults.has(fileName))
+      
+      for (const fileName of filesWithoutResults) {
+        try {
+          // Get a sample from files that weren't found in vector search
+          const sampleDocs = await this.collection.find({ 
+            ...searchFilter, 
+            file_name: fileName 
+          }).limit(2).toArray()
+          
+          if (sampleDocs.length > 0) {
+            // Calculate similarity for these samples
+            const questionEmbedding = this.embeddingCache.get(question)
+            if (questionEmbedding) {
+              const samplesWithSimilarity = sampleDocs.map(doc => ({
+                ...doc,
+                $similarity: this.cosineSimilarity(questionEmbedding, doc.$vector)
+              }))
+              diverseResults.push(...samplesWithSimilarity)
+            } else {
+              // If no cached embedding, add with default similarity
+              const samplesWithSimilarity = sampleDocs.map(doc => ({
+                ...doc,
+                $similarity: 0.1 // Low similarity but still included
+              }))
+              diverseResults.push(...samplesWithSimilarity)
+            }
+          }
+        } catch (error) {
+          console.error(`Error getting sample from ${fileName}:`, error.message)
+        }
+      }
 
-      // Sort by similarity and take top overall
+      // Sort by similarity and take top overall, but ensure diversity
       diverseResults.sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
-      const finalResults = diverseResults.slice(0, options.fastMode ? 12 : 18) // Further reduced for fast mode
+      const finalResults = diverseResults.slice(0, options.fastMode ? 15 : 20) // Increased limit to accommodate more files
 
       timingMetrics.processing = 0
 
@@ -747,7 +864,7 @@ Please provide a detailed answer that covers the relevant information from the b
         tokensUsed: answerResult.tokensUsed,
         chunkDetails: answerResult.chunkDetails,
         filesUsed: [...new Set(finalResults.map(r => r.file_name))],
-        totalFilesAvailable: Object.keys(fileGroups).length
+        totalFilesAvailable: allFilesInBook.length
       }
     } catch (error) {
       timingMetrics.total = Date.now() - startTime
