@@ -47,9 +47,12 @@ router.post("/ask/:bookId", async (req, res) => {
       return res.status(400).json({ success: false, message: "question is required" })
     }
 
-    // Directly ask to avoid extra DB roundtrip (lower latency). If no docs, service returns a clear message.
-    const mergedOptions = { includePrivateWhenUnauthenticated: true, ...options }
-    const result = await processor.answerQuestion(question, fileName, null, false, bookId, mergedOptions)
+    // Use the new book-level question method for comprehensive answers
+    const mergedOptions = { 
+      includePrivateWhenUnauthenticated: true, 
+      ...options 
+    }
+    const result = await processor.answerBookLevelQuestion(question, bookId, null, mergedOptions)
     const totalTime = Date.now() - startTime
 
     return res.json({
@@ -60,6 +63,9 @@ router.post("/ask/:bookId", async (req, res) => {
       modelUsed: result.modelUsed,
       tokensUsed: result.tokensUsed,
       bookId: result.bookId,
+      method: result.method,
+      filesUsed: result.filesUsed || [],
+      totalFilesAvailable: result.totalFilesAvailable || 0,
       noInformationFound: result.noInformationFound || false,
       timing: {
         init: (result.timing.init || 0) + "ms",
@@ -74,6 +80,60 @@ router.post("/ask/:bookId", async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to process request",
+      timing: { totalResponse: totalTime + "ms" },
+    })
+  }
+})
+
+// Enhanced book-level question asking with comprehensive analysis
+router.post("/ask-enhanced/:bookId", async (req, res) => {
+  const startTime = Date.now()
+  try {
+    const { bookId } = req.params
+    const { question, options = {} } = req.body || {}
+
+    if (!bookId) {
+      return res.status(400).json({ success: false, message: "bookId is required" })
+    }
+    if (!question || typeof question !== "string" || question.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "question is required" })
+    }
+
+    // Use enhanced book-level processing
+    const mergedOptions = { 
+      includePrivateWhenUnauthenticated: true,
+      enhancedMode: true,
+      ...options 
+    }
+    const result = await processor.answerBookLevelQuestion(question, bookId, null, mergedOptions)
+    const totalTime = Date.now() - startTime
+
+    return res.json({
+      success: true,
+      answer: result.answer,
+      confidence: result.confidence,
+      sources: result.sources,
+      modelUsed: result.modelUsed,
+      tokensUsed: result.tokensUsed,
+      bookId: result.bookId,
+      method: result.method,
+      filesUsed: result.filesUsed || [],
+      totalFilesAvailable: result.totalFilesAvailable || 0,
+      chunkDetails: result.chunkDetails || [],
+      enhancedAnalysis: true,
+      timing: {
+        init: (result.timing.init || 0) + "ms",
+        retrieval: result.timing.retrieval + "ms",
+        processing: result.timing.processing + "ms",
+        generation: result.timing.generation + "ms",
+        totalResponse: totalTime + "ms",
+      },
+    })
+  } catch (error) {
+    const totalTime = Date.now() - startTime
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to process enhanced request",
       timing: { totalResponse: totalTime + "ms" },
     })
   }

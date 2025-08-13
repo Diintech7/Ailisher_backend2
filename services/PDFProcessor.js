@@ -468,11 +468,12 @@ class EnhancedPDFProcessor {
       const retrievalStart = Date.now()
       let relevantResults = []
       try {
-        // Get all chunks for this book to ensure comprehensive coverage
-        relevantResults = await this.dbVectorSearch(question, searchFilter, 1000)
+        // Get more chunks for book-level questions to ensure comprehensive coverage
+        const searchLimit = options.bookLevelQuestion ? 2000 : 1000
+        relevantResults = await this.dbVectorSearch(question, searchFilter, searchLimit)
       } catch (_) {
         // Fallback to old approach when vector sort is not available
-        const allDocs = await this.collection.find(searchFilter).limit(50).toArray()
+        const allDocs = await this.collection.find(searchFilter).limit(100).toArray()
         if (allDocs.length > 0) {
           relevantResults = await this.performFastRetrieval(question, allDocs)
         }
@@ -529,36 +530,42 @@ class EnhancedPDFProcessor {
 
   async generateUltraFastAnswer(question, relevantChunks, bookId) {
     try {
-      const topChunks = relevantChunks.slice(0, Math.min(relevantChunks.length, 10))
+      // Increase context chunks for book-level questions
+      const topChunks = relevantChunks.slice(0, Math.min(relevantChunks.length, 20))
       const chunkDetails = []
 
       const context = topChunks
         .map((chunk, index) => {
           const chunkStart = Date.now()
           const similarity = Math.round((chunk.$similarity || 0) * 100)
-          const text = chunk.text_content.substring(0, 200)
+          // Increase text length for better context
+          const text = chunk.text_content.substring(0, 500)
           const chunkTime = Date.now() - chunkStart
           chunkDetails.push({
             chunkIndex: index + 1,
             timing: chunkTime,
             similarity: similarity,
+            fileName: chunk.file_name || 'Unknown',
           })
           return `[${index + 1}] ${text}... (${similarity}% match)`
         })
         .join("\n\n")
 
-      const prompt = `Context: ${context}
+      // Improved prompt for book-level questions
+      const prompt = `Based on the following context from a book, please provide a comprehensive answer to the question. Use information from multiple sources if available.
 
-      Question: ${question}
+Context: ${context}
 
-      Answer in 1-2 sentences:`
+Question: ${question}
+
+Please provide a detailed answer that covers the relevant information from the book:`
 
       const generationStart = Date.now()
       const result = await this.chatModel.generateContent({
         contents: [
           {
             parts: [
-              { text: "You are a helpful AI assistant that provides concise answers in 1-2 sentences." },
+              { text: "You are a helpful AI assistant that provides comprehensive answers based on the given book content. If the information is not available in the provided context, clearly state that." },
               { text: prompt }
             ]
           }
@@ -579,7 +586,7 @@ class EnhancedPDFProcessor {
 
       return {
         answer: answer,
-        method: "ultra-fast-gemini",
+        method: "enhanced-book-level-answer",
         contextUsed: topChunks.length,
         bookId: bookId,
         tokensUsed: tokensUsed,
@@ -589,6 +596,223 @@ class EnhancedPDFProcessor {
       console.error("Gemini API error:", error)
       return {
         answer: "Unable to generate response. Please try again.",
+        method: "error-fallback",
+        bookId: bookId,
+        tokensUsed: 0,
+        chunkDetails: [],
+      }
+    }
+  }
+
+  async answerBookLevelQuestion(question, bookId, userId = null, options = {}) {
+    const startTime = Date.now()
+    const timingMetrics = {
+      init: 0,
+      retrieval: 0,
+      processing: 0,
+      generation: 0,
+      total: 0,
+    }
+
+    if (!bookId) {
+      throw new Error("Book ID is required for book-level question answering")
+    }
+
+    try {
+      const initStart = Date.now()
+      await this.initializeBookDB(bookId)
+      timingMetrics.init = Date.now() - initStart
+
+      // For book-level questions, search across all documents
+      const searchFilter = { book_id: bookId }
+      if (userId && options.requireAuth) {
+        searchFilter.user_id = userId
+      } else if (!options.includePrivateWhenUnauthenticated) {
+        // Only include public documents if not explicitly allowing private ones
+        searchFilter.$or = [
+          { is_public: true }, 
+          { access_level: "public" },
+          { access_level: { $exists: false } }
+        ]
+      }
+      // If includePrivateWhenUnauthenticated is true, no additional filter is applied
+      // This allows searching all documents in the book regardless of access level
+
+      const retrievalStart = Date.now()
+      let relevantResults = []
+      try {
+        // Get maximum chunks for comprehensive book coverage
+        relevantResults = await this.dbVectorSearch(question, searchFilter, 3000)
+      } catch (error) {
+        console.error("Vector search failed, falling back to basic search:", error.message)
+        // Fallback to basic search
+        const allDocs = await this.collection.find(searchFilter).limit(200).toArray()
+        if (allDocs.length > 0) {
+          relevantResults = await this.performFastRetrieval(question, allDocs)
+        }
+      }
+      timingMetrics.retrieval = Date.now() - retrievalStart
+
+      if (relevantResults.length === 0) {
+        timingMetrics.total = Date.now() - startTime
+        return {
+          answer: `No relevant information found in this book's knowledge base for your question.`,
+          confidence: 0,
+          sources: 0,
+          timing: timingMetrics,
+          modelUsed: this.chatModelName,
+          tokensUsed: 0,
+          chunkDetails: [],
+          method: "book-level-no-results"
+        }
+      }
+
+      // Group results by file to ensure diversity
+      const fileGroups = {}
+      relevantResults.forEach(result => {
+        const fileName = result.file_name || 'Unknown'
+        if (!fileGroups[fileName]) {
+          fileGroups[fileName] = []
+        }
+        fileGroups[fileName].push(result)
+      })
+
+      // Take top results from each file to ensure comprehensive coverage
+      const diverseResults = []
+      Object.keys(fileGroups).forEach(fileName => {
+        const fileResults = fileGroups[fileName]
+          .sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
+          .slice(0, 5) // Top 5 from each file
+        diverseResults.push(...fileResults)
+      })
+
+      // Sort by similarity and take top overall
+      diverseResults.sort((a, b) => (b.$similarity || 0) - (a.$similarity || 0))
+      const finalResults = diverseResults.slice(0, 25) // Use top 25 diverse results
+
+      timingMetrics.processing = 0
+
+      const generationStart = Date.now()
+      const answerResult = await this.generateBookLevelAnswer(question, finalResults, bookId)
+      timingMetrics.generation = Date.now() - generationStart
+      timingMetrics.total = Date.now() - startTime
+
+      const avgSimilarity = finalResults.reduce((sum, r) => sum + (r.$similarity || 0.5), 0) / finalResults.length
+      const confidence = Math.max(Math.round(avgSimilarity * 100), 75)
+
+      return {
+        answer: answerResult.answer,
+        confidence: confidence,
+        sources: finalResults.length,
+        timing: timingMetrics,
+        bookId: bookId,
+        method: "enhanced-book-level",
+        modelUsed: this.chatModelName,
+        tokensUsed: answerResult.tokensUsed,
+        chunkDetails: answerResult.chunkDetails,
+        filesUsed: [...new Set(finalResults.map(r => r.file_name))],
+        totalFilesAvailable: Object.keys(fileGroups).length
+      }
+    } catch (error) {
+      timingMetrics.total = Date.now() - startTime
+      return {
+        answer: `Error processing book-level question: ${error.message}`,
+        confidence: 0,
+        sources: 0,
+        timing: timingMetrics,
+        modelUsed: this.chatModelName,
+        tokensUsed: 0,
+        chunkDetails: [],
+        method: "book-level-error"
+      }
+    }
+  }
+
+  async generateBookLevelAnswer(question, relevantChunks, bookId) {
+    try {
+      const chunkDetails = []
+
+      // Group chunks by file for better organization
+      const fileGroups = {}
+      relevantChunks.forEach(chunk => {
+        const fileName = chunk.file_name || 'Unknown'
+        if (!fileGroups[fileName]) {
+          fileGroups[fileName] = []
+        }
+        fileGroups[fileName].push(chunk)
+      })
+
+      // Create organized context
+      let contextParts = []
+      Object.keys(fileGroups).forEach((fileName, fileIndex) => {
+        const fileChunks = fileGroups[fileName]
+        const fileContext = fileChunks
+          .map((chunk, index) => {
+            const similarity = Math.round((chunk.$similarity || 0) * 100)
+            const text = chunk.text_content.substring(0, 400)
+            chunkDetails.push({
+              chunkIndex: contextParts.length + index + 1,
+              fileName: fileName,
+              similarity: similarity,
+              fileIndex: fileIndex + 1
+            })
+            return `[${contextParts.length + index + 1}] ${text}... (${similarity}% match)`
+          })
+          .join("\n")
+        
+        contextParts.push(`From "${fileName}":\n${fileContext}`)
+      })
+
+      const context = contextParts.join("\n\n")
+
+      // Enhanced prompt for book-level questions
+      const prompt = `You are analyzing a book with multiple documents. Based on the following context from various parts of the book, please provide a comprehensive answer to the question.
+
+Context from the book:
+${context}
+
+Question: ${question}
+
+Instructions:
+1. Provide a detailed, comprehensive answer using information from multiple sources if available
+2. If the information is not available in the provided context, clearly state that
+3. Reference specific parts of the book when possible
+4. Organize your answer logically and thoroughly
+
+Answer:`
+
+      const generationStart = Date.now()
+      const result = await this.chatModel.generateContent({
+        contents: [
+          {
+            parts: [
+              { text: "You are a knowledgeable AI assistant that provides comprehensive, well-structured answers based on book content. Always be thorough and accurate." },
+              { text: prompt }
+            ]
+          }
+        ]
+      })
+
+      const response = await result.response
+      const answer = response.text()
+      const generationTime = Date.now() - generationStart
+
+      // Estimate tokens based on text length
+      const tokensUsed = Math.round((prompt.length + answer.length) / 4)
+
+      return {
+        answer: answer,
+        method: "comprehensive-book-analysis",
+        contextUsed: relevantChunks.length,
+        bookId: bookId,
+        tokensUsed: tokensUsed,
+        chunkDetails: chunkDetails,
+        filesAnalyzed: Object.keys(fileGroups).length
+      }
+    } catch (error) {
+      console.error("Book-level answer generation error:", error)
+      return {
+        answer: "Unable to generate comprehensive book-level response. Please try again.",
         method: "error-fallback",
         bookId: bookId,
         tokensUsed: 0,
