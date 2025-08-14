@@ -121,6 +121,25 @@ const result = await processor.processPDFFromURL(item.url, item.name, userId, {
   fileSizeMB: fileSizeMB,
 })
 
+// Update book embedding status
+try {
+  const book = await Book.findById(bookId)
+  if (book) {
+    const embeddingStats = {
+      totalFiles: 1, // This PDF file
+      totalChunks: result.summary.chunks_inserted,
+      totalTokens: result.tokensUsed || 0,
+      collectionName: result.collectionName
+    }
+    
+    await book.markAsEmbedded(userId || null, userId ? 'User' : 'MobileUser', embeddingStats)
+    console.log(`✅ Book ${bookId} marked as embedded with ${result.summary.chunks_inserted} chunks`)
+  }
+} catch (bookUpdateError) {
+  console.error("Warning: Failed to update book embedding status:", bookUpdateError.message)
+  // Continue with the response even if book update fails
+}
+
 const totalTime = Date.now() - startTime
 
 res.json({
@@ -206,6 +225,30 @@ if (item.book) {
 const result = await processor.deleteExistingEmbeddings(item.name, userId, bookId)
 
 if (result.success) {
+  // Check if this was the last PDF for the book
+  try {
+    const remainingEmbeddings = await processor.checkExistingEmbeddings(null, userId, bookId)
+    const book = await Book.findById(bookId)
+    
+    if (book && !remainingEmbeddings.exists) {
+      // No more embeddings exist for this book, mark as not embedded
+      await book.markAsNotEmbedded()
+      console.log(`📚 Book ${bookId} marked as not embedded - no more PDFs`)
+    } else if (book && remainingEmbeddings.exists) {
+      // Update embedding stats for remaining PDFs
+      const updatedStats = {
+        totalFiles: remainingEmbeddings.files.length,
+        totalChunks: remainingEmbeddings.count,
+        collectionName: remainingEmbeddings.collectionName
+      }
+      await book.updateEmbeddingStats(updatedStats)
+      console.log(`📚 Book ${bookId} embedding stats updated - ${remainingEmbeddings.count} chunks remaining`)
+    }
+  } catch (bookUpdateError) {
+    console.error("Warning: Failed to update book embedding status:", bookUpdateError.message)
+    // Continue with the response even if book update fails
+  }
+
   res.json({
     success: true,
     message: "Embeddings deleted successfully",
@@ -266,6 +309,23 @@ if (item.book) {
 
 const embeddingStatus = await processor.checkExistingEmbeddings(item.name, userId, bookId)
 
+// Get book embedding status
+let bookEmbeddingStatus = null
+try {
+  const book = await Book.findById(bookId)
+  if (book) {
+    bookEmbeddingStatus = {
+      embedded: book.embedded,
+      embeddedAt: book.embeddedAt,
+      embeddedBy: book.embeddedBy,
+      embeddedByType: book.embeddedByType,
+      embeddingStats: book.embeddingStats
+    }
+  }
+} catch (bookError) {
+  console.error("Warning: Failed to get book embedding status:", bookError.message)
+}
+
 res.json({
   success: true,
   hasEmbeddings: embeddingStatus.exists,
@@ -274,6 +334,7 @@ res.json({
   bookId: bookId,
   collectionName: embeddingStatus.collectionName,
   allFiles: embeddingStatus.files,
+  bookEmbeddingStatus: bookEmbeddingStatus
 })
 } catch (error) {
   res.status(500).json({
@@ -305,11 +366,29 @@ if (!book) {
 
 const status = await processor.getBookKnowledgeBaseStatus(bookId, userId)
 
+// Get book embedding status
+let bookEmbeddingStatus = null
+try {
+  const book = await Book.findById(bookId)
+  if (book) {
+    bookEmbeddingStatus = {
+      embedded: book.embedded,
+      embeddedAt: book.embeddedAt,
+      embeddedBy: book.embeddedBy,
+      embeddedByType: book.embeddedByType,
+      embeddingStats: book.embeddingStats
+    }
+  }
+} catch (bookError) {
+  console.error("Warning: Failed to get book embedding status:", bookError.message)
+}
+
 res.json({
   success: true,
   bookId: bookId,
   bookTitle: book.title,
   ...status,
+  bookEmbeddingStatus: bookEmbeddingStatus
 })
 } catch (error) {
   res.status(500).json({
@@ -319,6 +398,103 @@ res.json({
   }
   })
   
-  module.exports = router
+  // NEW: Get books by embedding status
+router.get("/books/embedded/:clientId", optionalAuth, async (req, res) => {
+  try {
+    const { clientId } = req.params
+    const { limit = 50 } = req.query
+    
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        message: "clientId is required"
+      })
+    }
+    
+    const embeddedBooks = await Book.getEmbeddedBooks(clientId, parseInt(limit))
+    
+    res.json({
+      success: true,
+      clientId: clientId,
+      embeddedBooks: embeddedBooks,
+      totalCount: embeddedBooks.length,
+      message: `Found ${embeddedBooks.length} embedded books`
+    })
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get embedded books"
+    })
+  }
+})
+
+router.get("/books/non-embedded/:clientId", optionalAuth, async (req, res) => {
+  try {
+    const { clientId } = req.params
+    const { limit = 50 } = req.query
+    
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        message: "clientId is required"
+      })
+    }
+    
+    const nonEmbeddedBooks = await Book.getNonEmbeddedBooks(clientId, parseInt(limit))
+    
+    res.json({
+      success: true,
+      clientId: clientId,
+      nonEmbeddedBooks: nonEmbeddedBooks,
+      totalCount: nonEmbeddedBooks.length,
+      message: `Found ${nonEmbeddedBooks.length} non-embedded books`
+    })
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get non-embedded books"
+    })
+  }
+})
+
+router.get("/embedding-stats/:clientId", optionalAuth, async (req, res) => {
+  try {
+    const { clientId } = req.params
+    
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        message: "clientId is required"
+      })
+    }
+    
+    const stats = await Book.getEmbeddingStats(clientId)
+    const statsData = stats.length > 0 ? stats[0] : {
+      totalBooks: 0,
+      embeddedBooks: 0,
+      nonEmbeddedBooks: 0,
+      totalChunks: 0,
+      totalTokens: 0,
+      totalFiles: 0
+    }
+    
+    res.json({
+      success: true,
+      clientId: clientId,
+      stats: statsData,
+      message: "Embedding statistics retrieved successfully"
+    })
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get embedding statistics"
+    })
+  }
+})
+
+module.exports = router
   
   

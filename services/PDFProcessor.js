@@ -69,6 +69,8 @@ class EnhancedPDFProcessor {
         throw new Error("Book ID is required for initialization")
       }
 
+      console.log(`🔧 Initializing book database for bookId: ${bookId}`)
+
       // Validate Astra DB configuration
       if (!this.astraClient) {
         throw new Error("Astra DB client not initialized. Check ASTRA_TOKEN configuration.")
@@ -80,6 +82,7 @@ class EnhancedPDFProcessor {
       // Return cached handle if available
       const cached = this.collectionCache.get(bookId.toString())
       if (cached) {
+        console.log(`📋 Using cached collection for bookId: ${bookId}`)
         this.collection = cached.collection
         this.currentBookId = bookId
         this.currentCollectionName = cached.name
@@ -87,16 +90,20 @@ class EnhancedPDFProcessor {
       }
 
       const desiredCollectionName = this.getBookCollectionName(bookId)
+      console.log(`🎯 Desired collection name: ${desiredCollectionName}`)
 
       // Load known collections once per process to avoid repeated list calls
       if (!this.collectionsLoaded) {
         if (!this.collectionsLoadPromise) {
           this.collectionsLoadPromise = (async () => {
             try {
+              console.log("📚 Loading known collections from Astra DB...")
               const collections = await this.db.listCollections()
+              console.log(`📚 Found ${collections.length} collections`)
               collections.forEach((col) => {
                 const dim = col.options?.vector?.dimension
                 this.knownCollections.set(col.name, { dimension: dim })
+                console.log(`  - ${col.name} (dimension: ${dim || 'unknown'})`)
               })
               this.collectionsLoaded = true
             } catch (error) {
@@ -113,6 +120,7 @@ class EnhancedPDFProcessor {
       let known = this.knownCollections.get(resolvedName)
 
       if (!known) {
+        console.log(`🔍 Collection '${resolvedName}' not found, searching for best match...`)
         const prefix = `${this.baseCollectionName}_book_`
         const cleanBookId = bookId.toString().replace(/[^a-zA-Z0-9_]/g, "_")
 
@@ -133,21 +141,27 @@ class EnhancedPDFProcessor {
         }
 
         if (bestMatchName) {
+          console.log(`✅ Found best match: ${bestMatchName} (score: ${bestScore})`)
           resolvedName = bestMatchName
           known = this.knownCollections.get(resolvedName)
+        } else {
+          console.log(`❌ No matching collection found for bookId: ${bookId}`)
         }
       }
 
       if (known) {
         const existingDimension = known.dimension
         if (existingDimension && existingDimension !== this.vectorDimensions) {
+          console.log(`🔄 Adjusting vector dimensions from ${this.vectorDimensions} to ${existingDimension}`)
           this.vectorDimensions = existingDimension
         }
       } else {
         const modelDimensions = this.getModelDimensions(this.embeddingModelName)
         if (modelDimensions !== this.vectorDimensions) {
+          console.log(`🔄 Adjusting vector dimensions from ${this.vectorDimensions} to ${modelDimensions}`)
           this.vectorDimensions = modelDimensions
         }
+        console.log(`🏗️ Creating new collection: ${resolvedName}`)
         await this.createBookCollection(resolvedName)
         // Mark as known now
         this.knownCollections.set(resolvedName, { dimension: this.vectorDimensions })
@@ -159,8 +173,10 @@ class EnhancedPDFProcessor {
       this.currentCollectionName = resolvedName
       this.collectionCache.set(bookId.toString(), { name: resolvedName, collection })
 
+      console.log(`✅ Successfully initialized collection: ${resolvedName} for bookId: ${bookId}`)
       return resolvedName
     } catch (error) {
+      console.error(`❌ Failed to initialize book database for bookId: ${bookId}:`, error.message)
       throw error
     }
   }
@@ -473,6 +489,11 @@ class EnhancedPDFProcessor {
   }
 
   async dbVectorSearch(question, searchFilter, limit) {
+    // Check if collection is properly initialized
+    if (!this.collection) {
+      throw new Error("Collection not initialized. Please call initializeBookDB() first.")
+    }
+    
     // Use Astra server-side vector sort to reduce latency and payload
     let questionEmbedding = this.embeddingCache.get(question)
     
@@ -638,6 +659,7 @@ class EnhancedPDFProcessor {
         modelUsed: this.chatModelName,
         tokensUsed: answerResult.tokensUsed,
         chunkDetails: answerResult.chunkDetails,
+        isQuestionRelated: answerResult.isQuestionRelated
       }
     } catch (error) {
       timingMetrics.total = Date.now() - startTime
@@ -676,6 +698,9 @@ class EnhancedPDFProcessor {
         })
         .join("\n\n")
 
+      // Check if the question is related to the document content
+      const isQuestionRelated = this.isQuestionRelatedToContent(question, topChunks)
+
       // Improved prompt for book-level questions
       const prompt = `Based on the following context from a book, please provide a comprehensive answer to the question. Use information from multiple sources if available.
 
@@ -684,6 +709,19 @@ Context: ${context}
 Question: ${question}
 
 Please provide a detailed answer that covers the relevant information from the book:`
+
+      // Log the exact data being sent to AI
+      console.log("\n" + "⚡".repeat(20))
+      console.log("📤 SENDING TO GEMINI AI MODEL (ULTRA FAST)")
+      console.log("⚡".repeat(20))
+      console.log(`📝 PROMPT SENT TO AI:`)
+      console.log(prompt)
+      console.log(`\n📊 CONTEXT SUMMARY:`)
+      console.log(`- Total chunks: ${topChunks.length}`)
+      console.log(`- Context length: ${context.length} characters`)
+      console.log(`- Question: ${question}`)
+      console.log(`- Question related to content: ${isQuestionRelated}`)
+      console.log("⚡".repeat(20) + "\n")
 
       const generationStart = Date.now()
       const result = await this.chatModel.generateContent({
@@ -701,6 +739,25 @@ Please provide a detailed answer that covers the relevant information from the b
       const answer = response.text()
       const generationTime = Date.now() - generationStart
 
+      // Log the AI response
+      console.log("\n" + "🤖".repeat(20))
+      console.log("📥 RESPONSE FROM GEMINI AI MODEL (ULTRA FAST)")
+      console.log("🤖".repeat(20))
+      console.log(`💬 AI ANSWER:`)
+      console.log(answer)
+      console.log(`⏱️ Generation time: ${generationTime}ms`)
+      console.log("🤖".repeat(20) + "\n")
+
+      // Final relevance check: if initial check failed but answer is relevant, override
+      let finalRelevance = isQuestionRelated
+      if (!isQuestionRelated) {
+        const answerRelevance = this.isAnswerRelevant(answer)
+        if (answerRelevance) {
+          console.log(`🔄 Overriding relevance: answer indicates question was related`)
+          finalRelevance = true
+        }
+      }
+
       // Update chunk details with a portion of generation time (approximated)
       chunkDetails.forEach((detail) => {
         detail.timing = Math.round(detail.timing + (generationTime / topChunks.length))
@@ -716,6 +773,7 @@ Please provide a detailed answer that covers the relevant information from the b
         bookId: bookId,
         tokensUsed: tokensUsed,
         chunkDetails: chunkDetails,
+        isQuestionRelated: finalRelevance
       }
     } catch (error) {
       console.error("Gemini API error:", error)
@@ -725,6 +783,7 @@ Please provide a detailed answer that covers the relevant information from the b
         bookId: bookId,
         tokensUsed: 0,
         chunkDetails: [],
+        isQuestionRelated: false
       }
     }
   }
@@ -894,7 +953,8 @@ Please provide a detailed answer that covers the relevant information from the b
         tokensUsed: answerResult.tokensUsed,
         chunkDetails: options.fastMode ? [] : (answerResult.chunkDetails || []),
         filesUsed: [...new Set(finalResults.map(r => r.file_name))],
-        totalFilesAvailable: allFilesInBook.length
+        totalFilesAvailable: allFilesInBook.length,
+        isQuestionRelated: answerResult.isQuestionRelated
       }
     } catch (error) {
       timingMetrics.total = Date.now() - startTime
@@ -952,6 +1012,9 @@ Please provide a detailed answer that covers the relevant information from the b
 
       const context = contextParts.join("\n\n")
 
+      // Check if the question is related to the document content
+      const isQuestionRelated = this.isQuestionRelatedToContent(question, relevantChunks)
+
       // Optimized prompt for faster generation
       const prompt = `Answer based on this book context. Be concise but comprehensive:
 
@@ -961,6 +1024,20 @@ ${context}
 Question: ${question}
 
 If information is not available, say so clearly.`
+
+      // Log the exact data being sent to AI
+      console.log("\n" + "🚀".repeat(20))
+      console.log("📤 SENDING TO GEMINI AI MODEL")
+      console.log("🚀".repeat(20))
+      console.log(`📝 PROMPT SENT TO AI:`)
+      console.log(prompt)
+      console.log(`\n📊 CONTEXT SUMMARY:`)
+      console.log(`- Total chunks: ${relevantChunks.length}`)
+      console.log(`- Files: ${Object.keys(fileGroups).length}`)
+      console.log(`- Context length: ${context.length} characters`)
+      console.log(`- Question: ${question}`)
+      console.log(`- Question related to content: ${isQuestionRelated}`)
+      console.log("🚀".repeat(20) + "\n")
 
       const generationStart = Date.now()
       const result = await this.chatModel.generateContent({
@@ -978,6 +1055,25 @@ If information is not available, say so clearly.`
       const answer = response.text()
       const generationTime = Date.now() - generationStart
 
+      // Log the AI response
+      console.log("\n" + "🤖".repeat(20))
+      console.log("📥 RESPONSE FROM GEMINI AI MODEL")
+      console.log("🤖".repeat(20))
+      console.log(`💬 AI ANSWER:`)
+      console.log(answer)
+      console.log(`⏱️ Generation time: ${generationTime}ms`)
+      console.log("🤖".repeat(20) + "\n")
+
+      // Final relevance check: if initial check failed but answer is relevant, override
+      let finalRelevance = isQuestionRelated
+      if (!isQuestionRelated) {
+        const answerRelevance = this.isAnswerRelevant(answer)
+        if (answerRelevance) {
+          console.log(`🔄 Overriding relevance: answer indicates question was related`)
+          finalRelevance = true
+        }
+      }
+
       // Estimate tokens based on text length
       const tokensUsed = Math.round((prompt.length + answer.length) / 4)
 
@@ -988,7 +1084,8 @@ If information is not available, say so clearly.`
         bookId: bookId,
         tokensUsed: tokensUsed,
         chunkDetails: chunkDetails,
-        filesAnalyzed: Object.keys(fileGroups).length
+        filesAnalyzed: Object.keys(fileGroups).length,
+        isQuestionRelated: finalRelevance
       }
     } catch (error) {
       console.error("Book-level answer generation error:", error)
@@ -998,8 +1095,125 @@ If information is not available, say so clearly.`
         bookId: bookId,
         tokensUsed: 0,
         chunkDetails: [],
+        isQuestionRelated: false
       }
     }
+  }
+
+  // Helper method to determine if a question is related to the document content
+  isQuestionRelatedToContent(question, relevantChunks) {
+    console.log(`🔍 Analyzing question relevance: "${question}"`)
+    
+    // If no chunks or very low similarity, question is likely not related
+    if (!relevantChunks || relevantChunks.length === 0) {
+      console.log(`❌ No relevant chunks found`)
+      return false
+    }
+
+    // Check average similarity - if it's very low, question is likely not related
+    const avgSimilarity = relevantChunks.reduce((sum, chunk) => sum + (chunk.$similarity || 0), 0) / relevantChunks.length
+    console.log(`📊 Average similarity: ${(avgSimilarity * 100).toFixed(1)}%`)
+    
+    if (avgSimilarity < 0.3) { // 30% threshold
+      console.log(`❌ Average similarity too low: ${(avgSimilarity * 100).toFixed(1)}% < 30%`)
+    }
+
+    // Check if any chunk has high similarity (>70%)
+    const hasHighSimilarity = relevantChunks.some(chunk => (chunk.$similarity || 0) > 0.7)
+    if (hasHighSimilarity) {
+      console.log(`✅ High similarity found: >70%`)
+      return true
+    }
+
+    // Check question keywords against document content
+    const questionLower = question.toLowerCase()
+    const questionWords = questionLower.split(/\s+/).filter(word => word.length > 3)
+    console.log(`🔤 Question words: ${questionWords.join(', ')}`)
+    
+    // Common financial/SEBI terms that would indicate relevance
+    const financialTerms = [
+      'sebi', 'securities', 'stock', 'exchange', 'investment', 'financial', 'market',
+      'depository', 'participant', 'custodian', 'merchant', 'banker', 'underwriter',
+      'portfolio', 'manager', 'adviser', 'depository', 'dematerialization', 'rematerialization',
+      'scra', 'act', 'regulation', 'compliance', 'penalty', 'appeal', 'tribunal',
+      'company', 'corporate', 'listing', 'trading', 'settlement', 'delivery',
+      'stock', 'exchange', 'securities', 'contracts', 'regulation', '1956', '1992', '1996',
+      'contracts', 'regulation', 'securities', 'stock', 'exchange', 'recognition',
+      'byelaws', 'rules', 'constitution', 'corporatisation', 'demutualisation',
+      'central', 'government', 'notification', 'appointed', 'date', 'section',
+      'provisions', 'penalties', 'fines', 'imprisonment', 'offences', 'violations'
+    ]
+
+    // Check if question contains financial/SEBI related terms
+    const hasFinancialTerms = questionWords.some(word => 
+      financialTerms.some(term => word.includes(term) || term.includes(word))
+    )
+    console.log(`💰 Has financial terms: ${hasFinancialTerms}`)
+    
+    if (hasFinancialTerms) {
+      console.log(`✅ Financial terms detected in question`)
+      return true
+    }
+
+    // Check if question contains terms that appear in document content
+    const documentText = relevantChunks.map(chunk => chunk.text_content?.toLowerCase() || '').join(' ')
+    const hasDocumentTerms = questionWords.some(word => 
+      documentText.includes(word) && word.length > 3
+    )
+    console.log(`📄 Has document terms: ${hasDocumentTerms}`)
+    
+    if (hasDocumentTerms) {
+      console.log(`✅ Document terms found in question`)
+      return true
+    }
+
+    // Check if the question is asking about the documents themselves (meta-questions)
+    const metaTerms = ['what', 'explain', 'describe', 'tell', 'about', 'information', 'details']
+    const isMetaQuestion = metaTerms.some(term => questionLower.includes(term))
+    console.log(`❓ Is meta question: ${isMetaQuestion}`)
+    
+    // If it's a meta question and we have relevant chunks, it's likely related
+    if (isMetaQuestion && avgSimilarity > 0.2) {
+      console.log(`✅ Meta question with reasonable similarity`)
+      return true
+    }
+
+    // Final check: if average similarity is reasonable (>50%), consider it related
+    if (avgSimilarity > 0.5) {
+      console.log(`✅ Reasonable similarity: ${(avgSimilarity * 100).toFixed(1)}% > 50%`)
+      return true
+    }
+
+    console.log(`❌ Question not related to content`)
+    return false
+  }
+
+  // Helper method to check if AI answer indicates question was related
+  isAnswerRelevant(answer) {
+    if (!answer) return false
+    
+    const answerLower = answer.toLowerCase()
+    
+    // Check for negative responses that indicate no information found
+    const negativeResponses = [
+      'i don\'t know', 'don\'t know', 'no information', 'not available', 
+      'not found', 'cannot find', 'unable to', 'no relevant', 'no data'
+    ]
+    
+    const isNegative = negativeResponses.some(phrase => answerLower.includes(phrase))
+    
+    // Check for positive responses that indicate information was found
+    const positiveResponses = [
+      'sebi', 'scra', 'act', 'securities', 'stock', 'exchange', 'depository',
+      'regulation', 'compliance', 'penalty', 'tribunal', 'company', 'corporate'
+    ]
+    
+    const isPositive = positiveResponses.some(term => answerLower.includes(term))
+    
+    console.log(`🤖 Answer analysis: negative=${isNegative}, positive=${isPositive}`)
+    
+    // If answer contains financial/legal terms, it's likely relevant
+    return isPositive && !isNegative
   }
 
   async checkExistingEmbeddings(fileName = null, userId = null, bookId = null) {
