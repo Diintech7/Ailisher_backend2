@@ -432,8 +432,28 @@ router.post("/ask-fast/:bookId", async (req, res) => {
     const result = await processor.answerBookLevelQuestion(question, bookId, null, mergedOptions)
     const totalTime = Date.now() - startTime
 
+    // Determine status code based on RAG usage and information found
+    let statusCode = 1001 // RAG_SUCCESS
+    let statusMessage = "Answer generated successfully using RAG (Retrieval-Augmented Generation)"
+    
+    if (result.noInformationFound || result.sources === 0) {
+      statusCode = 1002 // NO_RAG_DATA
+      statusMessage = "No relevant information found in knowledge base, answer generated without RAG"
+    } else if (result.method === "book-not-embedded") {
+      statusCode = 1003 // BOOK_NOT_EMBEDDED
+      statusMessage = "Book has no PDF embeddings, RAG not available"
+    } else if (result.filesUsed && result.filesUsed.length === 0) {
+      statusCode = 1004 // RAG_NO_SOURCES
+      statusMessage = "RAG processed but no source files were used in answer generation"
+    } else if (result.isQuestionRelated === false) {
+      statusCode = 1005 // RAG_LOW_RELEVANCE
+      statusMessage = "RAG processed but question may not be highly relevant to available content"
+    }
+
     return res.json({
       success: true,
+      statusCode: statusCode,
+      statusMessage: statusMessage,
       answer: result.answer,
       confidence: result.confidence,
       sources: result.sources,
@@ -445,6 +465,8 @@ router.post("/ask-fast/:bookId", async (req, res) => {
       totalFilesAvailable: result.totalFilesAvailable || 0,
       fastMode: true,
       isQuestionRelated: result.isQuestionRelated || false,
+      noInformationFound: result.noInformationFound || false,
+             ragUsed: statusCode === 1001,
       timing: {
         init: (result.timing.init || 0) + "ms",
         retrieval: result.timing.retrieval + "ms",
@@ -458,7 +480,132 @@ router.post("/ask-fast/:bookId", async (req, res) => {
     console.error("Error in /ask-fast/:bookId endpoint:", error)
     return res.status(500).json({
       success: false,
+      statusCode: 1006, // PROCESSING_ERROR
+      statusMessage: "Failed to process fast request due to internal error",
       message: error.message || "Failed to process fast request",
+      timing: { totalResponse: totalTime + "ms" },
+    })
+  }
+})
+
+// Status check endpoint for fast book-level questions (for app developers)
+router.get("/ask-fast-status/:bookId", async (req, res) => {
+  const startTime = Date.now()
+  try {
+    const { bookId } = req.params
+
+    if (!bookId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "bookId is required",
+        statusCode: "MISSING_BOOK_ID",
+        timing: { totalResponse: Date.now() - startTime + "ms" }
+      })
+    }
+
+    console.log(`🚀 Checking fast mode status for bookId: ${bookId}`)
+
+    // Check if book exists in MongoDB first
+    const book = await Book.findById(bookId)
+    if (!book) {
+      return res.status(404).json({
+        success: false,
+        message: "Book not found",
+        statusCode: "BOOK_NOT_FOUND",
+        bookId: bookId,
+        timing: { totalResponse: Date.now() - startTime + "ms" },
+      })
+    }
+
+    // Check if book has embeddings
+    if (!book.embedded) {
+      return res.json({
+        success: true,
+        statusCode: "BOOK_NOT_EMBEDDED",
+        bookId: bookId,
+        bookTitle: book.title,
+        fastModeAvailable: false,
+        message: "Book exists but has no PDF embeddings. Fast mode not available.",
+        recommendation: "Upload and embed PDF files first to enable fast mode.",
+        bookEmbedded: false,
+        timing: { totalResponse: Date.now() - startTime + "ms" }
+      })
+    }
+
+    // Book is embedded, check Astra DB connection
+    let astraStatus = "UNKNOWN"
+    let collectionName = null
+    let totalEmbeddings = 0
+    let uniqueFiles = []
+
+    try {
+      await processor.initializeBookDB(bookId)
+      astraStatus = "CONNECTED"
+      collectionName = processor.collection?.collectionName || null
+      
+      // Get basic stats from Astra DB
+      try {
+        const count = await processor.collection.countDocuments({ book_id: bookId })
+        totalEmbeddings = count
+        
+        const files = await processor.collection.distinct("file_name", { book_id: bookId })
+        uniqueFiles = files
+      } catch (statsError) {
+        console.warn("Could not get detailed stats from Astra DB:", statsError.message)
+      }
+    } catch (initError) {
+      astraStatus = "FAILED"
+      console.error("Failed to initialize book database:", initError.message)
+    }
+
+    const responseTime = Date.now() - startTime
+
+    // Determine overall status
+    let overallStatus = "READY"
+    let statusMessage = "Fast mode is available and ready to use"
+    
+    if (astraStatus === "FAILED") {
+      overallStatus = "ASTRA_DB_ERROR"
+      statusMessage = "Book has embeddings but Astra DB connection failed"
+    } else if (totalEmbeddings === 0) {
+      overallStatus = "NO_EMBEDDINGS"
+      statusMessage = "Book is marked as embedded but no embeddings found in database"
+    }
+
+    return res.json({
+      success: true,
+      statusCode: overallStatus,
+      bookId: bookId,
+      bookTitle: book.title,
+      fastModeAvailable: overallStatus === "READY",
+      message: statusMessage,
+      bookEmbedded: true,
+      astraDbStatus: astraStatus,
+      collectionName: collectionName,
+      totalEmbeddings: totalEmbeddings,
+      uniqueFiles: uniqueFiles,
+      fileCount: uniqueFiles.length,
+      recommendation: overallStatus === "READY" 
+        ? "Fast mode is ready to use. Send POST request to /ask-fast/:bookId with question in body."
+        : "Fix the issue before using fast mode.",
+      timing: { totalResponse: responseTime + "ms" },
+      endpoint: {
+        method: "POST",
+        url: `/ask-fast/${bookId}`,
+        bodyFormat: {
+          question: "string (required)",
+          options: "object (optional)"
+        }
+      }
+    })
+
+  } catch (error) {
+    const totalTime = Date.now() - startTime
+    console.error("Error in /ask-fast-status/:bookId endpoint:", error)
+    return res.status(500).json({
+      success: false,
+      statusCode: "INTERNAL_ERROR",
+      message: error.message || "Failed to check fast mode status",
       timing: { totalResponse: totalTime + "ms" },
     })
   }
