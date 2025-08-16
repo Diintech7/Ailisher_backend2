@@ -902,7 +902,8 @@ router.get("/book-embedded-status/:bookId", async (req, res) => {
     if (!bookId) {
       return res.status(400).json({ 
         success: false, 
-        message: "bookId is required" 
+        message: "bookId is required",
+        statusCode: 2001 // MISSING_BOOK_ID
       })
     }
 
@@ -914,6 +915,7 @@ router.get("/book-embedded-status/:bookId", async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Book not found",
+        statusCode: 2002, // BOOK_NOT_FOUND
         bookId: bookId,
         timing: { totalResponse: Date.now() - startTime + "ms" },
       })
@@ -921,8 +923,19 @@ router.get("/book-embedded-status/:bookId", async (req, res) => {
 
     const responseTime = Date.now() - startTime
 
+    // Determine status code based on book embedded status
+    let statusCode = 2003 // BOOK_NOT_EMBEDDED
+    let statusMessage = `Book "${book.title}" needs PDF embeddings`
+    
+    if (book.embedded) {
+      statusCode = 2004 // BOOK_EMBEDDED
+      statusMessage = `Book "${book.title}" has PDF embeddings available`
+    }
+
     return res.json({
       success: true,
+      statusCode: statusCode,
+      statusMessage: statusMessage,
       bookId: bookId,
       bookTitle: book.title,
       embedded: book.embedded,
@@ -937,9 +950,7 @@ router.get("/book-embedded-status/:bookId", async (req, res) => {
         collectionName: null
       },
       chatAvailable: book.embedded,
-      message: book.embedded 
-        ? `Book "${book.title}" has PDF embeddings available`
-        : `Book "${book.title}" needs PDF embeddings`,
+      message: statusMessage,
       timing: { totalResponse: responseTime + "ms" }
     })
 
@@ -947,6 +958,8 @@ router.get("/book-embedded-status/:bookId", async (req, res) => {
     console.error("Error checking book embedded status:", error.message)
     return res.status(500).json({
       success: false,
+      statusCode: 2005, // PROCESSING_ERROR
+      statusMessage: "Failed to check book embedded status due to internal error",
       message: `Error checking book embedded status: ${error.message}`,
       bookId: req.params.bookId,
       timing: { totalResponse: Date.now() - startTime + "ms" },

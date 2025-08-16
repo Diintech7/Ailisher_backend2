@@ -418,6 +418,26 @@ router.get("/book/details", authenticateMobileUser, async (req, res) => {
         is_added_to_my_books: book.isAddedToMyBooks,
         isVideoAvailable: book.isVideoAvailabel,
         aiGuidelines: book.aiGuidelines,
+        // PDF Embedding Status for frontend developers
+        isEmbedded: book.embedded || false,
+        embeddedAt: book.embeddedAt,
+        embeddingStats: book.embeddingStats || {
+          totalFiles: 0,
+          totalChunks: 0,
+          totalTokens: 0,
+          lastUpdated: null,
+          collectionName: null
+        },
+        chatAvailable: book.embedded || false,
+        // Status codes for app developers
+        embeddingStatus: {
+          statusCode: book.embedded ? 3001 : 3002, // 3001: EMBEDDED, 3002: NOT_EMBEDDED
+          statusMessage: book.embedded 
+            ? "Book has PDF embeddings available for AI chat" 
+            : "Book needs PDF embeddings to enable AI chat",
+          canUseAI: book.embedded || false,
+          requiresEmbedding: !book.embedded
+        },
       },
       meta: {
         clientId,
