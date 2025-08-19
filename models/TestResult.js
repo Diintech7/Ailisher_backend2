@@ -92,6 +92,15 @@ const testResultSchema = new mongoose.Schema({
         totalQuestions: {
             type: Number
         },
+        wrongAnswers: {
+            type: Number
+        },
+        skippedQuestions: {
+            type: Number
+        },
+        totalMarksEarned: {
+            type: Number
+        },
         levelBreakdown: {
             L1: { total: Number, correct: Number, score: Number },
             L2: { total: Number, correct: Number, score: Number },

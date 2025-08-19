@@ -665,7 +665,10 @@ exports.submitTest = async (req, res) => {
       submittedAt: new Date(),
       correctAnswers: correctAnswers,
       totalQuestions: totalQuestions,
-      levelBreakdown: levelResults
+      levelBreakdown: levelResults,
+      wrongAnswers: wrongAnswersCount,
+      skippedQuestions: Math.max(0, totalQuestions - attemptedQuestionsCount),
+      totalMarksEarned: totalMarksEarned
     });
 
     // Update the existing test result with completion data

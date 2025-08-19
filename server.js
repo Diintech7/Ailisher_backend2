@@ -112,6 +112,7 @@ app.use('/api/objectivetest-questions', objectiveTestQuestionRoutes);
 app.use('/api/subjectivetest-questions', subjectiveTestQuestionRoutes);
 app.use('/api/test-results', testResultsRoutes);
 app.use('/api/paytm',paytmRoutes)
+app.use('/api/scoreboard', require('./routes/scoreboard'))
 
 
 // Enhanced PDF processing routes with clustering and optional auth
