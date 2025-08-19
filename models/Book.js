@@ -268,6 +268,33 @@ const BookSchema = new mongoose.Schema({
     type:Boolean,
     default:false
   },
+  // PDF Embedding Status
+  embedded: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  embeddedAt: {
+    type: Date,
+    default: null
+  },
+  embeddedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    refPath: 'embeddedByType',
+    default: null
+  },
+  embeddedByType: {
+    type: String,
+    enum: ['User', 'MobileUser'],
+    default: null
+  },
+  embeddingStats: {
+    totalFiles: { type: Number, default: 0 },
+    totalChunks: { type: Number, default: 0 },
+    totalTokens: { type: Number, default: 0 },
+    lastUpdated: { type: Date, default: null },
+    collectionName: { type: String, default: '' }
+  },
   aiGuidelines: {
     message: {
       type: String,
@@ -310,6 +337,10 @@ BookSchema.index({ clientId: 1, exam: 1, paper: 1 });
 BookSchema.index({ clientId: 1, exam: 1, subject: 1 });
 BookSchema.index({ clientId: 1, paper: 1, subject: 1 });
 BookSchema.index({ clientId: 1, exam: 1, paper: 1, subject: 1 });
+// New indexes for embedded status
+BookSchema.index({ clientId: 1, embedded: 1 });
+BookSchema.index({ embedded: 1, embeddedAt: -1 });
+BookSchema.index({ clientId: 1, embedded: 1, embeddedAt: -1 });
 
 // Enhanced category mappings
 const CATEGORY_MAPPINGS = {
@@ -560,6 +591,49 @@ BookSchema.statics.getBooksBySubject = function(clientId, subject, limit = null)
   return query;
 };
 
+// NEW: Get books by embedding status
+BookSchema.statics.getEmbeddedBooks = function(clientId, limit = null) {
+  const query = this.find({ 
+    clientId: clientId, 
+    embedded: true 
+  })
+  .populate('user', 'name email userId')
+  .populate('embeddedBy', 'name email userId')
+  .sort({ embeddedAt: -1, createdAt: -1 });
+  
+  if (limit) query.limit(limit);
+  return query;
+};
+
+BookSchema.statics.getNonEmbeddedBooks = function(clientId, limit = null) {
+  const query = this.find({ 
+    clientId: clientId, 
+    embedded: false 
+  })
+  .populate('user', 'name email userId')
+  .sort({ createdAt: -1 });
+  
+  if (limit) query.limit(limit);
+  return query;
+};
+
+BookSchema.statics.getEmbeddingStats = function(clientId) {
+  return this.aggregate([
+    { $match: { clientId: clientId } },
+    {
+      $group: {
+        _id: null,
+        totalBooks: { $sum: 1 },
+        embeddedBooks: { $sum: { $cond: ['$embedded', 1, 0] } },
+        nonEmbeddedBooks: { $sum: { $cond: ['$embedded', 0, 1] } },
+        totalChunks: { $sum: '$embeddingStats.totalChunks' },
+        totalTokens: { $sum: '$embeddingStats.totalTokens' },
+        totalFiles: { $sum: '$embeddingStats.totalFiles' }
+      }
+    }
+  ]);
+};
+
 // Instance methods
 BookSchema.methods.updateRating = function(newRating) {
   const totalRating = (this.rating * this.ratingCount) + newRating;
@@ -637,6 +711,51 @@ BookSchema.methods.incrementDownload = function() {
 BookSchema.methods.incrementShare = function() {
   this.shareCount += 1;
   return this.incrementView(); // Also count as a view
+};
+
+// NEW: PDF Embedding Management Methods
+BookSchema.methods.markAsEmbedded = function(userId, userType, stats = {}) {
+  this.embedded = true;
+  this.embeddedAt = new Date();
+  this.embeddedBy = userId;
+  this.embeddedByType = userType;
+  
+  // Update embedding statistics
+  if (stats.totalFiles) this.embeddingStats.totalFiles = stats.totalFiles;
+  if (stats.totalChunks) this.embeddingStats.totalChunks = stats.totalChunks;
+  if (stats.totalTokens) this.embeddingStats.totalTokens = stats.totalTokens;
+  if (stats.collectionName) this.embeddingStats.collectionName = stats.collectionName;
+  this.embeddingStats.lastUpdated = new Date();
+  
+  return this.save();
+};
+
+BookSchema.methods.markAsNotEmbedded = function() {
+  this.embedded = false;
+  this.embeddedAt = null;
+  this.embeddedBy = null;
+  this.embeddedByType = null;
+  
+  // Reset embedding statistics
+  this.embeddingStats = {
+    totalFiles: 0,
+    totalChunks: 0,
+    totalTokens: 0,
+    lastUpdated: null,
+    collectionName: ''
+  };
+  
+  return this.save();
+};
+
+BookSchema.methods.updateEmbeddingStats = function(stats) {
+  if (stats.totalFiles !== undefined) this.embeddingStats.totalFiles = stats.totalFiles;
+  if (stats.totalChunks !== undefined) this.embeddingStats.totalChunks = stats.totalChunks;
+  if (stats.totalTokens !== undefined) this.embeddingStats.totalTokens = stats.totalTokens;
+  if (stats.collectionName !== undefined) this.embeddingStats.collectionName = stats.collectionName;
+  this.embeddingStats.lastUpdated = new Date();
+  
+  return this.save();
 };
 
 // Virtual fields
