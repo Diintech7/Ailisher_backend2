@@ -86,6 +86,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/datastores', datastoreRoutes);
 app.use('/api/datastore', datastoreRoute);
 app.use('/api/books', bookRoutes);
+app.use('/api/categories', require('./routes/categories'));
 app.use('/api/aiguidelines', aiguidelinesRoutes);
 app.use('/api/subtopics', subtopicsRoutes);
 app.use('/api/assets', assetsRoutes);

@@ -2,10 +2,8 @@ const UserAnswer = require('../models/UserAnswer');
 const AiswbQuestion = require('../models/AiswbQuestion');
 const AISWBSet = require('../models/AISWBSet');
 const { getEvaluationFrameworkText } = require('./aiServices');
-let fetch;
-(async () => {
-  fetch = (await import('node-fetch')).default;
-})();
+// Use Node 18+ built-in fetch (Node 20 in this project)
+const fetch = globalThis.fetch;
 const axios = require('axios');
 const cloudinary = require('cloudinary').v2;
 

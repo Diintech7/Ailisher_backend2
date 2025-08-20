@@ -7,3 +7,4 @@ router.get('/user/:userId', getUserScoreboard);
 module.exports = router;
 
 
+

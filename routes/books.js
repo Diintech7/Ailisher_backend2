@@ -58,21 +58,6 @@ const categoryController = require('../controllers/categoryController');
 // Get current user info
 router.get('/user', verifyToken, getCurrentUser);
 
-// Get category mappings
-// router.get('/category-mappings', verifyToken, getCategoryMappings);
-
-// Add a new user-defined category
-router.post('/category', categoryController.addCategory);
-
-// Add a subcategory to an existing user-defined category
-router.post('/category/:categoryId/subcategory', categoryController.addSubcategory);
-
-// Get all user-defined categories and subcategories
-router.get('/categories', categoryController.getAllCategories);
-
-// Get valid subcategories for a main category
-router.get('/categories/:mainCategory/subcategories', verifyToken, getValidSubCategories);
-
 // ==================== HIGHLIGHT ROUTES ====================
 // Get all highlighted books
 router.get('/highlighted', verifyToken, getHighlightedBooks);
