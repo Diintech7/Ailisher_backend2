@@ -430,6 +430,8 @@ exports.updateTest = async (req, res) => {
       isHighlighted,
       isActive,
       instructions,
+      category,
+      subcategory,
     } = req.body;
 
     if (!id) {
@@ -484,6 +486,8 @@ exports.updateTest = async (req, res) => {
         isHighlighted,
         isActive,
         instructions,
+        category,
+        subcategory,
       },
       { new: true }
     );
