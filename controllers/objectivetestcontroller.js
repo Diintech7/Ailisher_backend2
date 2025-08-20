@@ -839,11 +839,22 @@ exports.getUserTestResults = async (req, res) => {
         message: "Test results not found",
       });
     }
+
+    const testQuestions = await ObjectiveTestQuestion.find({
+      test: result.testId
+    });
+
+    const testMaximumMarks = testQuestions.reduce((sum, question) => {
+      return sum + (question.positiveMarks || 0);
+    }, 0);
+    
       
     // Get attempt history with answers
     const attemptHistory = result.attemptHistory.map(attempt => ({
       attemptNumber: attempt.attemptNumber,
-      score: attempt.score,
+      totalMarksEarned: attempt.totalMarksEarned,
+      wrongAnswers: attempt.wrongAnswers,
+      skippedQuestions: attempt.skippedQuestions,
       completionTime: attempt.completionTime,
       answers: attempt.answers ? Object.fromEntries(attempt.answers) : {}, // Convert Map to object
       submittedAt: attempt.submittedAt,
@@ -867,8 +878,8 @@ exports.getUserTestResults = async (req, res) => {
 
     // Calculate overall statistics
     const totalAttempts = result.attemptHistory.length;
-    const bestScore = Math.max(...attemptHistory.map(a => a.score));
-    const averageScore = attemptHistory.reduce((sum, a) => sum + a.score, 0) / totalAttempts;
+    const bestScore = Math.max(...attemptHistory.map(a => a.totalMarksEarned));
+    const averageScore = attemptHistory.reduce((sum, a) => sum + a.totalMarksEarned, 0) / totalAttempts;
     const latestAttempt = attemptHistory[attemptHistory.length - 1];
 
     // Prepare question information for objective tests
@@ -892,7 +903,8 @@ exports.getUserTestResults = async (req, res) => {
           subcategory: result.testId.subcategory,
           description: result.testId.description,
           estimatedTime: result.testId.Estimated_time,
-          type: 'objective'
+          type: 'objective',
+          testMaximumMarks: testMaximumMarks
         },
         // Attempt Statistics
         attemptStats: {
@@ -900,7 +912,7 @@ exports.getUserTestResults = async (req, res) => {
           maxAttempts: result.maxAttempts,
           bestScore: Math.round(bestScore * 100) / 100,
           averageScore: Math.round(averageScore * 100) / 100,
-          latestScore: latestAttempt ? latestAttempt.score : 0,
+          latestScore: latestAttempt ? latestAttempt.totalMarksEarned : 0,
           canTakeMoreAttempts: totalAttempts < result.maxAttempts
         },
         // Complete Attempt History
@@ -947,7 +959,9 @@ exports.getUserTestHistory = async (req, res) => {
     // Get attempt history from the single document
     const attemptHistory = result.attemptHistory.map(attempt => ({
       attemptNumber: attempt.attemptNumber,
-      score: attempt.score,
+      totalMarksEarned: attempt.totalMarksEarned,
+      wrongAnswers: attempt.wrongAnswers,
+      skippedQuestions: attempt.skippedQuestions,
       completionTime: attempt.completionTime,
       answers: attempt.answers, // Include answers from attempt history
       submittedAt: attempt.submittedAt,
@@ -971,8 +985,8 @@ exports.getUserTestHistory = async (req, res) => {
       _id: { $in: Array.from(allQuestionIds) }
     }).select("question options correctAnswer");
 
-    const bestScore = Math.max(...attemptHistory.map(a => a.score));
-    const averageScore = attemptHistory.reduce((sum, a) => sum + a.score, 0) / attemptHistory.length;
+    const bestScore = Math.max(...attemptHistory.map(a => a.totalMarksEarned));
+    const averageScore = attemptHistory.reduce((sum, a) => sum + a.totalMarksEarned, 0) / attemptHistory.length;
 
     res.json({
       success: true,
@@ -1032,7 +1046,7 @@ exports.getCurrentAttemptStatus = async (req, res) => {
 
     // Calculate best score from attempt history
     const bestScore = result.attemptHistory && result.attemptHistory.length > 0 
-      ? Math.max(...result.attemptHistory.map(attempt => attempt.score))
+      ? Math.max(...result.attemptHistory.map(attempt => attempt.totalMarksEarned))
       : 0;
 
     res.json({
@@ -1089,7 +1103,7 @@ exports.getTestAnalytics = async (req, res) => {
 
     // Calculate analytics
     const totalAttempts = results.length;
-    const scores = results.map((r) => r.score);
+    const scores = results.map((r) => r.totalMarksEarned);
     const averageScore = scores.reduce((a, b) => a + b, 0) / scores.length;
     const highestScore = Math.max(...scores);
     const lowestScore = Math.min(...scores);
@@ -1106,7 +1120,7 @@ exports.getTestAnalytics = async (req, res) => {
         if (result.levelBreakdown[level].total > 0) {
           levelBreakdown[level].attempts++;
           levelBreakdown[level].averageScore +=
-            result.levelBreakdown[level].score;
+            result.levelBreakdown[level].totalMarksEarned;
         }
       });
     });
