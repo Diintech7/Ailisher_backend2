@@ -12,6 +12,7 @@ const objectiveTestSchema = new mongoose.Schema({
     isTrending: { type: Boolean, default: false },
     isHighlighted: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
+    isEnabled: { type: Boolean, default: true },
     instructions: { type: String, default: "" },
     questions: { type: Array, default: [] }
 }, { timestamps: true });

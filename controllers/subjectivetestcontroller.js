@@ -632,6 +632,7 @@ exports.updateTest = async (req, res) => {
   }
 };
 
+
 exports.deleteTest = async (req, res) => {
   try {
     const clientId = req.user.userId;
@@ -680,6 +681,80 @@ exports.deleteTest = async (req, res) => {
       message: "Failed to delete test",
       error: error.message,
     });
+  }
+};
+
+// Toggle isEnabled flag for a subjective test
+exports.toggleIsEnabled = async (req, res) => {
+  try {
+    const clientId = req.user.userId;
+    const { id } = req.params;
+    const { isEnabled } = req.body || {};
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Test ID is required' });
+    }
+
+    const test = await Test.findById(id);
+    if (!test) {
+      return res.status(404).json({ success: false, message: 'Test not found' });
+    }
+
+    if (test.clientId !== clientId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    }
+
+    // If body provides isEnabled, use it; otherwise toggle
+    const newValue = typeof isEnabled === 'boolean' ? isEnabled : !test.isEnabled;
+    test.isEnabled = newValue;
+
+    await test.save();
+
+    // Refresh image URL if present
+    if (test.imageKey) {
+      try {
+        const freshImageUrl = await generateGetPresignedUrl(test.imageKey, 604800);
+        test.imageUrl = freshImageUrl;
+      } catch (e) {
+        // ignore URL refresh errors
+      }
+    }
+
+    return res.status(200).json({ success: true, message: 'Test isEnabled updated', test });
+  } catch (error) {
+    console.error('Toggle isEnabled error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update isEnabled', error: error.message });
+  }
+};
+
+// Keep compatibility with existing route using PATCH for toggling active
+exports.toggleTestStatus = async (req, res) => {
+  try {
+    const clientId = req.user.userId;
+    const { id } = req.params;
+    const { isActive } = req.body || {};
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Test ID is required' });
+    }
+
+    const test = await Test.findById(id);
+    if (!test) {
+      return res.status(404).json({ success: false, message: 'Test not found' });
+    }
+
+    if (test.clientId !== clientId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const newActive = typeof isActive === 'boolean' ? isActive : !test.isActive;
+    test.isActive = newActive;
+    await test.save();
+
+    return res.status(200).json({ success: true, message: 'Test active status updated', test });
+  } catch (error) {
+    console.error('Toggle isActive error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update isActive', error: error.message });
   }
 };
 

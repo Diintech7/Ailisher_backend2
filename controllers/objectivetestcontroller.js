@@ -558,6 +558,49 @@ exports.deleteTest = async (req, res) => {
   }
 };
 
+// Toggle isEnabled flag for a test
+exports.toggleIsEnabled = async (req, res) => {
+  try {
+    const clientId = req.user.userId;
+    const { id } = req.params;
+    const { isEnabled } = req.body || {};
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Test ID is required' });
+    }
+
+    const test = await ObjectiveTest.findById(id);
+    if (!test) {
+      return res.status(404).json({ success: false, message: 'Test not found' });
+    }
+
+    if (test.clientId !== clientId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    }
+
+    // If body provides isEnabled, use it; otherwise toggle
+    const newValue = typeof isEnabled === 'boolean' ? isEnabled : !test.isEnabled;
+    test.isEnabled = newValue;
+
+    await test.save();
+
+    // Refresh image URL if present
+    if (test.imageKey) {
+      try {
+        const freshImageUrl = await generateGetPresignedUrl(test.imageKey, 604800);
+        test.imageUrl = freshImageUrl;
+      } catch (e) {
+        // ignore URL refresh errors
+      }
+    }
+
+    return res.status(200).json({ success: true, message: 'Test isEnabled updated', test });
+  } catch (error) {
+    console.error('Toggle isEnabled error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update isEnabled', error: error.message });
+  }
+};
+
 // Submit test with all answers
 exports.submitTest = async (req, res) => {
   try {

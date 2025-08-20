@@ -21,6 +21,9 @@ router.get('/get-test/:id', authenticateMobileUser, testController.getTest);
 // Update a test
 router.put('/:id', verifyToken, testController.updateTest);
 
+//toggle test status
+router.patch('/:id', verifyToken, testController.toggleIsEnabled);
+
 // Delete a test
 router.delete('/:id', verifyToken, testController.deleteTest);
 

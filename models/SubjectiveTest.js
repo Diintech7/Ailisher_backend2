@@ -46,6 +46,10 @@ const subjectiveTestSchema =  new mongoose.Schema({
         type:Boolean,
         default:true
     },
+    isEnabled:{
+        type:Boolean,
+        default:true
+    },
     instructions:{
         type:String,
         default:""
