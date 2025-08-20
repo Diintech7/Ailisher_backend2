@@ -67,11 +67,7 @@ const calculateSubmissionSummary = (questions, userAnswers) => {
     answerImages: answer.answerImages.length,
     evaluation: answer.evaluation
       ? {
-          relevancy: answer.evaluation.relevancy,
           score: answer.evaluation.score,
-          remark: answer.evaluation.remark,
-          comments: answer.evaluation.comments,
-          analysis: answer.evaluation.analysis,
         }
       : null,
   }));
@@ -259,6 +255,10 @@ exports.getTest = async (req, res) => {
       userAnswers
     );
 
+    const testMaximumMarks = questions.reduce((sum, question) => {
+      return sum + (question.metadata?.maximumMarks || 0);
+    }, 0);
+
     // Generate fresh presigned URL if imageKey exists
     if (test.imageKey) {
       try {
@@ -276,6 +276,7 @@ exports.getTest = async (req, res) => {
       success: true,
       TestStatus: testStatus,
       TestSubmissionSummary: submissionSummary,
+      testMaximumMarks: testMaximumMarks,
       test: {
         ...test.toObject(),
       },
