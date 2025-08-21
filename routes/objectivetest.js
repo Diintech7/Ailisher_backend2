@@ -43,7 +43,7 @@ router.get('/:id', testController.getTest);
 router.put('/:id', testController.updateTest);
 
 // Toggle isEnabled for a test
-router.patch('/:id/enabled', testController.toggleIsEnabled);
+router.patch('/:id', testController.toggleIsEnabled);
 
 // Delete a test
 router.delete('/:id', testController.deleteTest);
