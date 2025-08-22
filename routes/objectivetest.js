@@ -36,6 +36,9 @@ router.get('/', testController.getAllTests);
 // Get test analytics (for admin/client)
 router.get('/:testId/analytics', testController.getTestAnalytics);
 
+// Get first-attempt-only scoreboard (for admin/client)
+router.get('/:testId/scoreboard/first-attempt', testController.getFirstAttemptScoreboard);
+
 // Get a specific test by ID
 router.get('/:id', testController.getTest);
 

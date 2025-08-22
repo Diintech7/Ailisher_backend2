@@ -2,6 +2,7 @@ const ObjectiveTest = require("../models/ObjectiveTest");
 const ObjectiveTestQuestion = require("../models/ObjectiveTestQuestion");
 const TestResult = require("../models/TestResult");
 const User = require("../models/User");
+const MobileUser = require("../models/MobileUser");
 const UserProfile = require("../models/UserProfile");
 const path = require("path");
 const {
@@ -1123,7 +1124,6 @@ exports.getTestAnalytics = async (req, res) => {
   try {
     const { testId } = req.params;
     const clientId = req.user.userId;
-    console.log(clientId);
 
     const results = await TestResult.find({
       testId,
@@ -1136,9 +1136,11 @@ exports.getTestAnalytics = async (req, res) => {
         success: true,
         data: {
           totalAttempts: 0,
+          totalUsersAppeared: 0,
           averageScore: 0,
           highestScore: 0,
           lowestScore: 0,
+          topScore: 0,
           levelBreakdown: {
             L1: { attempts: 0, averageScore: 0 },
             L2: { attempts: 0, averageScore: 0 },
@@ -1150,12 +1152,17 @@ exports.getTestAnalytics = async (req, res) => {
 
     // Calculate analytics
     const totalAttempts = results.length;
-    const scores = results.map((r) => r.totalMarksEarned);
-    const averageScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-    const highestScore = Math.max(...scores);
-    const lowestScore = Math.min(...scores);
+    const uniqueUsers = new Set(results.map((r) => String(r.userId)));
+    const totalUsersAppeared = uniqueUsers.size;
 
-    // Level breakdown
+    // Prefer normalized percentage score if present
+    const scores = results.map((r) => (typeof r.score === 'number' ? r.score : 0));
+    const sumScores = scores.reduce((a, b) => a + b, 0);
+    const averageScore = scores.length ? sumScores / scores.length : 0;
+    const highestScore = scores.length ? Math.max(...scores) : 0;
+    const lowestScore = scores.length ? Math.min(...scores) : 0;
+
+    // Level breakdown (average of per-attempt level scores if available)
     const levelBreakdown = {
       L1: { attempts: 0, averageScore: 0 },
       L2: { attempts: 0, averageScore: 0 },
@@ -1163,16 +1170,17 @@ exports.getTestAnalytics = async (req, res) => {
     };
 
     results.forEach((result) => {
-      Object.keys(result.levelBreakdown).forEach((level) => {
-        if (result.levelBreakdown[level].total > 0) {
-          levelBreakdown[level].attempts++;
-          levelBreakdown[level].averageScore +=
-            result.levelBreakdown[level].totalMarksEarned;
-        }
-      });
+      if (result.levelBreakdown) {
+        ["L1", "L2", "L3"].forEach((level) => {
+          const entry = result.levelBreakdown[level];
+          if (entry && typeof entry.score === 'number') {
+            levelBreakdown[level].attempts += 1;
+            levelBreakdown[level].averageScore += entry.score;
+          }
+        });
+      }
     });
 
-    // Calculate averages
     Object.keys(levelBreakdown).forEach((level) => {
       if (levelBreakdown[level].attempts > 0) {
         levelBreakdown[level].averageScore =
@@ -1180,13 +1188,15 @@ exports.getTestAnalytics = async (req, res) => {
       }
     });
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         totalAttempts,
+        totalUsersAppeared,
         averageScore: Math.round(averageScore * 100) / 100,
         highestScore: Math.round(highestScore * 100) / 100,
         lowestScore: Math.round(lowestScore * 100) / 100,
+        topScore: Math.round(highestScore * 100) / 100,
         levelBreakdown,
       },
     });
@@ -1197,6 +1207,160 @@ exports.getTestAnalytics = async (req, res) => {
       message: "Failed to fetch test analytics",
       error: error.message,
     });
+  }
+};
+
+// Get first-attempt-only scoreboard for a test (admin/client)
+exports.getFirstAttemptScoreboard = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const clientId = req.user.userId;
+
+    // Fetch completed results for this test and client
+    const results = await TestResult.find({
+      testId,
+      clientId,
+      status: "completed",
+    })
+    .lean();
+
+    // Helper to parse completion time like "5m 37s" or "12s" into seconds
+    const parseDurationToSeconds = (str) => {
+      if (!str || typeof str !== "string") return Number.POSITIVE_INFINITY;
+      let total = 0;
+      const minMatch = str.match(/(\d+)\s*m/);
+      const secMatch = str.match(/(\d+)\s*s/);
+      if (minMatch) total += parseInt(minMatch[1], 10) * 60;
+      if (secMatch) total += parseInt(secMatch[1], 10);
+      // If nothing matched but it's numeric, try to coerce
+      if (total === 0 && /^\d+$/.test(str)) total = parseInt(str, 10);
+      return total || Number.POSITIVE_INFINITY;
+    };
+
+    // Build scoreboard entries from first attempt only
+    const rawEntries = results
+      .map((r) => {
+        const history = Array.isArray(r.attemptHistory) ? r.attemptHistory : [];
+        // Prefer the explicit attemptNumber === 1
+        let first = history.find((a) => a.attemptNumber === 1);
+        // If not present, fall back to smallest attemptNumber in history
+        if (!first && history.length) {
+          first = history.reduce((min, a) =>
+            typeof min === "undefined" || a.attemptNumber < min.attemptNumber ? a : min
+          , undefined);
+        }
+        // If still not present, and the top-level document itself is attempt 1, use it
+        if (!first && r.attemptNumber === 1) {
+          first = {
+            attemptNumber: 1,
+            score: r.score,
+            totalMarksEarned: r.totalMarksEarned,
+            correctAnswers: r.correctAnswers,
+            totalQuestions: r.totalQuestions,
+            completionTime: r.completionTime,
+            submittedAt: r.submittedAt,
+            levelBreakdown: r.levelBreakdown,
+          };
+        }
+
+        if (!first) return null; // ignore users with no first attempt recorded
+
+        return {
+          userId: r.userId,
+          score: typeof first.score === "number" ? first.score : 0,
+          totalMarksEarned: typeof first.totalMarksEarned === "number" ? first.totalMarksEarned : null,
+          correctAnswers: typeof first.correctAnswers === "number" ? first.correctAnswers : null,
+          totalQuestions: typeof first.totalQuestions === "number" ? first.totalQuestions : null,
+          completionTime: first.completionTime || null,
+          completionSeconds: parseDurationToSeconds(first.completionTime),
+          submittedAt: first.submittedAt || null,
+          levelBreakdown: first.levelBreakdown || {},
+        };
+      })
+      .filter(Boolean);
+
+    // Deduplicate by userId to ensure only one first attempt per user
+    const byUser = new Map();
+    for (const e of rawEntries) {
+      const key = String(e.userId);
+      const existing = byUser.get(key);
+      if (!existing) {
+        byUser.set(key, e);
+      } else {
+        const eTime = e.submittedAt ? new Date(e.submittedAt).getTime() : Number.POSITIVE_INFINITY;
+        const xTime = existing.submittedAt ? new Date(existing.submittedAt).getTime() : Number.POSITIVE_INFINITY;
+        if (eTime < xTime) {
+          byUser.set(key, e);
+        } else if (eTime === xTime && e.score > existing.score) {
+          byUser.set(key, e);
+        }
+      }
+    }
+    const entries = Array.from(byUser.values());
+
+    // Summary stats
+    const totalUsersAppeared = entries.length;
+    const totalMarksEarned = entries.map((e) => (typeof e.totalMarksEarned === 'number' ? e.totalMarksEarned : 0));
+    const topScore = totalMarksEarned.length ? Math.max(...totalMarksEarned) : 0;
+    const averageScore = totalMarksEarned.length ? totalMarksEarned.reduce((a, b) => a + b, 0) / totalMarksEarned.length : 0;
+
+    // Optional: enrich with user display names (support both User and MobileUser + UserProfile)
+    const userIds = [...new Set(entries.map((e) => String(e.userId)))];
+    const [users, mobileUsers, profiles] = await Promise.all([
+      User.find({ _id: { $in: userIds } }, { name: 1, fullName: 1, email: 1 }).lean(),
+      MobileUser.find({ _id: { $in: userIds } }, { mobile: 1, clientId: 1 }).lean(),
+      UserProfile.find({ userId: { $in: userIds } }, { name: 1, userId: 1 }).lean(),
+    ]);
+
+    const idToUser = new Map(users.map((u) => [String(u._id), u]));
+    const idToMobile = new Map(mobileUsers.map((m) => [String(m._id), m]));
+    const idToProfile = new Map(profiles.map((p) => [String(p.userId), p]));
+
+    entries.forEach((e) => {
+      const key = String(e.userId);
+      const u = idToUser.get(key);
+      if (u) {
+        e.user = { id: u._id, name: u.name || u.fullName || null, email: u.email || null };
+        return;
+      }
+      const m = idToMobile.get(key);
+      const p = idToProfile.get(key);
+      if (m || p) {
+        e.user = {
+          id: m?._id || e.userId,
+          name: p?.name || null,
+          email: null,
+          mobile: m?.mobile || null,
+        };
+      } else {
+        e.user = null;
+      }
+    });
+
+    // Sort by score DESC, then faster completion time ASC, then earlier submission ASC
+    entries.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (a.completionSeconds !== b.completionSeconds) return a.completionSeconds - b.completionSeconds;
+      const aTime = a.submittedAt ? new Date(a.submittedAt).getTime() : Number.POSITIVE_INFINITY;
+      const bTime = b.submittedAt ? new Date(b.submittedAt).getTime() : Number.POSITIVE_INFINITY;
+      return aTime - bTime;
+    });
+
+    // Assign ranks (simple 1-based since tie-breakers largely resolve ties)
+    const ranked = entries.map((e, idx) => ({ rank: idx + 1, ...e }));
+
+    return res.json({
+      success: true,
+      summary: {
+        topScore: Math.round(topScore * 100) / 100,
+        averageScore: Math.round(averageScore * 100) / 100,
+        totalUsersAppeared,
+      },
+      data: ranked,
+    });
+  } catch (error) {
+    console.error("Error fetching first-attempt scoreboard:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch first-attempt scoreboard", error: error.message });
   }
 };
 

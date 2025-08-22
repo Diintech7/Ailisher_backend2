@@ -121,6 +121,10 @@ const WorkbookSchema = new mongoose.Schema({
     trim: true,
     maxlength: [30, 'Tag cannot be more than 30 characters']
   }],
+  isEnabled:{
+    type:Boolean,
+    default:true
+  },
   isHighlighted: {
     type: Boolean,
     default: false,

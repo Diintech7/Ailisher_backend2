@@ -139,7 +139,10 @@ const BookSchema = new mongoose.Schema({
     trim: true,
     maxlength: [30, 'Tag cannot be more than 30 characters']
   }],
-  
+  isEnabled:{
+    type:Boolean,
+    default:true
+  },
   // Highlights functionality
   isHighlighted: {
     type: Boolean,

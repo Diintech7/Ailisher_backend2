@@ -19,7 +19,8 @@ const {
   // Category order functionality
   updateCategoryOrder,
   resetCategoryOrder,
-  updateCategoryOrderForAll
+  updateCategoryOrderForAll,
+  toggleIsEnabled
 } = require('../controllers/bookController');
 const { 
   getChapters, 
@@ -147,5 +148,7 @@ router.route('/:bookId/chapters/:chapterId/topics/:topicId/subtopics/:id')
   .get(verifyToken, getSubTopic)
   .put(verifyToken, updateSubTopic)
   .delete(verifyToken, deleteSubTopic);
+
+router.patch('/:id',verifyToken,toggleIsEnabled)
 
 module.exports = router;

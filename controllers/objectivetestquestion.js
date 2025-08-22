@@ -130,7 +130,7 @@ exports.getQuestionsByTest = async (req, res) => {
             })  
         }
         const { testId } = req.params;
-        const { difficulty, page = 1, limit = 10 } = req.query;
+        const { difficulty, page = 1, limit = 150 } = req.query;
 
         // Validate test exists
         const test = await ObjectiveTest.findById(testId);
@@ -194,7 +194,7 @@ exports.getQuestionsByTestForMobile = async (req, res) => {
             })  
         }
         const { testId } = req.params;
-        const { difficulty, page = 1, limit = 10 } = req.query;
+        const { difficulty, page = 1, limit = 150 } = req.query;
 
         // Validate test exists
         const test = await ObjectiveTest.findById(testId);

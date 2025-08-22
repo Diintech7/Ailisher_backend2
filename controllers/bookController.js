@@ -6,6 +6,7 @@ const User = require('../models/User');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const { generateGetPresignedUrl } = require('../utils/s3');
 
 // Configure multer storage
 const storage = multer.diskStorage({
@@ -951,3 +952,47 @@ exports.updateCategoryOrderForAll = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
+
+exports.toggleIsEnabled = async (req, res) => {
+  try {
+    const clientId = req.user.userId;
+    const {id} = req.params;
+    const {isEnabled} = req.body || {};
+
+    if(!id)
+    {
+      return re.status(400).json({success:false,message:"Book Id is required"})
+    }
+
+    const book = await Book.findById(id);
+    if(!book)
+    {
+      return res.status(404).json({success:false,message:"Book not found"})
+    }
+
+    if(book.clientId !== clientId)
+    {
+      return res.status(403).json({success:false, message:"Unauthorized"})
+    }
+
+    const newValue = typeof isEnabled === 'boolean' ? isEnabled : !book.isEnabled;
+    book.isEnabled = newValue;
+
+    await book.save();
+
+    if(book.coverImageKey)
+    {
+      try {
+        const freshImageUrl = await generateGetPresignedUrl(book.coverImageKey);
+        book.coverImageUrl = freshImageUrl
+      } catch (e) {
+        // ignore URL refresh errors
+      }
+    }
+    return res.status(200).json({success:true,message:"Book isEnabled updated"})
+  } 
+  catch (error) {
+    console.error('Tpggle isEnabled error:',error);
+    return res.status(500).json({success:false,message:"Failed to update isEnabled", error:error.message});
+    }
+}

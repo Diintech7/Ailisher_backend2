@@ -19,7 +19,8 @@ const {
   removeWorkbookFromTrending,
   getQuestionsForSetInWorkbook,
   getHighlightedWorkbooks,
-  getTrendingWorkbooks
+  getTrendingWorkbooks,
+  toggleIsEnabled
 } = require("../controllers/workbookController");
 const {
   getChapters,
@@ -115,5 +116,7 @@ router
   .get(verifyToken, getSubTopic)
   .put(verifyToken, updateSubTopic)
   .delete(verifyToken, deleteSubTopic);
+
+router.patch('/:id',verifyToken, toggleIsEnabled)
 
 module.exports = router;

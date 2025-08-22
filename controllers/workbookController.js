@@ -879,3 +879,43 @@ exports.getQuestionsForSetInWorkbook = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server Error' });
   }
 }; 
+
+exports.toggleIsEnabled = async (req, res) => {
+  try {
+    const clientId = req.user.userId;
+    console.log("clientId",clientId)
+    const {id} = req.params;
+    const {isEnabled} = req.body || {};
+
+    if(!id)
+    {
+      return re.status(400).json({success:false,message:"Workbook Id is required"})
+    }
+
+    const workbook = await Workbook.findById(id);
+    if(!workbook)
+    {
+      return res.status(404).json({success:false,message:"Workbook not found"})
+    }
+
+    const newValue = typeof isEnabled === 'boolean' ? isEnabled : !workbook.isEnabled;
+    workbook.isEnabled = newValue;
+
+    await workbook.save();
+
+    if(workbook.coverImageKey)
+    {
+      try {
+        const freshImageUrl = await generateGetPresignedUrl(workbook.coverImageKey);
+        workbook.coverImageUrl = freshImageUrl
+      } catch (e) {
+        // ignore URL refresh errors
+      }
+    }
+    return res.status(200).json({success:true,message:"Workbook isEnabled updated"})
+  } 
+  catch (error) {
+    console.error('Tpggle isEnabled error:',error);
+    return res.status(500).json({success:false,message:"Failed to update isEnabled", error:error.message});
+    }
+}
