@@ -60,7 +60,7 @@ router.post('/', verifyToken, isClient, async (req, res) => {
 // @access  Admin only
 router.get('/', verifyToken, isClient, async (req, res) => {
   try {
-    const reels = await Reels.find().sort({ createdAt: -1 });
+    const reels = await Reels.find();
     
     res.json({
       success: true,
