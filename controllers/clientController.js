@@ -213,7 +213,9 @@ exports.getAllUsers = async (req, res) => {
 
 exports.getuserprofile = async (req, res) => {
   try {
-    const userProfiles = await UserProfile.find({ isComplete: true })
+    const clientId = req.user.userId;
+    console.log(clientId)
+    const userProfiles = await UserProfile.find({ isComplete: true, clientId })
       .populate('userId', 'mobile isVerified lastLoginAt')
       .select('-__v')
       .sort({ createdAt: -1 });

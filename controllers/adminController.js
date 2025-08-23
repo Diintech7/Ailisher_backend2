@@ -9,6 +9,7 @@ const CreditTransaction = require('../models/CreditTransaction');
 const Client = require('../models/Client');
 const CreditRechargePlan = require('../models/CreditRechargePlan');
 const Payment = require('../models/Payment');
+const UserProfile = require('../models/UserProfile');
 
 // Generate JWT Token for admin
 const generateAdminToken = (id) => {
@@ -281,6 +282,35 @@ exports.generateClientLoginToken = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
+exports.getuserprofile = async (req, res) => {
+  try {
+    const userProfiles = await UserProfile.find({ isComplete: true })
+      .populate('userId', 'mobile isVerified lastLoginAt')
+      .select('-__v')
+      .sort({ createdAt: -1 });
+
+    if (!userProfiles || userProfiles.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No user profiles found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      count: userProfiles.length,
+      data: userProfiles
+    });
+  } catch (error) {
+    console.error('Error fetching user profiles:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching user profiles',
+      error: error.message
+    });
+  }
+}
 
 exports.createCreditPlan = async (req, res) => {
   try {

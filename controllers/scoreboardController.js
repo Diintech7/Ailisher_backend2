@@ -3,57 +3,60 @@ const TestResult = require('../models/TestResult');
 const SubjectiveTestResult = require('../models/SubjectiveTestResult');
 const UserAnswer = require('../models/UserAnswer');
 const AiswbQuestion = require('../models/AiswbQuestion');
+const ObjectiveTest = require('../models/ObjectiveTest');
 
 exports.getUserScoreboard = async (req, res) => {
   try {
-    const { userId: rawUserId } = req.params;
-    const { clientId } = req.query;
-
-    let userId;
-    try {
-      userId = new mongoose.Types.ObjectId(rawUserId);
-    } catch (e) {
-      return res.status(400).json({ success: false, message: 'Invalid userId' });
-    }
+    const userId = req.user.id;
+    const clientId = req.clientId;
 
     const objectiveMatch = { userId, status: 'completed' };
     if (clientId) objectiveMatch.clientId = clientId;
 
     const objectiveDocs = await TestResult.find(
       objectiveMatch,
-      'testId score attemptHistory submittedAt'
+      'testId score attemptHistory submittedAt totalQuestions'
     ).lean();
 
-    let objectiveBestScore = 0;
     let objectiveTotalAttempts = 0;
-    let objectiveAvgSumAllAttempts = 0;
-    let objectiveAvgCountAllAttempts = 0;
     let objectiveLastAttemptDate = null;
     const objectiveTestIds = new Set();
+    let objectiveMarksEarnedSum = 0;
+    let objectiveMarksPossibleSum = 0;
+
+    // Get all unique test IDs to fetch test details
+    const testIds = [...new Set(objectiveDocs.map(doc => doc.testId))];
+    const testDetails = await ObjectiveTest.find(
+      { _id: { $in: testIds } },
+      '_id totalMarks'
+    ).lean();
+    const testMarksMap = new Map(testDetails.map(test => [String(test._id), test.totalMarks || 100]));
+
     for (const r of objectiveDocs) {
       objectiveTestIds.add(String(r.testId));
+
       const historyScores = Array.isArray(r.attemptHistory)
-        ? r.attemptHistory.map((a) => (Number.isFinite(a?.score) ? a.score : null)).filter((x) => x !== null)
+        ? r.attemptHistory.map((a) => (Number.isFinite(a?.totalMarksEarned) ? a.totalMarksEarned : null)).filter((x) => x !== null)
         : [];
       const historyDates = Array.isArray(r.attemptHistory)
         ? r.attemptHistory.map((a) => a?.submittedAt).filter(Boolean)
         : [];
-      const best = historyScores.length > 0
-        ? Math.max(...historyScores)
-        : (Number.isFinite(r.score) ? r.score : 0);
-      objectiveBestScore = Math.max(objectiveBestScore, best || 0);
-      const attemptCount = historyScores.length > 0 ? historyScores.length : 1;
-      objectiveTotalAttempts += attemptCount;
-      // Average across all attempts (count root score as one if no history)
-      if (historyScores.length > 0) {
-        for (const s of historyScores) {
-          objectiveAvgSumAllAttempts += s;
-          objectiveAvgCountAllAttempts += 1;
-        }
-      } else if (Number.isFinite(r.score)) {
-        objectiveAvgSumAllAttempts += r.score;
-        objectiveAvgCountAllAttempts += 1;
+
+      const hasHistory = historyScores.length > 0;
+      const attemptScores = hasHistory
+        ? historyScores
+        : (Number.isFinite(r.score) ? [r.score] : []);
+
+      // Get marks possible for this test
+      const testMarksPossible = testMarksMap.get(String(r.testId)) || 5;
+
+      // Aggregate objective totals
+      objectiveTotalAttempts += attemptScores.length;
+      for (const s of attemptScores) {
+        objectiveMarksEarnedSum += s;
+        objectiveMarksPossibleSum += 5;
       }
+
       // Last attempt date (max of history submittedAt and root submittedAt)
       const candidates = [...historyDates];
       if (r.submittedAt) candidates.push(r.submittedAt);
@@ -63,6 +66,10 @@ exports.getUserScoreboard = async (req, res) => {
         }
       }
     }
+
+    const objectivePercentage = objectiveMarksPossibleSum > 0
+      ? (objectiveMarksEarnedSum / objectiveMarksPossibleSum) * 100
+      : 0;
 
     const subjectiveMatch = { userId, status: 'completed' };
     if (clientId) subjectiveMatch.clientId = clientId;
@@ -100,17 +107,33 @@ exports.getUserScoreboard = async (req, res) => {
     let aiswbMarksPossible = 0;
     let aiswbAnsweredCount = aiswbAnswers.length;
     let aiswbLastSubmittedAt = null;
+    let aiswbBestScore = 0;
+    let aiswbScoreSum = 0;
+    const aiswbTestIds = new Set(); // Track unique AISWB tests
+
     if (questionIds.length > 0) {
       const aiswbQuestions = await AiswbQuestion.find(
         { _id: { $in: questionIds } },
-        'metadata.maximumMarks'
+        'metadata.maximumMarks testId'
       ).lean();
+      
       const maxMap = new Map(aiswbQuestions.map((q) => [String(q._id), (q.metadata && q.metadata.maximumMarks) || 0]));
+      
       for (const a of aiswbAnswers) {
         const max = maxMap.get(String(a.questionId)) || 0;
-        aiswbMarksPossible += max;
         const s = Number.isFinite(a?.evaluation?.score) ? a.evaluation.score : 0;
-        aiswbMarksEarned += Math.min(s, max);
+        const capped = Math.min(s, max);
+        aiswbMarksPossible += max;
+        aiswbMarksEarned += capped;
+        aiswbBestScore = Math.max(aiswbBestScore, capped);
+        aiswbScoreSum += capped;
+        
+        // Track unique test IDs from questions
+        const question = aiswbQuestions.find(q => String(q._id) === String(a.questionId));
+        if (question && question.testId) {
+          aiswbTestIds.add(String(question.testId));
+        }
+        
         if (a.submittedAt && (!aiswbLastSubmittedAt || new Date(a.submittedAt) > new Date(aiswbLastSubmittedAt))) {
           aiswbLastSubmittedAt = a.submittedAt;
         }
@@ -118,16 +141,18 @@ exports.getUserScoreboard = async (req, res) => {
     }
     const aiswbPercentage = aiswbMarksPossible > 0 ? (aiswbMarksEarned / aiswbMarksPossible) * 100 : 0;
     const aiswbAveragePerAnswer = aiswbAnsweredCount > 0 ? (aiswbMarksEarned / aiswbAnsweredCount) : 0;
+    const aiswbAverageScore = aiswbAnsweredCount > 0 ? (aiswbScoreSum / aiswbAnsweredCount) : 0;
 
     return res.json({
       success: true,
       data: {
         objective: {
-          bestScoreOverall: Math.round(objectiveBestScore * 100) / 100,
+          totalMarksEarned: Math.round(objectiveMarksEarnedSum * 100) / 100,
+          marksPossible: Math.round(objectiveMarksPossibleSum * 100) / 100,
+          percentage: Math.round(objectivePercentage * 100) / 100,
           totalAttempts: objectiveTotalAttempts,
-          averageScoreAcrossAttempts: objectiveAvgCountAllAttempts > 0 ? Math.round((objectiveAvgSumAllAttempts / objectiveAvgCountAllAttempts) * 100) / 100 : 0,
-          totalTests: objectiveTestIds.size,
-          lastAttemptDate: objectiveLastAttemptDate
+          lastAttemptedAt: objectiveLastAttemptDate,
+          totalTests: objectiveTestIds.size
         },
         subjective: {
           bestScoreOverall: Math.round(subjectiveBestScore * 100) / 100,
@@ -137,12 +162,14 @@ exports.getUserScoreboard = async (req, res) => {
           lastAttemptDate: subjectiveLastAttemptDate
         },
         aiswb: {
-          marksEarned: Math.round(aiswbMarksEarned * 100) / 100,
-          marksPossible: Math.round(aiswbMarksPossible * 100) / 100,
+          bestScore: Math.round(aiswbBestScore * 100) / 100,
+          averageScore: Math.round(aiswbAverageScore * 100) / 100,
+          totalAnsweredCount: aiswbAnsweredCount,
           percentage: Math.round(aiswbPercentage * 100) / 100,
-          answeredCount: aiswbAnsweredCount,
           averagePerAnswer: Math.round(aiswbAveragePerAnswer * 100) / 100,
-          lastSubmittedAt: aiswbLastSubmittedAt
+          lastSubmittedAt: aiswbLastSubmittedAt,
+          totalMarksEarned: Math.round(aiswbMarksEarned * 100) / 100,
+          marksPossible: Math.round(aiswbMarksPossible * 100) / 100,
         },
       },
     });
