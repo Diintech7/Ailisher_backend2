@@ -113,8 +113,9 @@ app.use('/api/objectivetest-questions', objectiveTestQuestionRoutes);
 app.use('/api/subjectivetest-questions', subjectiveTestQuestionRoutes);
 app.use('/api/test-results', testResultsRoutes);
 app.use('/api/paytm',paytmRoutes)
-app.use('/api/scoreboard', require('./routes/scoreboard'))
 app.use('/api/reels', require('./routes/reel'))
+app.use('/api/marketing', require('./routes/marketing'))
+
 
 
 
@@ -141,6 +142,16 @@ app.use(
 )
 
 app.use(
+  "/api/clients/:clientId/mobile/reels",
+  checkClientAccess(),
+  (req, res, next) => {
+    req.clientId = req.params.clientId
+    next()
+  },
+  require('./routes/reel'),
+)
+
+app.use(
   "/api/clients/:clientId/mobile/credit",
   checkClientAccess(),
   (req, res, next) => {
@@ -148,6 +159,16 @@ app.use(
     next()
   },
   creditManagementRoutes,
+)
+
+app.use(
+  "/api/clients/:clientId/mobile/scoreboard",
+  checkClientAccess(),
+  (req, res, next) => {
+    req.clientId = req.params.clientId
+    next()
+  },
+  require('./routes/scoreboard'),
 )
 
 app.use(

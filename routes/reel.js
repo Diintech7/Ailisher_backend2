@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const Reels = require('../models/Reels');
 const { verifyToken, isClient } = require('../middleware/auth');
+const { authenticateMobileUser, ensureUserBelongsToClient } = require('../middleware/mobileAuth');
 
 
 // @route   POST /api/reels
@@ -29,12 +30,14 @@ router.post('/', verifyToken, isClient, async (req, res) => {
       });
     }
     console.log("get2");
+    const count = await Reels.countDocuments();
 
     const reel = new Reels({
       title,
       description,
       youtubeLink,
-      createdBy: req.user.id
+      createdBy: req.user.id,
+      order: count + 1
     });
     console.log("get3");
 
@@ -60,7 +63,7 @@ router.post('/', verifyToken, isClient, async (req, res) => {
 // @access  Admin only
 router.get('/', verifyToken, isClient, async (req, res) => {
   try {
-    const reels = await Reels.find();
+    const reels = await Reels.find().sort({ order: 1 });
     
     res.json({
       success: true,
@@ -70,6 +73,63 @@ router.get('/', verifyToken, isClient, async (req, res) => {
     
   } catch (error) {
     console.error('Error fetching reels:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
+  }
+});
+
+router.get('/user', authenticateMobileUser,ensureUserBelongsToClient, async (req, res) => {
+  try {
+    const reels = await Reels.find().sort({ order: 1 });
+    
+    res.json({
+      success: true,
+      count: reels.length,
+      data: reels
+    });
+    
+  } catch (error) {
+    console.error('Error fetching reels:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
+  }
+});
+
+router.patch('/reorder', verifyToken, isClient, async (req, res) => {
+  try {
+    const { reels } = req.body;
+    
+    if (!reels || !Array.isArray(reels)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reels array is required'
+      });
+    }
+
+    // Update each reel with its new order
+    const updatePromises = reels.map((reel, index) => {
+      return Reels.findByIdAndUpdate(
+        reel._id,
+        { order: index + 1 },
+        { new: true }
+      );
+    });
+
+    await Promise.all(updatePromises);
+
+    // Fetch updated reels in new order
+    const updatedReels = await Reels.find().sort({ order: 1 });
+
+    res.json({
+      success: true,
+      data: updatedReels
+    });
+  } catch (error) {
+    console.error('Error reordering reels:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -117,7 +177,7 @@ router.put('/:id', verifyToken, isClient, async (req, res) => {
     if (description !== undefined) reelFields.description = description;
     if (youtubeLink) {
       // Validate YouTube link
-      const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/reels\/)([^&\s]+)/;
+      const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([^&\s]+)/;
       if (!youtubeRegex.test(youtubeLink)) {
         return res.status(400).json({ 
           success: false, 
@@ -195,6 +255,39 @@ router.delete('/:id', verifyToken, isClient, async (req, res) => {
   }
 });
 
+// Toggle isEnabled flag for a test
+router.patch('/:id', verifyToken, isClient, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    console.log(userId);
+    const id = req.params.id;
+    const { isEnabled } = req.body || {};
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Reel ID is required' });
+    }
+
+    const reel = await Reels.findById(id);
+    if (!reel) {
+        return res.status(404).json({ success: false, message: 'Reel not found' });
+    }
+
+    if (reel.createdBy.toString() !== userId.toString()) {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    } 
+
+    // If body provides isEnabled, use it; otherwise toggle
+    const newValue = typeof isEnabled === 'boolean' ? isEnabled : !reel.isEnabled;
+    reel.isEnabled = newValue;
+
+    await reel.save();
+    return res.status(200).json({ success: true, message: 'Reel isEnabled updated', reel });
+  } catch (error) {
+    console.error('Toggle isEnabled error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update isEnabled', error: error.message });
+  }
+});
+
 // @route   PATCH /api/reels/:id/metrics
 // @desc    Update reel metrics
 // @access  Admin only
@@ -237,5 +330,7 @@ router.patch('/:id/metrics', verifyToken, isClient, async (req, res) => {
     });
   }
 });
+
+
 
 module.exports = router;

@@ -19,6 +19,10 @@ const reelSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  order:{
+    type:Number,
+    default:0
+  },
   metrics: {
     views: {
       type: Number,
@@ -43,6 +47,10 @@ const reelSchema = new mongoose.Schema({
     required: true
   },
   active: {
+    type: Boolean,
+    default: true
+  },
+  isEnabled: {
     type: Boolean,
     default: true
   },
