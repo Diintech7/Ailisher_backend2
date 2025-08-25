@@ -450,4 +450,186 @@ router.patch("/:id/metrics", authenticateMobileUser, ensureUserBelongsToClient, 
   }
 });
 
+// Increment view count
+router.post(
+  "/:id/view",
+  authenticateMobileUser,
+  ensureUserBelongsToClient,
+  async (req, res) => {
+    try {
+      const userId = (req?.user?.id).toString();
+      if (!userId) {
+        return res.status(401).json({ success: false, message: "Unauthorized" });
+      }
+
+      const updated = await Reels.findOneAndUpdate(
+        { _id: req.params.id, viewedBy: { $ne: userId } },
+        { $inc: { "metrics.views": 1 }, $addToSet: { viewedBy: userId } },
+        { new: true }
+      );
+
+      if (!updated) {
+        // Either reel not found or already viewed by this user; fetch to return current state
+        const reel = await Reels.findById(req.params.id);
+        if (!reel) return res.status(404).json({ success: false, message: "Reel not found" });
+        return res.status(200).json({ success: true, data: reel, note: "already_viewed" });
+      }
+
+      return res.status(200).json({ success: true, data: updated });
+    } catch (error) {
+      console.error("Increment view error:", error);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+  }
+);
+
+// Increment like count (idempotency not enforced without user-like tracking)
+router.post(
+  "/:id/like",
+  authenticateMobileUser,
+  ensureUserBelongsToClient,
+  async (req, res) => {
+    try {
+      const userId = (req?.user?.id).toString();
+      if (!userId) {
+        return res.status(401).json({ success: false, message: "Unauthorized" });
+      }
+
+      const { delta } = req.body || {};
+      if (typeof delta === "number") {
+        const incValue = delta;
+        let query;
+        let update;
+
+        if (incValue >= 1) {
+          query = { _id: req.params.id, likedBy: { $ne: userId } };
+          update = { $inc: { "metrics.likes": 1 }, $addToSet: { likedBy: userId } };
+        } else {
+          query = { _id: req.params.id, likedBy: userId };
+          update = { $inc: { "metrics.likes": -1 }, $pull: { likedBy: userId } };
+        }
+
+        const updated = await Reels.findOneAndUpdate(query, update, { new: true });
+
+        if (!updated) {
+          const reel = await Reels.findById(req.params.id);
+          if (!reel) return res.status(404).json({ success: false, message: "Reel not found" });
+          return res.status(200).json({ success: true, data: reel, note: "no_change" });
+        }
+
+        return res.status(200).json({ success: true, data: updated });
+      }
+
+      // Toggle behavior when delta is not provided
+      const liked = await Reels.findOneAndUpdate(
+        { _id: req.params.id, likedBy: { $ne: userId } },
+        { $inc: { "metrics.likes": 1 }, $addToSet: { likedBy: userId } },
+        { new: true }
+      );
+
+      if (liked) {
+        return res.status(200).json({ success: true, data: liked, note: "liked" });
+      }
+
+      const unliked = await Reels.findOneAndUpdate(
+        { _id: req.params.id, likedBy: userId },
+        { $inc: { "metrics.likes": -1 }, $pull: { likedBy: userId } },
+        { new: true }
+      );
+
+      if (unliked) {
+        return res.status(200).json({ success: true, data: unliked, note: "unliked" });
+      }
+
+      const reel = await Reels.findById(req.params.id);
+      if (!reel) return res.status(404).json({ success: false, message: "Reel not found" });
+      return res.status(200).json({ success: true, data: reel, note: "no_change" });
+    } catch (error) {
+      console.error("Increment like error:", error);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+  }
+);
+
+// Increment share count
+router.post(
+  "/:id/share",
+  authenticateMobileUser,
+  ensureUserBelongsToClient,
+  async (req, res) => {
+    try {
+      const updated = await Reels.findByIdAndUpdate(
+        req.params.id,
+        { $inc: { "metrics.shares": 1 } },
+        { new: true }
+      );
+
+      if (!updated) {
+        return res.status(404).json({ success: false, message: "Reel not found" });
+      }
+
+      return res.status(200).json({ success: true, data: updated });
+    } catch (error) {
+      console.error("Increment share error:", error);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+  }
+);
+
+// Increment comment count (use a real comments collection to store content)
+router.post(
+  "/:id/comment",
+  authenticateMobileUser,
+  ensureUserBelongsToClient,
+  async (req, res) => {
+    try {
+      const { text } = req.body || {};
+      if (!text || !text.trim()) {
+        return res.status(400).json({ success: false, message: "Comment text is required" });
+      }
+
+      const update = {
+        $inc: { "metrics.comments": 1 },
+        $push: {
+          commentsList: {
+            text: text.trim(),
+            authorId: req?.user?.id,
+            createdAt: new Date()
+          }
+        }
+      };
+
+      const updated = await Reels.findByIdAndUpdate(req.params.id, update, { new: true });
+
+      if (!updated) {
+        return res.status(404).json({ success: false, message: "Reel not found" });
+      }
+
+      return res.status(200).json({ success: true, data: updated });
+    } catch (error) {
+      console.error("Increment comment error:", error);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+  }
+);
+
+// Fetch comments for a reel
+router.get(
+  "/:id/comments",
+  authenticateMobileUser,
+  ensureUserBelongsToClient,
+  async (req, res) => {
+    try {
+      const reel = await Reels.findById(req.params.id).select("commentsList metrics");
+      if (!reel) {
+        return res.status(404).json({ success: false, message: "Reel not found" });
+      }
+      return res.status(200).json({ success: true, data: reel.commentsList || [] });
+    } catch (error) {
+      console.error("Fetch comments error:", error);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+  }
+);
+
 module.exports = router;

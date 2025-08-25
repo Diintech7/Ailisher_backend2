@@ -47,6 +47,15 @@ const reelSchema = new mongoose.Schema({
       default: 0
     }
   },
+  viewedBy: [{ type: String, index: false }],
+  likedBy: [{ type: String, index: false }],
+  commentsList: [
+    {
+      text: { type: String, trim: true, required: true },
+      authorId: { type: String, trim: true },
+      createdAt: { type: Date, default: Date.now }
+    }
+  ],
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
