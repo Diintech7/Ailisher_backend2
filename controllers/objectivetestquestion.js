@@ -205,6 +205,9 @@ exports.getQuestionsByTestForMobile = async (req, res) => {
             });
         }
 
+        const name = test.name;
+        const totalTime = test.Estimated_time;
+
         // Build query
         const query = { test: testId, isActive: true };
         if (difficulty) {
@@ -225,6 +228,10 @@ exports.getQuestionsByTestForMobile = async (req, res) => {
 
         res.json({
             success: true,
+            test:{
+            name:name,
+            totalTime:totalTime
+            },
             questions,
             pagination: {
                 currentPage: parseInt(page),
