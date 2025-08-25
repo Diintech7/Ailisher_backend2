@@ -82,9 +82,9 @@ exports.createMarketing = async (req, res) => {
         return res.status(400).json({ success: false, message: 'For weblink, route.config.url must be a valid http/https URL' });
       }
     } else if (normalizedRoute.type === 'whatsapp') {
-      const phone = normalizedRoute.config && normalizedRoute.config.phone;
-      if (!phone || !/[0-9]{6,}/.test(String(phone))) {
-        return res.status(400).json({ success: false, message: 'For whatsapp, route.config.phone must be numeric with country code' });
+      const url = normalizedRoute.config && normalizedRoute.config.url;
+      if (!url || !/^https?:\/\//i.test(url)) {
+        return res.status(400).json({ success: false, message: 'For weblink, route.config.url must be a valid http/https URL' });
       }
       // Keep message optional
     }

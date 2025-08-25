@@ -140,6 +140,7 @@ router.get(
   ensureUserBelongsToClient,
   async (req, res) => {
     try {
+      const userId = req.user.id;
       const reels = await Reels.find().sort({ order: 1 });
 
       for (const reel of reels) {
@@ -149,10 +150,19 @@ router.get(
         }
       }
 
+      const data = reels.map((r) => {
+        const obj = r.toObject();
+        const likedBy = Array.isArray(obj.likedBy) ? obj.likedBy : [];
+        obj.isLiked = likedBy.some((id) => id?.toString() === userId?.toString());
+        const viewedBy = Array.isArray(obj.viewedBy) ? obj.viewedBy : [];
+        obj.isViewed = viewedBy.some((id) => id?.toString() === userId?.toString());
+        return obj;
+      });
+
       res.json({
         success: true,
-        count: reels.length,
-        data: reels,
+        count: data.length,
+        data,
       });
     } catch (error) {
       console.error("Error fetching reels:", error);
@@ -528,7 +538,9 @@ router.post(
       );
 
       if (liked) {
-        return res.status(200).json({ success: true, data: liked, note: "liked" });
+        const obj = liked.toObject();
+        obj.isLiked = true;
+        return res.status(200).json({ success: true, data: obj, note: "liked" });
       }
 
       const unliked = await Reels.findOneAndUpdate(
@@ -538,12 +550,16 @@ router.post(
       );
 
       if (unliked) {
-        return res.status(200).json({ success: true, data: unliked, note: "unliked" });
+        const obj = unliked.toObject();
+        obj.isLiked = false;
+        return res.status(200).json({ success: true, data: obj, note: "unliked" });
       }
 
       const reel = await Reels.findById(req.params.id);
       if (!reel) return res.status(404).json({ success: false, message: "Reel not found" });
-      return res.status(200).json({ success: true, data: reel, note: "no_change" });
+      const obj = reel.toObject();
+      obj.isLiked = Array.isArray(obj.likedBy) && obj.likedBy.some((id) => id?.toString() === userId);
+      return res.status(200).json({ success: true, data: obj, note: "no_change" });
     } catch (error) {
       console.error("Increment like error:", error);
       return res.status(500).json({ success: false, message: "Server error" });
