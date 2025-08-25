@@ -1,6 +1,6 @@
 const path = require('path');
 const Marketing = require('../models/Marketing');
-const { generateGetPresignedUrl, generatePresignedUrl } = require('../utils/s3');
+const { generateGetPresignedUrl, generatePresignedUrl } = require('../utils/r2');
 
 
 exports.uploadImage = async (req,res) => {

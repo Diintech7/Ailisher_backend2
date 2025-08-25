@@ -12,12 +12,18 @@ const reelSchema = new mongoose.Schema({
   },
   youtubeLink: {
     type: String,
-    required: true,
+    // required: true,
     trim: true
   },
   youtubeId: {
     type: String,
     trim: true
+  },
+  videoKey: {
+    type:String,
+  },
+  videoUrl: {
+    type:String
   },
   order:{
     type:Number,
@@ -66,7 +72,7 @@ const reelSchema = new mongoose.Schema({
 
 // Helper method to extract YouTube video ID from URL
 reelSchema.pre('save', function(next) {
-  if (this.isModified('youtubeLink')) {
+  if (this.isModified('youtubeLink')&& this.youtubeLink) {
     // Extract YouTube ID from various YouTube URL formats
     const url = this.youtubeLink;
     let videoId = '';
