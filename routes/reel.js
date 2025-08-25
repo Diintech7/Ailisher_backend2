@@ -411,7 +411,7 @@ router.patch("/:id", verifyToken, isClient, async (req, res) => {
 // @route   PATCH /api/reels/:id/metrics
 // @desc    Update reel metrics
 // @access  Admin only
-router.patch("/:id/metrics", verifyToken, isClient, async (req, res) => {
+router.patch("/:id/metrics", authenticateMobileUser, ensureUserBelongsToClient, async (req, res) => {
   try {
     const { views, likes, comments, shares } = req.body;
 
