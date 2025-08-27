@@ -115,6 +115,7 @@ app.use('/api/test-results', testResultsRoutes);
 app.use('/api/paytm',paytmRoutes)
 app.use('/api/reels', require('./routes/reel'))
 app.use('/api/marketing', require('./routes/marketing'))
+app.use('/api/image-generator', require('./routes/ImageGenerator'))
 
 
 
@@ -149,6 +150,16 @@ app.use(
     next()
   },
   require('./routes/reel'),
+)
+
+app.use(
+  "/api/clients/:clientId/mobile/marketing",
+  checkClientAccess(),
+  (req, res, next) => {
+    req.clientId = req.params.clientId
+    next()
+  },
+  require('./routes/marketing'),
 )
 
 app.use(

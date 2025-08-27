@@ -41,8 +41,8 @@ const marketingSchema = new mongoose.Schema({
   },
   imageSize:{
     type: String,
-    required: true,
-    enum: ['1:1','9:16','16:9','4:3','3:4','3:2','2:3','4:5','5:4','5:12','12:5'],
+    // required: true,
+    enum: ['1:1','2:1','9:16','16:9','4:3','3:4','3:2','2:3','4:5','5:4','5:12','12:5'],
     index: true
   },
   location: {
@@ -54,7 +54,7 @@ const marketingSchema = new mongoose.Schema({
   route: {
     type: {
       type: String,
-      enum: ['weblink','whatsapp','plans'],
+      enum: ['weblink','whatsapp','plans','others'],
       required: true
     },
     config: {

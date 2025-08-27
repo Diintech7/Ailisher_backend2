@@ -9,10 +9,15 @@ const {
   deleteMarketing,
   updatePosition,
   toggleActive,
-  uploadImage
+  uploadImage,
+  generateImage,
+  getMarketingForMobile
 } = require('../controllers/marketingController');
+const { authenticateMobileUser, ensureUserBelongsToClient } = require('../middleware/mobileAuth');
 
-router.get('/upload-url',verifyToken, isClient, uploadImage);
+router.get('/',authenticateMobileUser,ensureUserBelongsToClient,getMarketingForMobile);
+
+router.post('/upload-image', verifyToken, isClient, uploadImage);
 
 // @route   POST /api/marketing
 // @desc    Create a new marketing item
@@ -23,6 +28,8 @@ router.post('/',verifyToken, isClient, createMarketing);
 // @desc    Get all marketing items with filters and pagination
 // @access  Client only
 router.get('/',verifyToken, isClient, getMarketing);
+
+
 
 // @route   GET /api/marketing/:id
 // @desc    Get marketing item by ID
@@ -48,5 +55,10 @@ router.patch('/:id/position', verifyToken, isClient, updatePosition);
 // @desc    Toggle marketing item active status
 // @access  Client only
 router.patch('/:id/toggle-active', verifyToken, isClient, toggleActive);
+
+// @route   POST /api/marketing/generate-image
+// @desc    Generate image for marketing item
+// @access  Client only
+router.post('/generate-image', verifyToken, isClient, generateImage);
 
 module.exports = router;

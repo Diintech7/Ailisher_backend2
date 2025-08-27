@@ -1,7 +1,8 @@
 const path = require('path');
 const Marketing = require('../models/Marketing');
-const { generateGetPresignedUrl, generatePresignedUrl } = require('../utils/r2');
-
+const { generateGetPresignedUrl, generatePresignedUrl, deleteObject } = require('../utils/r2');
+const axios = require('axios');
+const FormData = require('form-data');
 
 exports.uploadImage = async (req,res) => {
     try {
@@ -55,10 +56,10 @@ exports.createMarketing = async (req, res) => {
       metadata
     } = req.body;
 
-    if (!name || !category || !imageKey || !imageSize || !imageWidth || !imageHeight) {
+    if (!name || !category || !imageKey || !imageWidth || !imageHeight) {
       return res.status(400).json({
         success: false,
-        message: 'Name, category, imageKey, imageSize, imageWidth, imageHeight are required'
+        message: 'Name, category, imageKey, imageWidth, imageHeight are required'
       });
     }
 
@@ -73,20 +74,28 @@ exports.createMarketing = async (req, res) => {
     if (!normalizedRoute || typeof normalizedRoute !== 'object') {
       return res.status(400).json({ success: false, message: 'Valid route object is required' });
     }
-    if (!normalizedRoute.type || !['weblink','whatsapp','plans'].includes(normalizedRoute.type)) {
+    if (!normalizedRoute.type || !['weblink','whatsapp','other'].includes(normalizedRoute.type)) {
       return res.status(400).json({ success: false, message: 'route.type must be one of weblink, whatsapp' });
     }
-    if (normalizedRoute.type === 'weblink') {
+    if (normalizedRoute.type === 'weblink' || normalizedRoute.type === 'other') {
       const url = normalizedRoute.config && normalizedRoute.config.url;
       if (!url || !/^https?:\/\//i.test(url)) {
         return res.status(400).json({ success: false, message: 'For weblink, route.config.url must be a valid http/https URL' });
       }
     } else if (normalizedRoute.type === 'whatsapp') {
-      const url = normalizedRoute.config && normalizedRoute.config.url;
-      if (!url || !/^https?:\/\//i.test(url)) {
-        return res.status(400).json({ success: false, message: 'For weblink, route.config.url must be a valid http/https URL' });
+      const phone = normalizedRoute.config && normalizedRoute.config.phone;
+      const message = normalizedRoute.config && normalizedRoute.config.message;
+      
+      if (!phone || !/[0-9]{6,}/.test(String(phone))) {
+        return res.status(400).json({ success: false, message: 'For whatsapp, route.config.phone must be a valid phone number' });
       }
-      // Keep message optional
+      
+      // Generate WhatsApp URL
+      const encodedMessage = message ? encodeURIComponent(message) : '';
+      const whatsappUrl = `https://wa.me/${phone.replace(/\D/g, '')}${encodedMessage ? `?text=${encodedMessage}` : ''}`;
+      
+      // Update the route config with the generated URL
+      normalizedRoute.config.url = whatsappUrl;
     }
 
     const marketing = new Marketing({
@@ -127,6 +136,62 @@ exports.createMarketing = async (req, res) => {
 // @desc    Get all marketing items with filters and pagination
 // @access  Client only
 exports.getMarketing = async (req, res) => {
+  try {
+    const {
+      category,
+      isActive,
+      page = 1,
+      limit = 20,
+      search,
+      sortBy = 'position',
+      sortOrder = 'asc'
+    } = req.query;
+
+    const filter = { clientId: req.user.userId };
+    
+    if (category) filter.category = category;
+    if (isActive !== undefined) filter.isActive = isActive === 'true';
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { subcategory: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+
+    const [marketing, total] = await Promise.all([
+      Marketing.find(filter)
+        .sort(sort)
+        .skip(skip)
+        .limit(Number(limit))
+        .lean(),
+      Marketing.countDocuments(filter)
+    ]);
+
+    res.json({
+      success: true,
+      data: marketing,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching marketing items:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+exports.getMarketingForMobile = async (req, res) => {
   try {
     const {
       category,
@@ -223,11 +288,10 @@ exports.updateMarketing = async (req, res) => {
       name,
       category,
       subcategory,
-      imageUrl,
       imageKey,
       imageWidth,
       imageHeight,
-      position,
+      location,
       route,
       isActive,
       metadata
@@ -235,7 +299,7 @@ exports.updateMarketing = async (req, res) => {
 
     const marketing = await Marketing.findOne({
       _id: req.params.id,
-      clientId: req.clientId
+      clientId: req.user.userId
     });
 
     if (!marketing) {
@@ -243,6 +307,31 @@ exports.updateMarketing = async (req, res) => {
         success: false,
         message: 'Marketing item not found'
       });
+    }
+
+    // Handle image update
+    let imageUrl ='';
+    if (imageKey && imageKey !== marketing.imageKey) {
+      // Delete old image if it exists and is different
+      if (marketing.imageKey) {
+        try {
+          await deleteObject(marketing.imageKey);
+          console.log("Successfully deleted old image from S3:", marketing.imageKey);
+        } catch (error) {
+          console.error("Error deleting old image from S3:", error);
+        }
+      }
+
+      // Generate new presigned URL
+      try {
+        imageUrl = await generateGetPresignedUrl(imageKey, 604800);
+      } catch (error) {
+        console.error("Error generating presigned URL for new image:", error);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to generate image URL",
+        });
+      }
     }
 
     const updateFields = {};
@@ -253,7 +342,7 @@ exports.updateMarketing = async (req, res) => {
     if (imageKey !== undefined) updateFields.imageKey = imageKey;
     if (imageWidth !== undefined) updateFields.imageWidth = Number(imageWidth);
     if (imageHeight !== undefined) updateFields.imageHeight = Number(imageHeight);
-    if (position !== undefined) updateFields.position = Number(position);
+    if (location !== undefined) updateFields.location = location;
     if (route !== undefined) updateFields.route = route;
     if (isActive !== undefined) updateFields.isActive = isActive;
     if (metadata !== undefined) updateFields.metadata = metadata;
@@ -286,7 +375,7 @@ exports.deleteMarketing = async (req, res) => {
   try {
     const marketing = await Marketing.findOne({
       _id: req.params.id,
-      clientId: req.clientId
+      clientId: req.user.userId
     });
 
     if (!marketing) {
@@ -296,7 +385,19 @@ exports.deleteMarketing = async (req, res) => {
       });
     }
 
+    // Delete image from R2 if exists
+    if (marketing.imageKey) {
+      try {
+        await deleteObject(marketing.imageKey);
+      } catch (e) {
+        console.error('Failed to delete R2 object for marketing:', marketing.imageKey, e);
+        // continue even if delete fails
+      }
+    }
+
     await Marketing.findByIdAndDelete(req.params.id);
+
+    await deleteObject(marketing.imageKey);
 
     res.json({
       success: true,
@@ -329,7 +430,7 @@ exports.updatePosition = async (req, res) => {
 
     const marketing = await Marketing.findOne({
       _id: req.params.id,
-      clientId: req.clientId
+      clientId: req.user.userId
     });
 
     if (!marketing) {
@@ -364,7 +465,7 @@ exports.toggleActive = async (req, res) => {
   try {
     const marketing = await Marketing.findOne({
       _id: req.params.id,
-      clientId: req.clientId
+      clientId: req.user.userId
     });
 
     if (!marketing) {
@@ -390,4 +491,58 @@ exports.toggleActive = async (req, res) => {
       error: error.message
     });
   }
-};
+}
+
+exports.generateImage = async (req, res) => {
+    const { prompt, style = 'realistic', aspect_ratio = '9:16', seed = '5' } = req.body;
+    
+    if (!prompt) {
+        return res.status(400).json({ 
+            error: 'prompt is required.' 
+        });
+    }
+
+    try {
+        // Create form data for the API request
+        const formData = new FormData();
+        formData.append('prompt', prompt);
+        formData.append('style', style);
+        formData.append('aspect_ratio', aspect_ratio);
+        formData.append('seed', seed);
+
+        const response = await axios.post('https://api.vyro.ai/v2/image/generations', formData, {
+            headers: {
+                'Authorization': `Bearer ${process.env.IMAGINEART_API_KEY}`,
+                ...formData.getHeaders()
+            },
+            responseType: 'arraybuffer',
+            timeout: 900000 // 15 minutes timeout
+        });
+
+        // Convert the image buffer to base64
+        const base64Image = Buffer.from(response.data).toString('base64');
+
+        res.json({
+            success: true,
+            image: base64Image,
+            prompt: prompt,
+            style: style,
+            aspect_ratio: aspect_ratio,
+            seed: seed
+        });
+
+    } catch (error) {
+        console.error('Generate image error:', error);
+        
+        if (error.response) {
+            console.error('ImagineArt API Error:', error.response.data);
+            return res.status(error.response.status).json({ 
+                error: `Failed to generate image: ${error.response.status} ${error.response.statusText}`
+            });
+        }
+        
+        res.status(500).json({ 
+            error: error.message || 'Failed to generate image' 
+        });
+    }
+  }
