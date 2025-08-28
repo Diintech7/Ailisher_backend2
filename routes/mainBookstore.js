@@ -4,6 +4,7 @@ const router = express.Router();
 const Book = require("../models/Book");
 const Chapter = require("../models/Chapter");
 const Topic = require("../models/Topic");
+const Reel = require("../models/Reels");
 const {
   checkClientAccess,
   authenticateMobileUser,
@@ -64,6 +65,24 @@ router.get("/", authenticateMobileUser, async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
+
+    // New: Get reels for homepage (active/enabled)
+    const reels = await Reel.find({ active: true, isEnabled: true, isPopular:true })
+      .sort({ order: 1})
+      .limit(parseInt(limit));
+
+    const formatReel = (reel) => ({
+      reel_id: reel._id.toString(),
+      title: reel.title,
+      description: reel.description || "",
+      youtube_link: reel.youtubeLink || "",
+      youtube_id: reel.youtubeId || "",
+      video_key: reel.videoKey || "",
+      video_url: reel.videoUrl || "",
+      order: reel.order || 0,
+      metrics: reel.metrics || { views: 0, likes: 0, comments: 0, shares: 0 },
+      created_at: reel.createdAt,
+    });
 
     // Format response for homepage
     const formatBookForHomepage = (book) => ({
@@ -161,6 +180,7 @@ router.get("/", authenticateMobileUser, async (req, res) => {
         highlighted: highlightedBooks.map(formatBookForHomepage),
         trending: trendingBooks.map(formatBookForHomepage),
         recent: recentBooks.map(formatBookForHomepage),
+        reels: reels.map(formatReel),
         categories: categoriesWithBooks,
         totalBooks: totalBooks,
         pagination: {

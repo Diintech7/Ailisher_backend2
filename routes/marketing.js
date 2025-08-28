@@ -11,13 +11,16 @@ const {
   toggleActive,
   uploadImage,
   generateImage,
-  getMarketingForMobile
+  getMarketingForMobile,
+  importAiImage
 } = require('../controllers/marketingController');
 const { authenticateMobileUser, ensureUserBelongsToClient } = require('../middleware/mobileAuth');
 
-router.get('/',authenticateMobileUser,ensureUserBelongsToClient,getMarketingForMobile);
+// Mobile consumers should use a distinct path to avoid conflicting with client routes
+router.get('/user',authenticateMobileUser,ensureUserBelongsToClient,getMarketingForMobile);
 
 router.post('/upload-image', verifyToken, isClient, uploadImage);
+router.post('/import-ai-image', verifyToken, isClient, importAiImage);
 
 // @route   POST /api/marketing
 // @desc    Create a new marketing item

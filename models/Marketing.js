@@ -42,7 +42,7 @@ const marketingSchema = new mongoose.Schema({
   imageSize:{
     type: String,
     // required: true,
-    enum: ['1:1','2:1','9:16','16:9','4:3','3:4','3:2','2:3','4:5','5:4','5:12','12:5'],
+    enum: ['1:1','9:16','16:9','4:3'],
     index: true
   },
   location: {
@@ -91,6 +91,7 @@ marketingSchema.index({ clientId: 1, isActive: 1, category: 1 });
 // Helper: map size label to aspect ratio
 const SIZE_TO_RATIO = {
   '1:1': 1,
+  '2:1':2/1,
   '9:16': 9/16,
   '16:9': 16/9,
   '4:3': 4/3,
@@ -104,40 +105,40 @@ const SIZE_TO_RATIO = {
 };
 
 // Validation: ensure image dimensions roughly match selected size
-marketingSchema.pre('validate', function(next) {
-  try {
-    if (this.imageWidth && this.imageHeight && this.imageSize) {
-      const target = SIZE_TO_RATIO[this.imageSize];
-      if (target) {
-        const actual = this.imageWidth / this.imageHeight;
-        const epsilon = 0.03; // 3% tolerance
-        const within = Math.abs(actual - target) / target <= epsilon;
-        if (!within) {
-          return next(new Error(`Image dimensions ${this.imageWidth}x${this.imageHeight} do not match selected size ${this.imageSize}`));
-        }
-      }
-    }
+// marketingSchema.pre('validate', function(next) {
+//   try {
+//     if (this.imageWidth && this.imageHeight && this.imageSize) {
+//       const target = SIZE_TO_RATIO[this.imageSize];
+//       if (target) {
+//         const actual = this.imageWidth / this.imageHeight;
+//         const epsilon = 0.03; // 3% tolerance
+//         const within = Math.abs(actual - target) / target <= epsilon;
+//         if (!within) {
+//           return next(new Error(`Image dimensions ${this.imageWidth}x${this.imageHeight} do not match selected size ${this.imageSize}`));
+//         }
+//       }
+//     }
 
-    // Route config validation
-    if (this.route && this.route.type) {
-      if (this.route.type === 'weblink') {
-        const url = this.route.config && this.route.config.url;
-        if (!url || !/^https?:\/\//i.test(url)) {
-          return next(new Error('For route type "weblink", a valid http/https URL is required at route.config.url'));
-        }
-      }
-      if (this.route.type === 'whatsapp') {
-        const phone = this.route.config && this.route.config.phone;
-        if (!phone || !/[0-9]{6,}/.test(String(phone))) {
-          return next(new Error('For route type "whatsapp", a numeric phone is required at route.config.phone'));
-        }
-      }
-    }
+//     // Route config validation
+//     if (this.route && this.route.type) {
+//       if (this.route.type === 'weblink') {
+//         const url = this.route.config && this.route.config.url;
+//         if (!url || !/^https?:\/\//i.test(url)) {
+//           return next(new Error('For route type "weblink", a valid http/https URL is required at route.config.url'));
+//         }
+//       }
+//       if (this.route.type === 'whatsapp') {
+//         const phone = this.route.config && this.route.config.phone;
+//         if (!phone || !/[0-9]{6,}/.test(String(phone))) {
+//           return next(new Error('For route type "whatsapp", a numeric phone is required at route.config.phone'));
+//         }
+//       }
+//     }
 
-    return next();
-  } catch (e) {
-    return next(e);
-  }
-});
+//     return next();
+//   } catch (e) {
+//     return next(e);
+//   }
+// });
 
 module.exports = mongoose.model('Marketing', marketingSchema);

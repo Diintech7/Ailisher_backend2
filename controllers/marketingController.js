@@ -1,8 +1,9 @@
 const path = require('path');
 const Marketing = require('../models/Marketing');
-const { generateGetPresignedUrl, generatePresignedUrl, deleteObject } = require('../utils/r2');
+const { generateGetPresignedUrl, generatePresignedUrl, deleteObject, s3Client } = require('../utils/r2');
 const axios = require('axios');
 const FormData = require('form-data');
+const { CopyObjectCommand } = require('@aws-sdk/client-s3');
 
 exports.uploadImage = async (req,res) => {
     try {
@@ -36,6 +37,37 @@ exports.uploadImage = async (req,res) => {
         return res.status(500).json({ success: false, message: 'Server Error' });
       }
 }
+
+// Import an AI-generated image from generator folder into Marketing namespace via R2 copy
+// Body: { sourceKey: string }
+exports.importAiImage = async (req, res) => {
+  try {
+    const { sourceKey } = req.body;
+    if (!sourceKey || typeof sourceKey !== 'string') {
+      return res.status(400).json({ success: false, message: 'sourceKey is required' });
+    }
+
+    // Sanitize keys and build destination key
+    const safeSourceKey = sourceKey.replace(/^\/+|\/+$/g, '');
+    const destKey = `${req.user.businessName}/Marketing/ai-imports/ai-${Date.now()}-${Math.random().toString(36).slice(2,8)}.png`;
+
+    // Copy within bucket
+    await s3Client.send(new CopyObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      CopySource: `/${process.env.R2_BUCKET_NAME}/${safeSourceKey}`,
+      Key: destKey,
+    }));
+
+    // Return a presigned GET URL for previewing/using
+    const url = await generateGetPresignedUrl(destKey, 7 * 24 * 60 * 60);
+
+    return res.json({ success: true, key: destKey, url });
+  } catch (error) {
+    console.error('Import AI image error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Failed to import image' });
+  }
+};
+
 // @route   POST /api/marketing
 // @desc    Create a new marketing item
 // @access  Client only
