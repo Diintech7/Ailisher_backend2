@@ -5,6 +5,8 @@ const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const ffprobeStatic = require('ffprobe-static');
 const https = require('https');
 const http = require('http');
+const axios = require('axios');
+const { Readable } = require('stream');
 
 // Set FFmpeg paths (reuse setup pattern from video controller)
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
@@ -30,36 +32,13 @@ const cleanTextForDrawtext = (text) => {
     .trim();
 };
 
-// NOTE: Hindi detection and handling removed; English-only overlay
-
-const downloadFile = (url, filepath) => {
-  return new Promise((resolve, reject) => {
-    const protocol = url.startsWith('https:') ? https : http;
-    const file = fs.createWriteStream(filepath);
-    protocol.get(url, (response) => {
-      response.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        resolve(filepath);
-      });
-    }).on('error', (err) => {
-      fs.unlink(filepath, () => {});
-      reject(err);
-    });
-  });
-};
-
-// Removed Hindi font path resolution; English-only overlay
-
 // Normalize file path for FFmpeg filter (escape drive colon and use forward slashes)
 const toFilterPath = (absolutePath) => {
   const withForward = absolutePath.replace(/\\/g, '/');
   return withForward.replace(/^([A-Za-z]):/, '$1\\:');
 };
 
-// Removed Hindi-specific filter; English-only overlay will set fontfile/textfile directly
-
-// Controller: overlay text on a single image (base64 or URL)
+// Controller: overlay text on a single image (base64 or URL) using in-memory streams
 // Request body: { imageBase64?: string, imageUrl?: string, text: string, fontsize?: number, color?: string, bgColor?: string, bgOpacity?: number }
 const overlayTextOnImage = async (req, res) => {
   try {
@@ -71,29 +50,19 @@ const overlayTextOnImage = async (req, res) => {
       return res.status(400).json({ error: 'Provide overlay text' });
     }
 
-    const tempDir = path.join(__dirname, '../temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    const inputPath = path.join(tempDir, `input_${Date.now()}.png`);
-    const outputPath = path.join(tempDir, `output_${Date.now()}.png`);
-
+    // Build input buffer from base64 or fetched URL
+    let inputBuffer;
     if (imageBase64) {
-      const buffer = Buffer.from(imageBase64, 'base64');
-      fs.writeFileSync(inputPath, buffer);
-    } else if (imageUrl) {
-      await downloadFile(imageUrl, inputPath);
+      inputBuffer = Buffer.from(imageBase64, 'base64');
+    } else {
+      const resp = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+      inputBuffer = Buffer.from(resp.data);
     }
 
     const clean = cleanTextForDrawtext(text);
     if (!clean.trim()) {
       return res.status(400).json({ error: 'Text is empty after cleaning' });
     }
-
-    // Write text to a temporary UTF-8 file to avoid quoting issues
-    const textfilePath = path.join(tempDir, `overlay_text_${Date.now()}.txt`);
-    fs.writeFileSync(textfilePath, clean, { encoding: 'utf8' });
 
     // Normalize color: accept CSS hex like #RRGGBB or simple names; default to white
     const normalizeColor = (c) => {
@@ -103,7 +72,6 @@ const overlayTextOnImage = async (req, res) => {
         const hex = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
         return `0x${hex.toUpperCase()}`;
       }
-      // basic names fallback
       return trimmed.toLowerCase();
     };
     const fontColor = normalizeColor(color);
@@ -130,44 +98,64 @@ const overlayTextOnImage = async (req, res) => {
           '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf'
         ];
 
-    let latinFont = latinCandidates.find(p => fs.existsSync(p)) || null;
+    const latinFont = latinCandidates.find(p => fs.existsSync(p)) || null;
     const size = Number.isFinite(Number(fontsize)) ? Number(fontsize) : 48;
     const posX = '(w-text_w)/2';
     const posY = '120';
+
+    // Write drawtext content to a temporary UTF-8 file (safer than inline escaping)
+    const tempDir = path.join(__dirname, '../temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const textfilePath = path.join(tempDir, `overlay_text_${Date.now()}.txt`);
+    fs.writeFileSync(textfilePath, clean, { encoding: 'utf8' });
     const textfile = toFilterPath(textfilePath);
 
-    // Build optional box options only when opacity > 0
     const boxOptions = boxAlpha > 0
       ? `:box=1:boxcolor=${boxBaseColor}@${boxAlpha}:boxborderw=12`
       : '';
 
-    // Build drawtext filter
-    const baseDrawtext = latinFont
+    const drawtext = latinFont
       ? `drawtext=textfile='${textfile}':fontfile='${toFilterPath(latinFont)}':fontcolor=${fontColor}:fontsize=${size}${boxOptions}:x=${posX}:y=${posY}`
       : `drawtext=textfile='${textfile}':fontcolor=${fontColor}:fontsize=${size}${boxOptions}:x=${posX}:y=${posY}`;
 
+    // Process entirely in-memory using streams (only the text is on disk)
+    const inputStream = Readable.from(inputBuffer);
+    const chunks = [];
+
     await new Promise((resolve, reject) => {
-      ffmpeg()
-        .input(inputPath)
+      const command = ffmpeg()
+        .input(inputStream)
+        .inputOptions(['-f', 'image2pipe'])
         .outputOptions([
-          '-vf', baseDrawtext,
+          '-vf', drawtext,
           '-frames:v', '1',
-          '-y'
+          '-vcodec', 'png'
         ])
-        .output(outputPath)
+        .format('image2pipe')
         .on('start', (cmd) => { console.log('FFmpeg image overlay command:', cmd); })
-        .on('end', resolve)
-        .on('error', reject)
-        .run();
+        .on('error', (err) => {
+          try { if (fs.existsSync(textfilePath)) fs.unlinkSync(textfilePath); } catch (e) {}
+          reject(err);
+        })
+        .on('end', () => {
+          try { if (fs.existsSync(textfilePath)) fs.unlinkSync(textfilePath); } catch (e) {}
+          resolve();
+        });
+
+      const ffstream = command.pipe();
+      ffstream.on('data', (c) => chunks.push(c));
+      ffstream.on('error', (err) => {
+        try { if (fs.existsSync(textfilePath)) fs.unlinkSync(textfilePath); } catch (e) {}
+        reject(err);
+      });
     });
 
-    const outBuffer = fs.readFileSync(outputPath);
+    const outBuffer = Buffer.concat(chunks);
     const base64 = outBuffer.toString('base64');
 
-    // cleanup temp files (best-effort)
-    [inputPath, textfilePath].forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (e) {} });
-
-    return res.json({ success: true, image: base64, outputPath });
+    return res.json({ success: true, image: base64 });
   } catch (error) {
     console.error('Image text overlay error:', error);
     return res.status(500).json({ error: 'Failed to overlay text on image', details: error.message });
