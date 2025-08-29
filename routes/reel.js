@@ -174,6 +174,33 @@ router.get(
   }
 );
 
+router.get('/popular',async(req,res)=>{
+  try{
+    const reels = await Reels.find({ active: true, isEnabled: true, isPopular:true })
+    .sort({ order: 1})
+    for(const reel of reels){
+      if(reel.videoKey){
+        let videoUrl = "";
+        videoUrl = await generateGetPresignedUrl(reel.videoKey);
+        reel.videoUrl = videoUrl;
+      }
+    }
+
+    res.json({
+      success: true,
+      count: reels.length,
+      data:reels,
+    });
+  }
+  catch(error){
+    console.error("Error fetching popular reels:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+})
+
 router.patch("/reorder", verifyToken, isClient, async (req, res) => {
   try {
     const { reels } = req.body;
