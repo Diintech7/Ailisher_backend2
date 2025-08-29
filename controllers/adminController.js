@@ -551,13 +551,14 @@ exports.getCreditAccountById = async (req, res) => {
 
 exports.getCreditRechargePlans = async (req,res) => {
   try {
+    const clientId = req.params.id;
     if (!req.admin){
       return res.status(403).json({
         success : false,
         message : 'Admin access required'
       })
     }
-    const plans = await CreditRechargePlan.find().sort({ createdAt: -1 });
+    const plans = await CreditRechargePlan.find({clientId}).sort({ createdAt: -1 });
 
     res.json({
       success : true,

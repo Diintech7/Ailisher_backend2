@@ -44,7 +44,7 @@ router.get('/credit-account',verifyAdminToken, adminController.getCreditAccount)
 
 router.get('/credit-account/:id',verifyAdminToken, adminController.getCreditAccountById);
 
-router.get('/get-recharge-plan',verifyAdminToken, adminController.getCreditRechargePlans);
+router.get('/:id/get-recharge-plan',verifyAdminToken, adminController.getCreditRechargePlans);
 
 // 1. Initialize Payment
 router.post('/paytm/initiate',async (req, res) => {
@@ -89,7 +89,7 @@ router.post('/paytm/initiate',async (req, res) => {
         ORDER_ID: orderId,
         CUST_ID: customerEmail,
         TXN_AMOUNT: parseFloat(amount).toFixed(2),
-        CALLBACK_URL: 'http://localhost:5000/api/admin/paytm/callback',
+        CALLBACK_URL: 'https://aipbbackend-yxnh.onrender.com/api/admin/paytm/callback',
         EMAIL: customerEmail,
         MOBILE_NO: customerPhone
       };
