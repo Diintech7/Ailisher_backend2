@@ -356,7 +356,7 @@ exports.updateMarketing = async (req, res) => {
 
       // Generate new presigned URL
       try {
-        imageUrl = await generateGetPresignedUrl(imageKey, 604800);
+        imageUrl = await generateGetPresignedUrl(imageKey);
       } catch (error) {
         console.error("Error generating presigned URL for new image:", error);
         return res.status(500).json({

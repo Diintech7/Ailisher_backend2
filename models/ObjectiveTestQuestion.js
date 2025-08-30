@@ -35,13 +35,19 @@ const objectiveTestQuestionSchema = new mongoose.Schema({
   negativeMarks: {  
     type: Number,
     required: true,
-    default: 0
+    default: 0.33
   },
   // Reference to the question set this question belongs to
   test: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ObjectiveTest',
-    required: true
+    // required: true
+  },
+  // Reference to the question set this question belongs to
+  questionBank: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'QuestionBank',
+    // required: true
   },
   // Additional metadata
   tags: [{
