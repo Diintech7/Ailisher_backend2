@@ -295,6 +295,7 @@ exports.createQuestion = async (req, res) => {
 exports.getQuestions = async (req, res) => {
     try {
         const clientId = req.user.userId;
+        console.log(clientId);
         const client = await User.findOne({userId:clientId});
         if(!client){
             return res.status(404).json({
@@ -302,12 +303,13 @@ exports.getQuestions = async (req, res) => {
                 message:"client not found"
             })  
         }
-        const { questionBankId } = req.params;
+        const questionBankId = req.params.id;
+        console.log(questionBankId);
         const { difficulty, page = 1, limit = 150 } = req.query;
 
         // Validate test exists
-        const test = await QuestionBank.findById(questionBankId);
-        if (!test) {
+        const questionBank = await QuestionBank.findById(questionBankId);
+        if (!questionBank) {
             return res.status(404).json({
                 success: false,
                 message: "Question Bank not found"
