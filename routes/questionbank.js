@@ -1,6 +1,6 @@
 const express = require('express');
 const {verifyToken,isClient} = require('../middleware/auth');
-const { createQuestionBank, getQuestionBanks, getQuestionBankById, uploadImage, updateQuestionBank, deleteQuestionBank, updateCoverImage, createQuestion, getQuestionsByTest, updateQuestion, deleteQuestion, getQuestions } = require('../controllers/questionBank');
+const { createQuestionBank, getQuestionBanks, getQuestionBankById, uploadImage, updateQuestionBank, deleteQuestionBank, updateCoverImage, createQuestion, getQuestionsByTest, updateQuestion, deleteQuestion, getQuestions, bulkDeleteQuestions } = require('../controllers/questionBank');
 const multer= require('multer');
 const { extractTextFromFile } = require('../controllers/questionbanktextextract');
 const { cleanExtractedText, cleanExtractedTextStream } = require('../controllers/questionbankcleantext');
@@ -32,6 +32,9 @@ router.put('/:id/question',verifyToken,isClient,updateQuestion );
 
 // Delete a question
 router.delete('/:id/question',verifyToken,isClient,deleteQuestion );
+
+// Bulk delete questions
+router.delete('/:id/questions/bulk',verifyToken,isClient,bulkDeleteQuestions );
 
 // Configure multer for memory storage (no file saved to disk)
 const upload = multer({

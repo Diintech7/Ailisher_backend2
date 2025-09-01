@@ -188,7 +188,8 @@ exports.createQuestion = async (req, res) => {
             solution,
         } = req.body;
         const questionBankId = req.params.id;
-
+        console.log(req.body);
+        console.log(req.params.id);
         // Validate required fields
         if (!question || !options || !Array.isArray(options) || options.length < 2) {
             return res.status(400).json({
@@ -359,7 +360,7 @@ exports.getQuestions = async (req, res) => {
 // Update a question
 exports.updateQuestion = async (req, res) => {
     try {
-        const { questionId } = req.params;
+        const questionId = req.params.id;
         const {
             question,
             options,
@@ -428,7 +429,7 @@ exports.updateQuestion = async (req, res) => {
             questionId,
             updateData,
             { new: true, runValidators: true }
-        ).populate('test', 'name');
+        ).populate('questionBank', 'name');
 
         res.json({
             success: true,
@@ -449,7 +450,7 @@ exports.updateQuestion = async (req, res) => {
 // Delete a question
 exports.deleteQuestion = async (req, res) => {
     try {
-        const { questionId } = req.params;
+        const questionId = req.params.id;
 
         const question = await ObjectiveTestQuestion.findById(questionId);
         if (!question) {
@@ -462,12 +463,6 @@ exports.deleteQuestion = async (req, res) => {
         // Soft delete by setting isActive to false
         await ObjectiveTestQuestion.findByIdAndUpdate(questionId, { isActive: false });
 
-        // Remove question from any sets
-      await ObjectiveTest.updateMany(
-        { questions: questionId },
-        { $pull: { questions: questionId } }
-      );
-
         res.json({
             success: true,
             message: "Question deleted successfully"
@@ -475,6 +470,57 @@ exports.deleteQuestion = async (req, res) => {
 
     } catch (error) {
         console.error('Error deleting question:', error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// Bulk delete questions
+exports.bulkDeleteQuestions = async (req, res) => {
+    try {
+        const { questionIds } = req.body;
+        const questionBankId = req.params.id;
+
+        if (!questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Question IDs array is required"
+            });
+        }
+
+        // Validate that all questions exist and belong to the question bank
+        const questions = await ObjectiveTestQuestion.find({
+            _id: { $in: questionIds },
+            questionBank: questionBankId,
+            isActive: true
+        });
+
+        if (questions.length !== questionIds.length) {
+            return res.status(400).json({
+                success: false,
+                message: "Some questions not found or don't belong to this question bank",
+                found: questions.length,
+                requested: questionIds.length
+            });
+        }
+
+        // Soft delete all questions by setting isActive to false
+        const result = await ObjectiveTestQuestion.updateMany(
+            { _id: { $in: questionIds } },
+            { isActive: false }
+        );
+
+        res.json({
+            success: true,
+            message: `${result.modifiedCount} questions deleted successfully`,
+            deletedCount: result.modifiedCount
+        });
+
+    } catch (error) {
+        console.error('Error bulk deleting questions:', error);
         res.status(500).json({
             success: false,
             message: "Internal server error",
