@@ -24,7 +24,7 @@ const UserProfileSchema = new mongoose.Schema({
   },
   exams: [{
     type: String,
-    enum: ['UPSC', 'CA', 'CMA', 'CS', 'ACCA', 'CFA', 'FRM', 'NEET', 'JEE', 'GATE', 'CAT', 'GMAT', 'GRE', 'IELTS', 'TOEFL', 'NET/JRF', 'BPSC', 'UPPCS', 'NDA','SSC', 'Teacher', 'CLAT','Judiciary', 'Other']
+    enum: ['UPSC','JPSC','MPPCS','RAS', 'CA', 'CMA', 'CS', 'ACCA', 'CFA', 'FRM', 'NEET', 'JEE', 'GATE', 'CAT', 'GMAT', 'GRE', 'IELTS', 'TOEFL', 'NET/JRF', 'BPSC', 'UPPCS', 'NDA','SSC', 'Teacher', 'CLAT','Judiciary', 'Other']
   }],
   nativeLanguage: {
     type: String,
