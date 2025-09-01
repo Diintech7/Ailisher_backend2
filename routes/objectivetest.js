@@ -51,4 +51,13 @@ router.patch('/:id', testController.toggleIsEnabled);
 // Delete a test
 router.delete('/:id', testController.deleteTest);
 
+// Add questions from question bank to test
+router.post('/:id/questions', testController.addQuestionsToTest);
+
+// Remove questions from test
+router.delete('/:id/questions', testController.removeQuestionsFromTest);
+
+// Copy a test
+router.post('/:id/copy', testController.copyTest);
+
 module.exports = router; 

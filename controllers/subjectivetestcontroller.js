@@ -878,3 +878,56 @@ exports.submitTest = async (req, res) => {
     });
   }
 };
+
+// Copy a test
+exports.copyTest = async (req, res) => {
+  try {
+    const testId = req.params.id;
+    const { name, description } = req.body;
+
+    // Find the original test
+    const originalTest = await Test.findById(testId);
+    if (!originalTest) {
+      return res.status(404).json({
+        success: false,
+        message: "Test not found"
+      });
+    }
+
+    // Create new test data
+    const newTestData = {
+      name: name || `${originalTest.name}_Copy`,
+      description: description || originalTest.description,
+      clientId: req.user.userId,
+      category: originalTest.category,
+      subcategory: originalTest.subcategory,
+      Estimated_time: originalTest.Estimated_time,
+      // Don't copy the image to avoid conflicts when deleting
+      imageKey: null,
+      imageUrl: null,
+      isTrending: false,
+      isHighlighted: false,
+      isActive: true,
+      isEnabled: true,
+      instructions: originalTest.instructions,
+    };
+
+    // Create the new test
+    const newTest = new Test(newTestData);
+    const savedTest = await newTest.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Test copied successfully",
+      test: savedTest
+    });
+
+  } catch (error) {
+    console.error('Error copying test:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};

@@ -30,6 +30,9 @@ router.delete('/:id', verifyToken, testController.deleteTest);
 // // Get a specific test by ID
 router.get('/:id', verifyToken, testController.getTest);
 
+// Copy a test
+router.post('/:id/copy',verifyToken, testController.copyTest);
+
 // In your routes
 router.post('/tests/:testId/start', authenticateMobileUser, testController.startTest);
 

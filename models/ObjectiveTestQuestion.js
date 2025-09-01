@@ -54,6 +54,14 @@ const objectiveTestQuestionSchema = new mongoose.Schema({
     type: String,
     trim: true
   }],
+  subject:{
+    type:String,
+    trim:true
+  },
+  topic:{
+    type:String,
+    trim:true
+  },
   isActive: {
     type: Boolean,  
     default: true

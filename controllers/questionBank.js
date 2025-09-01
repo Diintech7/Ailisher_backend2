@@ -42,7 +42,8 @@ exports.createQuestionBank = async (req, res) => {
   try {
     const userId = req.user._id;
     const clientId = req.user.clientId;
-    let { title, description, coverImageKey, category, subcategory,type } = req.body;
+    let { title, description, coverImageKey, category, subcategory, type } =
+      req.body;
     if (!title || !description) {
       return res.status(400).json({
         success: false,
@@ -61,15 +62,15 @@ exports.createQuestionBank = async (req, res) => {
       category,
       subcategory,
       type,
-      createdBy:userId,
-      status:'draft'
+      createdBy: userId,
+      status: "draft",
     });
 
     res.status(201).json({
-        success:true,
-        message:"successfully created question bank",
-        data:questionBank
-    })
+      success: true,
+      message: "successfully created question bank",
+      data: questionBank,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -77,12 +78,10 @@ exports.createQuestionBank = async (req, res) => {
 
 exports.getQuestionBanks = async (req, res) => {
   try {
-    const clientId = req.user.clientId;
-    const banks = await QuestionBank.find({clientId});
-    for(const bank of banks)
-    {
-      if(bank.coverImageKey)
-      {
+    const createdBy = req.user._id;
+    const banks = await QuestionBank.find({ createdBy });
+    for (const bank of banks) {
+      if (bank.coverImageKey) {
         bank.coverImageUrl = await generateGetPresignedUrl(bank.coverImageKey);
       }
     }
@@ -95,13 +94,14 @@ exports.getQuestionBanks = async (req, res) => {
 exports.getQuestionBankById = async (req, res) => {
   try {
     const bank = await QuestionBank.findById(req.params.id);
-    if (!bank) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!bank)
+      return res.status(404).json({ success: false, message: "Not found" });
 
     if (bank.coverImageKey) {
       bank.coverImageUrl = await generateGetPresignedUrl(bank.coverImageKey);
     }
 
-    res.json({ success: true, data: bank});
+    res.json({ success: true, data: bank });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -112,13 +112,14 @@ exports.updateQuestionBank = async (req, res) => {
     const { id } = req.params;
     const { title, description, type, category, subcategory } = req.body;
     const bank = await QuestionBank.findById(id);
-    if (!bank) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!bank)
+      return res.status(404).json({ success: false, message: "Not found" });
 
-    if (typeof title === 'string') bank.title = title;
-    if (typeof description === 'string') bank.description = description;
-    if (typeof type === 'string') bank.type = type;
-    if (typeof category === 'string') bank.category = category;
-    if (typeof subcategory === 'string') bank.subcategory = subcategory;
+    if (typeof title === "string") bank.title = title;
+    if (typeof description === "string") bank.description = description;
+    if (typeof type === "string") bank.type = type;
+    if (typeof category === "string") bank.category = category;
+    if (typeof subcategory === "string") bank.subcategory = subcategory;
 
     await bank.save();
 
@@ -136,13 +137,20 @@ exports.deleteQuestionBank = async (req, res) => {
   try {
     const { id } = req.params;
     const bank = await QuestionBank.findById(id);
-    if (!bank) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!bank)
+      return res.status(404).json({ success: false, message: "Not found" });
     await QuestionBank.deleteOne({ _id: id });
     if (bank.coverImageKey) {
-      const formattedKey = bank.coverImageKey.startsWith('/') ? bank.coverImageKey.slice(1) : bank.coverImageKey;
-      try { await deleteObject(formattedKey); } catch (e) { console.error('Delete old cover failed:', e?.message || e); }
+      const formattedKey = bank.coverImageKey.startsWith("/")
+        ? bank.coverImageKey.slice(1)
+        : bank.coverImageKey;
+      try {
+        await deleteObject(formattedKey);
+      } catch (e) {
+        console.error("Delete old cover failed:", e?.message || e);
+      }
     }
-    res.json({ success: true, message: 'Deleted successfully' });
+    res.json({ success: true, message: "Deleted successfully" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -152,16 +160,26 @@ exports.updateCoverImage = async (req, res) => {
   try {
     const { id } = req.params;
     const { key } = req.body;
-    if (!key) return res.status(400).json({ success: false, message: 'key is required' });
+    if (!key)
+      return res
+        .status(400)
+        .json({ success: false, message: "key is required" });
     const bank = await QuestionBank.findById(id);
-    if (!bank) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!bank)
+      return res.status(404).json({ success: false, message: "Not found" });
 
     if (bank.coverImageKey) {
-      const oldKey = bank.coverImageKey.startsWith('/') ? bank.coverImageKey.slice(1) : bank.coverImageKey;
-      try { await deleteObject(oldKey); } catch (e) { console.error('Delete old cover failed:', e?.message || e); }
+      const oldKey = bank.coverImageKey.startsWith("/")
+        ? bank.coverImageKey.slice(1)
+        : bank.coverImageKey;
+      try {
+        await deleteObject(oldKey);
+      } catch (e) {
+        console.error("Delete old cover failed:", e?.message || e);
+      }
     }
 
-    const formattedKey = key.startsWith('/') ? key.slice(1) : key;
+    const formattedKey = key.startsWith("/") ? key.slice(1) : key;
     bank.coverImageKey = formattedKey;
     bank.coverImageUrl = await generateGetPresignedUrl(formattedKey);
     await bank.save();
@@ -171,361 +189,411 @@ exports.updateCoverImage = async (req, res) => {
   }
 };
 
-const ObjectiveTestQuestion = require('../models/ObjectiveTestQuestion');
-const ObjectiveTest = require('../models/ObjectiveTest');
-const User = require('../models/User');
+const ObjectiveTestQuestion = require("../models/ObjectiveTestQuestion");
+const ObjectiveTest = require("../models/ObjectiveTest");
+const User = require("../models/User");
 
 exports.createQuestion = async (req, res) => {
-    try {
-        const {
-            question,
-            options,
-            correctOption,
-            difficulty,
-            estimatedTime,
-            positiveMarks,
-            negativeMarks,
-            solution,
-        } = req.body;
-        const questionBankId = req.params.id;
-        console.log(req.body);
-        console.log(req.params.id);
-        // Validate required fields
-        if (!question || !options || !Array.isArray(options) || options.length < 2) {
-            return res.status(400).json({
-                success: false,
-                message: "Question and at least 2 options are required"
-            });
-        }
-
-        if (correctOption === undefined || correctOption < 0 || correctOption >= options.length) {
-            return res.status(400).json({
-                success: false,
-                message: "Valid correct option index is required"
-            });
-        }
-
-        if (!questionBankId) {
-            return res.status(400).json({
-                success: false,
-                message: "Test ID is required"
-            });
-        }
-
-        // Validate client
-        const clientId = req.user.userId;
-        const client = await User.findOne({ userId: clientId });
-        if (!client) {
-            return res.status(404).json({
-                success: false,
-                message: "Client not found"
-            });
-        }
-
-        // Validate test exists
-        const questionBank = await QuestionBank.findById(questionBankId);
-        if (!questionBank) {
-            return res.status(404).json({
-                success: false,
-                message: "Test not found"
-            });
-        }
-
-        // Create question data
-        const questionData = {
-            question: question.trim(),
-            options: options.filter(opt => opt && opt.trim()).map(opt => opt.trim()),
-            correctAnswer: correctOption,
-            difficulty: difficulty || 'L1',
-            estimatedTime: estimatedTime || 1,
-            positiveMarks: positiveMarks || 1,
-            negativeMarks: negativeMarks || 0.33,
-            questionBank: questionBankId,
-            createdBy: req.user.id
-        };
-
-        // Handle solution if provided
-        if (solution) {
-            questionData.solution = {
-                type: solution.type || 'text',
-                text: solution.text || "",
-                video: {
-                    url: solution.video?.url || "",
-                    title: solution.video?.title || "",
-                    description: solution.video?.description || "",
-                    duration: solution.video?.duration || 0
-                },
-                image: {
-                    url: solution.image?.url || "",
-                    caption: solution.image?.caption || ""
-                }
-            };
-        }
-
-        // Create the question
-        const newQuestion = new ObjectiveTestQuestion(questionData);
-        const savedQuestion = await newQuestion.save();
-
-        // If testId provided, add question to test
-        // if (questionBankId) {
-        //     await ObjectiveTest.findByIdAndUpdate(
-        //       questionBankId,
-        //       { $push: { questions: savedQuestion._id } }
-        //     );
-        //   }
-        // Populate the test reference for response
-        await savedQuestion.populate('questionBank', 'name');
-
-        res.status(201).json({
-            success: true,
-            message: "Question created successfully",
-            question: savedQuestion
-        });
-
-    } catch (error) {
-        console.error('Error creating question:', error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+  try {
+    const {
+      question,
+      options,
+      correctOption,
+      difficulty,
+      estimatedTime,
+      positiveMarks,
+      negativeMarks,
+      solution,
+      subject,
+      topic,
+    } = req.body;
+    const questionBankId = req.params.id;
+    console.log(req.body);
+    console.log(req.params.id);
+    // Validate required fields
+    if (
+      !question ||
+      !options ||
+      !Array.isArray(options) ||
+      options.length < 2
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Question and at least 2 options are required",
+      });
     }
+
+    if (
+      correctOption === undefined ||
+      correctOption < 0 ||
+      correctOption >= options.length
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid correct option index is required",
+      });
+    }
+
+    if (!questionBankId) {
+      return res.status(400).json({
+        success: false,
+        message: "Test ID is required",
+      });
+    }
+
+    // Validate client
+    const clientId = req.user.userId;
+    const client = await User.findOne({ userId: clientId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: "Client not found",
+      });
+    }
+
+    // Validate test exists
+    const questionBank = await QuestionBank.findById(questionBankId);
+    if (!questionBank) {
+      return res.status(404).json({
+        success: false,
+        message: "Test not found",
+      });
+    }
+
+    // Create question data
+    const questionData = {
+      question: question.trim(),
+      options: options
+        .filter((opt) => opt && opt.trim())
+        .map((opt) => opt.trim()),
+      correctAnswer: correctOption,
+      difficulty: difficulty || "L1",
+      estimatedTime: estimatedTime || 1,
+      positiveMarks: positiveMarks || 1,
+      negativeMarks: negativeMarks || 0.33,
+      subject: subject || "",
+      topic: topic || "",
+      questionBank: questionBankId,
+      createdBy: req.user.id,
+    };
+
+    // Handle solution if provided
+    if (solution) {
+      questionData.solution = {
+        type: solution.type || "text",
+        text: solution.text || "",
+        video: {
+          url: solution.video?.url || "",
+          title: solution.video?.title || "",
+          description: solution.video?.description || "",
+          duration: solution.video?.duration || 0,
+        },
+        image: {
+          url: solution.image?.url || "",
+          caption: solution.image?.caption || "",
+        },
+      };
+    }
+
+    // Create the question
+    const newQuestion = new ObjectiveTestQuestion(questionData);
+    const savedQuestion = await newQuestion.save();
+
+    // If testId provided, add question to test
+    // if (questionBankId) {
+    //     await ObjectiveTest.findByIdAndUpdate(
+    //       questionBankId,
+    //       { $push: { questions: savedQuestion._id } }
+    //     );
+    //   }
+    // Populate the test reference for response
+    await savedQuestion.populate("questionBank", "name");
+
+    res.status(201).json({
+      success: true,
+      message: "Question created successfully",
+      question: savedQuestion,
+    });
+  } catch (error) {
+    console.error("Error creating question:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
 };
 
-// Get all questions for a specific test
+// Get all questions
 exports.getQuestions = async (req, res) => {
-    try {
-        const clientId = req.user.userId;
-        console.log(clientId);
-        const client = await User.findOne({userId:clientId});
-        if(!client){
-            return res.status(404).json({
-                success:false,
-                message:"client not found"
-            })  
-        }
-        const questionBankId = req.params.id;
-        console.log(questionBankId);
-        const { difficulty, page = 1, limit = 150 } = req.query;
-
-        // Validate test exists
-        const questionBank = await QuestionBank.findById(questionBankId);
-        if (!questionBank) {
-            return res.status(404).json({
-                success: false,
-                message: "Question Bank not found"
-            });
-        }
-
-        // Build query
-        const query = { questionBank: questionBankId, isActive: true };
-        if (difficulty) {
-            query.difficulty = difficulty;
-        }
-
-        // Calculate pagination
-        const skip = (parseInt(page) - 1) * parseInt(limit);
-        
-        // Get questions with pagination
-        const questions = await ObjectiveTestQuestion.find(query)
-            .populate('questionBank', 'name description imageUrl category subcategory createdAt updatedAt')
-            .skip(skip)
-            .limit(parseInt(limit));
-
-        // Get total count
-        const totalQuestions = await ObjectiveTestQuestion.countDocuments(query);
-
-        res.json({
-            success: true,
-            questions,
-            pagination: {
-                currentPage: parseInt(page),
-                totalPages: Math.ceil(totalQuestions / parseInt(limit)),
-                totalQuestions,
-                hasNextPage: skip + questions.length < totalQuestions,
-                hasPrevPage: parseInt(page) > 1
-            }
-        });
-
-    } catch (error) {
-        console.error('Error fetching questions:', error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+  try {
+    const clientId = req.user.userId;
+    console.log(clientId);
+    const client = await User.findOne({ userId: clientId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: "client not found",
+      });
     }
+    const questionBankId = req.params.id;
+    console.log(questionBankId);
+         const { difficulty, subject, topic, search, page = 1, limit = 150 } = req.query;
+
+    // Validate test exists
+    const questionBank = await QuestionBank.findById(questionBankId);
+    if (!questionBank) {
+      return res.status(404).json({
+        success: false,
+        message: "Question Bank not found",
+      });
+    }
+
+         // Build query
+     const query = { questionBank: questionBankId, isActive: true };
+     if (difficulty) {
+       query.difficulty = difficulty;
+     }
+     if (subject) {
+       query.subject = subject;
+     }
+     if (topic) {
+       query.topic = topic;
+     }
+     if (search) {
+       query.question = { $regex: search, $options: 'i' };
+     }
+
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get questions with pagination
+    const questions = await ObjectiveTestQuestion.find(query)
+      .populate(
+        "questionBank",
+        "name description imageUrl category subcategory createdAt updatedAt"
+      )
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // Get total count
+    const totalQuestions = await ObjectiveTestQuestion.countDocuments(query);
+
+    res.json({
+      success: true,
+      questions,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalQuestions / parseInt(limit)),
+        totalQuestions,
+        hasNextPage: skip + questions.length < totalQuestions,
+        hasPrevPage: parseInt(page) > 1,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching questions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
 };
 
 // Update a question
 exports.updateQuestion = async (req, res) => {
-    try {
-        const questionId = req.params.id;
-        const {
-            question,
-            options,
-            correctOption,
-            difficulty,
-            estimatedTime,
-            positiveMarks,
-            negativeMarks,
-            solution
-        } = req.body;
+  try {
+    const questionId = req.params.id;
+    const {
+      question,
+      options,
+      correctOption,
+      difficulty,
+      estimatedTime,
+      positiveMarks,
+      negativeMarks,
+      solution,
+      subject,
+      topic,
+    } = req.body;
 
-        // Find the question
-        const existingQuestion = await ObjectiveTestQuestion.findById(questionId);
-        if (!existingQuestion) {
-            return res.status(404).json({
-                success: false,
-                message: "Question not found"
-            });
-        }
-
-        // Validate options if provided
-        if (options && (!Array.isArray(options) || options.length < 2)) {
-            return res.status(400).json({
-                success: false,
-                message: "At least 2 options are required"
-            });
-        }
-
-        if (correctOption !== undefined && (correctOption < 0 || correctOption >= (options || existingQuestion.options).length)) {
-            return res.status(400).json({
-                success: false,
-                message: "Valid correct option index is required"
-            });
-        }
-
-        // Prepare update data
-        const updateData = {};
-        if (question) updateData.question = question.trim();
-        if (options) updateData.options = options.filter(opt => opt && opt.trim()).map(opt => opt.trim());
-        if (correctOption !== undefined) updateData.correctAnswer = correctOption;
-        if (difficulty) updateData.difficulty = difficulty;
-        if (estimatedTime !== undefined) updateData.estimatedTime = estimatedTime;
-        if (positiveMarks !== undefined) updateData.positiveMarks = positiveMarks;
-        if (negativeMarks !== undefined) updateData.negativeMarks = negativeMarks;
-
-        // Handle solution update
-        if (solution) {
-            updateData.solution = {
-                type: solution.type || existingQuestion.solution.type || 'text',
-                text: solution.text || existingQuestion.solution.text || "",
-                video: {
-                    url: solution.video?.url || existingQuestion.solution.video?.url || "",
-                    title: solution.video?.title || existingQuestion.solution.video?.title || "",
-                    description: solution.video?.description || existingQuestion.solution.video?.description || "",
-                    duration: solution.video?.duration || existingQuestion.solution.video?.duration || 0
-                },
-                image: {
-                    url: solution.image?.url || existingQuestion.solution.image?.url || "",
-                    caption: solution.image?.caption || existingQuestion.solution.image?.caption || ""
-                }
-            };
-        }
-
-        // Update the question
-        const updatedQuestion = await ObjectiveTestQuestion.findByIdAndUpdate(
-            questionId,
-            updateData,
-            { new: true, runValidators: true }
-        ).populate('questionBank', 'name');
-
-        res.json({
-            success: true,
-            message: "Question updated successfully",
-            question: updatedQuestion
-        });
-
-    } catch (error) {
-        console.error('Error updating question:', error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+    // Find the question
+    const existingQuestion = await ObjectiveTestQuestion.findById(questionId);
+    if (!existingQuestion) {
+      return res.status(404).json({
+        success: false,
+        message: "Question not found",
+      });
     }
+
+    // Validate options if provided
+    if (options && (!Array.isArray(options) || options.length < 2)) {
+      return res.status(400).json({
+        success: false,
+        message: "At least 2 options are required",
+      });
+    }
+
+    if (
+      correctOption !== undefined &&
+      (correctOption < 0 ||
+        correctOption >= (options || existingQuestion.options).length)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid correct option index is required",
+      });
+    }
+
+    // Prepare update data
+    const updateData = {};
+    if (question) updateData.question = question.trim();
+    if (options)
+      updateData.options = options
+        .filter((opt) => opt && opt.trim())
+        .map((opt) => opt.trim());
+    if (correctOption !== undefined) updateData.correctAnswer = correctOption;
+    if (difficulty) updateData.difficulty = difficulty;
+    if (estimatedTime !== undefined) updateData.estimatedTime = estimatedTime;
+    if (positiveMarks !== undefined) updateData.positiveMarks = positiveMarks;
+    if (negativeMarks !== undefined) updateData.negativeMarks = negativeMarks;
+    if (subject !== undefined) updateData.subject = subject.trim();
+    if (topic !== undefined) updateData.topic = topic.trim();
+
+    // Handle solution update
+    if (solution) {
+      updateData.solution = {
+        type: solution.type || existingQuestion.solution.type || "text",
+        text: solution.text || existingQuestion.solution.text || "",
+        video: {
+          url:
+            solution.video?.url || existingQuestion.solution.video?.url || "",
+          title:
+            solution.video?.title ||
+            existingQuestion.solution.video?.title ||
+            "",
+          description:
+            solution.video?.description ||
+            existingQuestion.solution.video?.description ||
+            "",
+          duration:
+            solution.video?.duration ||
+            existingQuestion.solution.video?.duration ||
+            0,
+        },
+        image: {
+          url:
+            solution.image?.url || existingQuestion.solution.image?.url || "",
+          caption:
+            solution.image?.caption ||
+            existingQuestion.solution.image?.caption ||
+            "",
+        },
+      };
+    }
+
+    // Update the question
+    const updatedQuestion = await ObjectiveTestQuestion.findByIdAndUpdate(
+      questionId,
+      updateData,
+      { new: true, runValidators: true }
+    ).populate("questionBank", "name");
+
+    res.json({
+      success: true,
+      message: "Question updated successfully",
+      question: updatedQuestion,
+    });
+  } catch (error) {
+    console.error("Error updating question:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
 };
 
 // Delete a question
 exports.deleteQuestion = async (req, res) => {
-    try {
-        const questionId = req.params.id;
+  try {
+    const questionId = req.params.id;
 
-        const question = await ObjectiveTestQuestion.findById(questionId);
-        if (!question) {
-            return res.status(404).json({
-                success: false,
-                message: "Question not found"
-            });
-        }
-
-        // Soft delete by setting isActive to false
-        await ObjectiveTestQuestion.findByIdAndUpdate(questionId, { isActive: false });
-
-        res.json({
-            success: true,
-            message: "Question deleted successfully"
-        });
-
-    } catch (error) {
-        console.error('Error deleting question:', error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+    const question = await ObjectiveTestQuestion.findById(questionId);
+    if (!question) {
+      return res.status(404).json({
+        success: false,
+        message: "Question not found",
+      });
     }
+
+    // Soft delete by setting isActive to false
+    await ObjectiveTestQuestion.findByIdAndDelete(questionId);
+
+    res.json({
+      success: true,
+      message: "Question deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting question:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
 };
 
 // Bulk delete questions
 exports.bulkDeleteQuestions = async (req, res) => {
-    try {
-        const { questionIds } = req.body;
-        const questionBankId = req.params.id;
+  try {
+    const { questionIds } = req.body;
+    const questionBankId = req.params.id;
 
-        if (!questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Question IDs array is required"
-            });
-        }
-
-        // Validate that all questions exist and belong to the question bank
-        const questions = await ObjectiveTestQuestion.find({
-            _id: { $in: questionIds },
-            questionBank: questionBankId,
-            isActive: true
-        });
-
-        if (questions.length !== questionIds.length) {
-            return res.status(400).json({
-                success: false,
-                message: "Some questions not found or don't belong to this question bank",
-                found: questions.length,
-                requested: questionIds.length
-            });
-        }
-
-        // Soft delete all questions by setting isActive to false
-        const result = await ObjectiveTestQuestion.updateMany(
-            { _id: { $in: questionIds } },
-            { isActive: false }
-        );
-
-        res.json({
-            success: true,
-            message: `${result.modifiedCount} questions deleted successfully`,
-            deletedCount: result.modifiedCount
-        });
-
-    } catch (error) {
-        console.error('Error bulk deleting questions:', error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+    if (
+      !questionIds ||
+      !Array.isArray(questionIds) ||
+      questionIds.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Question IDs array is required",
+      });
     }
-};
 
+    // Validate that all questions exist and belong to the question bank
+    const questions = await ObjectiveTestQuestion.find({
+      _id: { $in: questionIds },
+      questionBank: questionBankId,
+      isActive: true,
+    });
+
+    if (questions.length !== questionIds.length) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Some questions not found or don't belong to this question bank",
+        found: questions.length,
+        requested: questionIds.length,
+      });
+    }
+
+    // Soft delete all questions by setting isActive to false
+    const result = await ObjectiveTestQuestion.deleteMany({
+      _id: { $in: questionIds },
+    });
+
+    res.json({
+      success: true,
+      message: `${result.modifiedCount} questions deleted successfully`,
+      deletedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    console.error("Error bulk deleting questions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};

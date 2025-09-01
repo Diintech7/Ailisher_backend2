@@ -1364,4 +1364,178 @@ exports.getFirstAttemptScoreboard = async (req, res) => {
   }
 };
 
+// Add questions from question bank to test
+exports.addQuestionsToTest = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { questionIds } = req.body;
 
+    if (!questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Question IDs array is required"
+      });
+    }
+
+    // Validate test exists
+    const test = await ObjectiveTest.findById(testId);
+    if (!test) {
+      return res.status(404).json({
+        success: false,
+        message: "Test not found"
+      });
+    }
+
+    // Validate questions exist and are active
+    const questions = await ObjectiveTestQuestion.find({
+      _id: { $in: questionIds },
+      isActive: true
+    });
+
+    if (questions.length !== questionIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Some questions not found or inactive",
+        found: questions.length,
+        requested: questionIds.length
+      });
+    }
+
+    // Add questions to test (avoid duplicates)
+    const existingQuestions = test.questions || [];
+    const newQuestions = questionIds.filter(id => !existingQuestions.includes(id));
+    
+    if (newQuestions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "All questions are already in the test"
+      });
+    }
+
+    await ObjectiveTest.findByIdAndUpdate(testId, {
+      $addToSet: { questions: { $each: newQuestions } }
+    });
+
+    res.json({
+      success: true,
+      message: `${newQuestions.length} questions added to test`,
+      addedCount: newQuestions.length,
+      totalQuestions: existingQuestions.length + newQuestions.length
+    });
+
+  } catch (error) {
+    console.error('Error adding questions to test:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Remove questions from test
+exports.removeQuestionsFromTest = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { questionIds } = req.body;
+
+    if (!questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Question IDs array is required"
+      });
+    }
+
+    // Validate test exists
+    const test = await ObjectiveTest.findById(testId);
+    if (!test) {
+      return res.status(404).json({
+        success: false,
+        message: "Test not found"
+      });
+    }
+
+    // Remove questions from test
+    const existingQuestions = test.questions || [];
+    const questionsToRemove = questionIds.filter(id => existingQuestions.includes(id));
+    
+    if (questionsToRemove.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "None of the specified questions are in the test"
+      });
+    }
+
+    await ObjectiveTest.findByIdAndUpdate(testId, {
+      $pull: { questions: { $in: questionsToRemove } }
+    });
+
+    res.json({
+      success: true,
+      message: `${questionsToRemove.length} questions removed from test`,
+      removedCount: questionsToRemove.length,
+      totalQuestions: existingQuestions.length - questionsToRemove.length
+    });
+
+  } catch (error) {
+    console.error('Error removing questions from test:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Copy a test
+exports.copyTest = async (req, res) => {
+  try {
+    const testId = req.params.id;
+    const { name, description } = req.body;
+
+    // Find the original test
+    const originalTest = await ObjectiveTest.findById(testId);
+    if (!originalTest) {
+      return res.status(404).json({
+        success: false,
+        message: "Test not found"
+      });
+    }
+
+    // Create new test data
+    const newTestData = {
+      name: name || `${originalTest.name}_Copy`,
+      description: description || originalTest.description,
+      clientId: req.user.userId,
+      category: originalTest.category,
+      subcategory: originalTest.subcategory,
+      Estimated_time: originalTest.Estimated_time,
+      // Don't copy the image to avoid conflicts when deleting
+      imageKey: null,
+      imageUrl: null,
+      isTrending: false,
+      isHighlighted: false,
+      isActive: true,
+      isEnabled: true, // Start as disabled
+      instructions: originalTest.instructions,
+    };
+
+    // Create the new test
+    const newTest = new ObjectiveTest(newTestData);
+    const savedTest = await newTest.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Test copied successfully",
+      test: savedTest
+    });
+
+  } catch (error) {
+    console.error('Error copying test:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};

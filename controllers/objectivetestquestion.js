@@ -386,7 +386,7 @@ exports.deleteQuestion = async (req, res) => {
         }
 
         // Soft delete by setting isActive to false
-        await ObjectiveTestQuestion.findByIdAndUpdate(questionId, { isActive: false });
+        await ObjectiveTestQuestion.findByIdAndDelete(questionId);
 
         // Remove question from any sets
       await ObjectiveTest.updateMany(
