@@ -140,9 +140,11 @@ exports.getQuestionsByTest = async (req, res) => {
                 message: "Test not found"
             });
         }
+        console.log(test)
 
-        // Build query
-        const query = { test: testId, isActive: true };
+        // Build query using question IDs stored in test.questions, because questions from QB may not have test field set
+        const questionIds = Array.isArray(test.questions) ? test.questions : [];
+        const query = { _id: { $in: questionIds }, isActive: true };
         if (difficulty) {
             query.difficulty = difficulty;
         }
@@ -156,6 +158,7 @@ exports.getQuestionsByTest = async (req, res) => {
             .skip(skip)
             .limit(parseInt(limit));
 
+        console.log(questions)
         // Get total count
         const totalQuestions = await ObjectiveTestQuestion.countDocuments(query);
 
@@ -208,8 +211,9 @@ exports.getQuestionsByTestForMobile = async (req, res) => {
         const name = test.name;
         const totalTime = test.Estimated_time;
 
-        // Build query
-        const query = { test: testId, isActive: true };
+        // Build query using question IDs stored in test.questions, because questions from QB may not have test field set
+        const questionIds = Array.isArray(test.questions) ? test.questions : [];
+        const query = { _id: { $in: questionIds }, isActive: true };
         if (difficulty) {
             query.difficulty = difficulty;
         }
@@ -386,7 +390,7 @@ exports.deleteQuestion = async (req, res) => {
         }
 
         // Soft delete by setting isActive to false
-        await ObjectiveTestQuestion.findByIdAndDelete(questionId);
+        // await ObjectiveTestQuestion.findByIdAndDelete(questionId);
 
         // Remove question from any sets
       await ObjectiveTest.updateMany(

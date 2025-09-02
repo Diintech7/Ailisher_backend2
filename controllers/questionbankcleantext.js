@@ -1,6 +1,22 @@
 require('dotenv').config();
 const axios = require('axios');
 
+// Allowed subjects for classification
+const allowedSubjects = [
+    'history',
+    'geography',
+    'polity',
+    'economy',
+    'science and tech',
+    'current affairs',
+    'maths',
+    'reasoning',
+    'international relation',
+    'art and culture',
+    'environment',
+    'agriculture'
+];
+
 // Clean and normalize extracted text to only questions and options via OpenRouter
 const cleanExtractedText = async (req, res) => {
     try {
@@ -283,36 +299,116 @@ const splitTextBySentences = (text, maxChunkSize = 2000) => {
     return chunks;
 };
 
+// Try to parse JSON returned by the model and normalize to internal shape
+const tryParseQuestionsJson = (rawText) => {
+    try {
+        // Some models may wrap JSON in code fences or add stray text; try to extract JSON substring
+        let text = rawText.trim();
+        const fenceMatch = text.match(/\{[\s\S]*\}/);
+        if (fenceMatch) {
+            text = fenceMatch[0];
+        }
+
+        const parsed = JSON.parse(text);
+        const inputQuestions = Array.isArray(parsed) ? parsed : parsed?.questions;
+        if (!Array.isArray(inputQuestions)) return null;
+
+        const normalized = inputQuestions
+            .map((q, idx) => {
+                if (!q) return null;
+                const questionText = (q.questionText || q.question || '').toString().trim();
+                const optionsRaw = Array.isArray(q.options) ? q.options : [];
+                const options = optionsRaw
+                    .slice(0, 4)
+                    .map(opt => (opt == null ? '' : String(opt))).concat(Array(4).fill(''))
+                    .slice(0, 4);
+
+                // answer may be a letter (A-D) or index
+                let correctAnswer = null;
+                if (typeof q.answer === 'string') {
+                    const letter = q.answer.trim().toUpperCase();
+                    if (/^[ABCD]$/.test(letter)) {
+                        correctAnswer = letter.charCodeAt(0) - 65;
+                    }
+                } else if (typeof q.answer === 'number') {
+                    const idxNum = Math.floor(q.answer);
+                    if (idxNum >= 0 && idxNum <= 3) correctAnswer = idxNum;
+                }
+
+                const explanation = (q.explanation || '').toString().trim();
+
+                // subject normalization
+                let subject = (q.subject || '').toString().trim().toLowerCase();
+                if (!allowedSubjects.includes(subject)) {
+                    subject = '';
+                }
+
+                // topic name and tags
+                const topicName = (q.topicName || q.topic || '').toString().trim();
+                let topicTags = q.topicTags;
+                if (typeof topicTags === 'string') {
+                    topicTags = topicTags.split(',').map(s => s.trim()).filter(Boolean);
+                }
+                if (!Array.isArray(topicTags)) topicTags = [];
+                topicTags = topicTags.map(t => String(t)).slice(0, 5);
+
+                // difficulty normalization
+                let difficulty = (q.difficulty || '').toString().trim().toLowerCase();
+                if (!['easy', 'medium', 'hard'].includes(difficulty)) difficulty = '';
+
+                if (!questionText) return null;
+
+                return {
+                    questionNumber: typeof q.questionNumber === 'number' ? q.questionNumber : idx + 1,
+                    questionText,
+                    options,
+                    correctAnswer,
+                    explanation,
+                    subject,
+                    topicName,
+                    topicTags,
+                    difficulty
+                };
+            })
+            .filter(Boolean);
+
+        return normalized;
+    } catch (e) {
+        return null;
+    }
+};
+
 // Function to process a single chunk with retry logic and rate limiting
 const processChunk = async (chunkText, model, chunkNumber, totalChunks) => {
-    const systemPrompt = `You are an expert MCQ extractor. Extract ALL questions from the input text and format them as:
+    // use top-level allowedSubjects
 
-1. <question text>
-   - A) <option>
-   - B) <option>
-   - C) <option>
-   - D) <option>
-   Answer: <A|B|C|D>
-   Explanation: <brief explanation>
+    const systemPrompt = `You are an expert MCQ extractor and classifier.
+
+Extract ALL objective questions (MCQs) from the input and RETURN ONLY JSON with this exact shape (no narration, no markdown fences):
+{
+  "questions": [
+    {
+      "questionNumber": <integer starting from 1>,
+      "questionText": "<question text>",
+      "options": ["<A>", "<B>", "<C>", "<D>"],
+      "answer": "A|B|C|D",
+      "explanation": "<brief explanation>",
+      "subject": "one of: ${allowedSubjects.join(', ')}",
+      "topicName": "<most relevant topic name>",
+      "topicTags": ["<3 to 5 short tags>"],
+      "difficulty": "easy|medium|hard"
+    }
+  ]
+}
 
 Rules:
-- Process ALL questions found in the input
-- No preface or extra text
-- Keep explanations concise but informative
-- Ensure all questions have exactly 4 options
-- Number questions sequentially starting from 1
-- This is chunk ${chunkNumber} of ${totalChunks} - focus only on questions in this section
+- Process ALL questions in this chunk only (chunk ${chunkNumber} of ${totalChunks}).
+- Ensure exactly 4 options for each question.
+- Subjects MUST be chosen strictly from the provided list.
+- Provide 3 to 5 concise topicTags as an array of short strings.
+- Respond with valid JSON only.`;
 
-Example:
-1. What is the capital of France?
-   - A) London
-   - B) Paris
-   - C) Berlin
-   - D) Madrid
-   Answer: B
-   Explanation: Paris is the capital and largest city of France.`;
-
-    const userPrompt = `Extract questions from this text section:\n\n${chunkText}`;
+    const userPrompt = `Extract and classify questions from this text section. Return valid JSON only.\n\n${chunkText}`;
 
     const chosenModel = model || process.env.OPENROUTER_MODEL || 'nousresearch/deephermes-3-llama-3-8b-preview:free';
 
@@ -367,14 +463,6 @@ Example:
             // Debug logging for chunk
             console.log(`Chunk ${chunkNumber} response length: ${cleaned.length} characters`);
 
-            // Server-side sanitization to enforce no preface
-            if (cleaned) {
-                const firstItemIndex = cleaned.search(/^\s*1\.\s/m);
-                if (firstItemIndex > 0) {
-                    cleaned = cleaned.slice(firstItemIndex);
-                }
-            }
-
             if (!cleaned) {
                 console.log(`Chunk ${chunkNumber} returned no content`);
                 return { questions: [], cleanedText: '' };
@@ -386,8 +474,16 @@ Example:
                 console.log(`Warning: Chunk ${chunkNumber} response was truncated`);
             }
 
-            // Parse the cleaned text into structured questions array
-            const questions = parseQuestionsFromText(cleaned);
+            // Try to parse JSON first; fall back to text parser if needed
+            let questions = [];
+            const jsonParsed = tryParseQuestionsJson(cleaned);
+            if (jsonParsed && Array.isArray(jsonParsed) && jsonParsed.length > 0) {
+                questions = jsonParsed;
+            } else {
+                // If model ignored JSON instruction, try text format
+                // Keep backward compatibility with the previous parser
+                questions = parseQuestionsFromText(cleaned);
+            }
             
             console.log(`Chunk ${chunkNumber} parsed ${questions.length} questions`);
 

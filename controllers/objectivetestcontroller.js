@@ -1368,8 +1368,10 @@ exports.getFirstAttemptScoreboard = async (req, res) => {
 // Add questions from question bank to test
 exports.addQuestionsToTest = async (req, res) => {
   try {
-    const { testId } = req.params;
-    const { questionIds } = req.body;
+    const testId = req.params.id;
+    let { questionIds } = req.body;
+    console.log(testId),
+    console.log(questionIds)
 
     if (!questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
       return res.status(400).json({
@@ -1377,6 +1379,9 @@ exports.addQuestionsToTest = async (req, res) => {
         message: "Question IDs array is required"
       });
     }
+
+    // ✅ Convert to ObjectId
+    questionIds = questionIds.map(id => new mongoose.Types.ObjectId(id));
 
     // Validate test exists
     const test = await ObjectiveTest.findById(testId);

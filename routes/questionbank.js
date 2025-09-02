@@ -1,6 +1,6 @@
 const express = require('express');
 const {verifyToken,isClient} = require('../middleware/auth');
-const { createQuestionBank, getQuestionBanks, getQuestionBankById, uploadImage, updateQuestionBank, deleteQuestionBank, updateCoverImage, createQuestion, getQuestionsByTest, updateQuestion, deleteQuestion, getQuestions, bulkDeleteQuestions } = require('../controllers/questionBank');
+const { createQuestionBank, getQuestionBanks, getQuestionBankById, uploadImage, updateQuestionBank, deleteQuestionBank, updateCoverImage, createQuestion, getQuestionsByTest, updateQuestion, deleteQuestion, getQuestions, bulkDeleteQuestions, getQuestionBankSummary } = require('../controllers/questionBank');
 const multer= require('multer');
 const { extractTextFromFile } = require('../controllers/questionbanktextextract');
 const { cleanExtractedText, cleanExtractedTextStream } = require('../controllers/questionbankcleantext');
@@ -12,6 +12,8 @@ router.post('/upload-url',verifyToken,isClient,uploadImage);
 router.post('/',verifyToken,isClient,createQuestionBank);
 
 router.get('/',verifyToken,isClient,getQuestionBanks);
+
+router.get('/:id/summary',verifyToken,isClient,getQuestionBankSummary);
 
 router.get('/:id',verifyToken,isClient,getQuestionBankById);
 

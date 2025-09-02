@@ -107,6 +107,86 @@ exports.getQuestionBankById = async (req, res) => {
   }
 };
 
+exports.getQuestionBankSummary = async (req, res) => {
+  try {
+    const questionBankId = req.params.id;
+    console.log(questionBankId)
+    if (!questionBankId) {
+      return res.status(400).json({ success: false, message: "question bank id is required" });
+    }
+
+    const matchStage = {
+      $match: {
+        questionBank: new mongoose.Types.ObjectId(questionBankId),
+        isActive: true,
+      },
+    };
+    console.log(matchStage)
+
+    const [subjects, difficulties, bySubjectDifficulty, totals] = await Promise.all([
+      ObjectiveTestQuestion.aggregate([
+        matchStage,
+        { $group: { _id: "$subject", total: { $sum: 1 } } },
+        { $project: { 
+            _id: 0, 
+            subject: {
+              $cond: [
+                { $or: [ { $eq: ["$_id", null] }, { $eq: ["$_id", ""] } ] },
+                "Other",
+                "$_id"
+              ]
+            }, 
+            total: 1 
+          } 
+        },
+        { $sort: { subject: 1 } },
+      ]),
+      ObjectiveTestQuestion.aggregate([
+        matchStage,
+        { $group: { _id: "$difficulty", total: { $sum: 1 } } },
+        { $project: { _id: 0, difficulty: "$_id", total: 1 } },
+        { $sort: { difficulty: 1 } },
+      ]),
+      ObjectiveTestQuestion.aggregate([
+        matchStage,
+        { $group: { _id: { subject: "$subject", difficulty: "$difficulty" }, total: { $sum: 1 } } },
+        {
+          $project: {
+            _id: 0,
+            subject: {
+              $cond: [
+                { $or: [ { $eq: ["$_id.subject", null] }, { $eq: ["$_id.subject", ""] } ] },
+                "Other",
+                "$_id.subject"
+              ]
+            },
+            difficulty: "$_id.difficulty",
+            total: 1,
+          },
+        },
+        { $sort: { subject: 1, difficulty: 1 } },
+      ]),
+      ObjectiveTestQuestion.aggregate([
+        matchStage,
+        { $count: "total" },
+      ]),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        totalQuestions: totals?.[0]?.total || 0,
+        subjects,
+        difficulties,
+        bySubjectDifficulty,
+      },
+    });
+  } catch (error) {
+    console.error("getQuestionBankSummary error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
 exports.updateQuestionBank = async (req, res) => {
   try {
     const { id } = req.params;
@@ -192,6 +272,7 @@ exports.updateCoverImage = async (req, res) => {
 const ObjectiveTestQuestion = require("../models/ObjectiveTestQuestion");
 const ObjectiveTest = require("../models/ObjectiveTest");
 const User = require("../models/User");
+const { default: mongoose } = require("mongoose");
 
 exports.createQuestion = async (req, res) => {
   try {
@@ -355,7 +436,15 @@ exports.getQuestions = async (req, res) => {
        query.difficulty = difficulty;
      }
      if (subject) {
-       query.subject = subject;
+       if (subject === 'Other') {
+         query.$or = [
+           { subject: { $exists: false } },
+           { subject: null },
+           { subject: '' }
+         ];
+       } else {
+         query.subject = subject;
+       }
      }
      if (topic) {
        query.topic = topic;
