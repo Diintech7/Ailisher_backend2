@@ -445,6 +445,7 @@ exports.getAllTestsForMobile = async (req, res) => {
       is_trending: test.isTrending,
       is_highlighted: test.isHighlighted,
       is_active: test.isActive,
+      isEnabled:test.isEnabled,
       testMaximumMarks: test.testMaximumMarks,
       totalScore:test.totalScore,
       percentage:test.percentage,

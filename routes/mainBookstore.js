@@ -94,6 +94,7 @@ router.get("/", authenticateMobileUser, async (req, res) => {
       image_url: book.coverImageUrl || "",
       highlight: book.isHighlighted,
       trending: book.isCurrentlyTrending,
+      isEnabled:book.isEnabled,
       author: book.author,
       publisher: book.publisher,
       description: book.description,
