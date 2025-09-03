@@ -686,3 +686,13 @@ exports.bulkDeleteQuestions = async (req, res) => {
     });
   }
 };
+
+exports.saveFile = async (req,res) => {
+  try {
+    const { file } = req.file;
+    const { fileName, contentType } = req.body;
+  } catch (error) {
+    console.error("Error saving file:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}

@@ -1,6 +1,6 @@
 const express = require('express');
 const {verifyToken,isClient} = require('../middleware/auth');
-const { createQuestionBank, getQuestionBanks, getQuestionBankById, uploadImage, updateQuestionBank, deleteQuestionBank, updateCoverImage, createQuestion, getQuestionsByTest, updateQuestion, deleteQuestion, getQuestions, bulkDeleteQuestions, getQuestionBankSummary } = require('../controllers/questionBank');
+const { createQuestionBank, getQuestionBanks, getQuestionBankById, uploadImage, updateQuestionBank, deleteQuestionBank, updateCoverImage, createQuestion, getQuestionsByTest, updateQuestion, deleteQuestion, getQuestions, bulkDeleteQuestions, getQuestionBankSummary, saveFile } = require('../controllers/questionBank');
 const multer= require('multer');
 const { extractTextFromFile } = require('../controllers/questionbanktextextract');
 const { cleanExtractedText, cleanExtractedTextStream } = require('../controllers/questionbankcleantext');
@@ -59,5 +59,7 @@ router.post('/extract-text',upload.single('image'),extractTextFromFile);
 router.post('/clean-text',cleanExtractedText);
 
 router.post('/clean-text-stream',cleanExtractedTextStream);
+
+router.post('/save-file',upload.single('image'),saveFile);
 
 module.exports = router;
