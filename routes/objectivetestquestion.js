@@ -19,7 +19,7 @@ router.get('/:questionId',verifyToken, objectivetestquestionController.getQuesti
 router.put('/:questionId',verifyToken, objectivetestquestionController.updateQuestion);
 
 // Delete a question
-router.delete('/:questionId',verifyToken, objectivetestquestionController.deleteQuestion);
+router.delete('/test/:id/:questionId',verifyToken, objectivetestquestionController.deleteQuestion);
 
 // Record answer attempt
 router.post('/:questionId/answer',verifyToken, objectivetestquestionController.recordAnswer);

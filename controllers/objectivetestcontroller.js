@@ -292,14 +292,24 @@ exports.getAllTestsForMobile = async (req, res) => {
             );
           }
         }
-        const questions = await ObjectiveTestQuestion.find({test:test._id})
-        const totalQuestions = questions.length;
+        let totalQuestions = 0;
+        let testMaximumMarks = 0;
 
-        const testMaximumMarks = questions.reduce((sum,question)=>{
-          return sum+=(question.positiveMarks)
-        },0)
+        if (test.questions && test.questions.length > 0) {
+          const questions = await ObjectiveTestQuestion.find({
+            _id: { $in: test.questions },
+          });
+  
+          totalQuestions = questions.length;
+          testMaximumMarks = questions.reduce((sum,question)=>{
+            return sum+=(question.positiveMarks)
+          },0)
+
+        }
+        
         console.log("total",totalQuestions)
         console.log(testMaximumMarks)
+
         return {
           ...test.toObject(),
           totalQuestions:totalQuestions,
@@ -623,7 +633,10 @@ exports.submitTest = async (req, res) => {
     console.log(test);
 
     // Get all questions for this test
-    const questions = await ObjectiveTestQuestion.find({ test: testId });
+    const questions = await ObjectiveTestQuestion.find({ 
+      _id: { $in: test.questions },
+    });
+
     console.log(questions);
     if (questions.length === 0) {
       return res.status(400).json({
@@ -889,8 +902,19 @@ exports.getUserTestResults = async (req, res) => {
       });
     }
 
-    const testQuestions = await ObjectiveTestQuestion.find({
-      test: result.testId
+    // Validate test exists
+    const test = await ObjectiveTest.findById(testId);
+    if (!test) {
+      return res.status(404).json({
+        success: false,
+        message: "Test not found",
+      });
+    }
+    console.log(test);
+
+    // Get all questions for this test
+    const testQuestions = await ObjectiveTestQuestion.find({ 
+      _id: { $in: test.questions },
     });
 
     const testMaximumMarks = testQuestions.reduce((sum, question) => {

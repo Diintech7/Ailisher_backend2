@@ -1,6 +1,7 @@
 const ObjectiveTestQuestion = require('../models/ObjectiveTestQuestion');
 const ObjectiveTest = require('../models/ObjectiveTest');
 const User = require('../models/User');
+const { default: mongoose } = require('mongoose');
 
 exports.createQuestion = async (req, res) => {
     try {
@@ -376,10 +377,11 @@ exports.updateQuestion = async (req, res) => {
     }
 };
 
-// Delete a question
+// Remove a question from test
 exports.deleteQuestion = async (req, res) => {
     try {
-        const { questionId } = req.params;
+        const testId  = req.params.id
+        const questionId  = new mongoose.Types.ObjectId(req.params.questionId);
 
         const question = await ObjectiveTestQuestion.findById(questionId);
         if (!question) {
@@ -389,22 +391,18 @@ exports.deleteQuestion = async (req, res) => {
             });
         }
 
-        // Soft delete by setting isActive to false
-        // await ObjectiveTestQuestion.findByIdAndDelete(questionId);
-
-        // Remove question from any sets
-      await ObjectiveTest.updateMany(
-        { questions: questionId },
-        { $pull: { questions: questionId } }
-      );
+        // Remove question from test's questions array
+        await ObjectiveTest.findByIdAndUpdate(testId, {
+            $pull: { questions: questionId }
+          });
 
         res.json({
             success: true,
-            message: "Question deleted successfully"
+            message: "Question removed from test successfully"
         });
 
     } catch (error) {
-        console.error('Error deleting question:', error);
+        console.error('Error removing question from test:', error);
         res.status(500).json({
             success: false,
             message: "Internal server error",
