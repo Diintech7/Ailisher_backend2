@@ -38,6 +38,9 @@ router.delete('/:id/question',verifyToken,isClient,deleteQuestion );
 // Bulk delete questions
 router.delete('/:id/questions/bulk',verifyToken,isClient,bulkDeleteQuestions );
 
+// Save File
+router.post('/save-file',verifyToken,isClient,saveFile);
+
 // Configure multer for memory storage (no file saved to disk)
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -60,6 +63,5 @@ router.post('/clean-text',cleanExtractedText);
 
 router.post('/clean-text-stream',cleanExtractedTextStream);
 
-router.post('/save-file',upload.single('image'),saveFile);
 
 module.exports = router;

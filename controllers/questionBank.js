@@ -1,10 +1,18 @@
 const path = require("path");
 const QuestionBank = require("../models/QuestionBank");
 const {
-  generatePresignedUrl,
   generateGetPresignedUrl,
+  generatePresignedUrl,
   deleteObject,
 } = require("../utils/r2");
+const QuestionFile = require('../models/QuestionFile');
+
+const ObjectiveTestQuestion = require("../models/ObjectiveTestQuestion");
+const User = require("../models/User");
+const { default: mongoose } = require("mongoose");
+const { PutObjectCommand } = require("@aws-sdk/client-s3");
+const { s3Client } = require("../utils/r2");
+
 
 exports.uploadImage = async (req, res) => {
   try {
@@ -268,11 +276,6 @@ exports.updateCoverImage = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
-const ObjectiveTestQuestion = require("../models/ObjectiveTestQuestion");
-const ObjectiveTest = require("../models/ObjectiveTest");
-const User = require("../models/User");
-const { default: mongoose } = require("mongoose");
 
 exports.createQuestion = async (req, res) => {
   try {
@@ -687,12 +690,51 @@ exports.bulkDeleteQuestions = async (req, res) => {
   }
 };
 
-exports.saveFile = async (req,res) => {
+exports.saveFile = async (req, res) => {
   try {
-    const { file } = req.file;
-    const { fileName, contentType } = req.body;
-  } catch (error) {
-    console.error("Error saving file:", error);
-    res.status(500).json({ success: false, message: "Internal server error" });
+    const { content, fileName, questionBankId, sourcePdfKey, sourcePdfUrl, sourcePdfName, contentType } = req.body;
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'content is required' });
+    }
+
+    const userId = req.user._id;
+    const businessName = req.user.businessName;
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const ts = now.getTime();
+
+    const safeBase = (fileName || 'text-extract').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const key = `${businessName}/text-extracts/${yyyy}-${mm}-${dd}/${safeBase}-${ts}.txt`;
+    const body = Buffer.from(content, 'utf8');
+    const ct = contentType || 'text/plain; charset=utf-8';
+
+    await s3Client.send(new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: key,
+      Body: body,
+      ContentType: ct,
+    }));
+    const url = await generateGetPresignedUrl(key, 604800);
+
+    const doc = await QuestionFile.create({
+      key,
+      url,
+      contentType: ct,
+      sizeBytes: body.length,
+      questionBank: questionBankId || undefined,
+      sourcePdfKey,
+      sourcePdfUrl,
+      sourcePdfName,
+      createdBy: userId,
+      status: 'ready',
+      fileName: fileName || undefined,
+    });
+
+    return res.json({ key, url, sizeBytes: body.length, id: doc._id });
+  } catch (err) {
+    console.error('saveFile error', err);
+    return res.status(500).json({ error: 'Failed to save file' });
   }
-}
+};
