@@ -58,6 +58,6 @@ router.post('/extract-text',upload.single('image'),extractTextFromFile);
 
 router.post('/clean-text',cleanExtractedText);
 
-router.post('/clean-text-stream',cleanExtractedTextStream)
+router.post('/clean-text-stream',cleanExtractedTextStream);
 
 module.exports = router;
