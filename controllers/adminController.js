@@ -264,7 +264,7 @@ exports.generateClientLoginToken = async (req, res) => {
       type: 'client',
       clientId: client._id
     }, process.env.JWT_SECRET, {
-      expiresIn: '3h'
+      expiresIn: '1d'
     });
     
     res.json({
