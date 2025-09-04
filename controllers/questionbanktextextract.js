@@ -69,7 +69,6 @@ const extractTextFromFile = async (req, res) => {
         }
 
         if (!process.env.LANDING_AI_API_KEY) {
-            console.log('Landing AI API key not configured',process.env.LANDING_AI_API_KEY);
             return res.status(500).json({ success: false, message: 'Landing AI API key not configured' });
         }
 
