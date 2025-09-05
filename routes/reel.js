@@ -113,10 +113,10 @@ router.post("/", verifyToken, isClient, async (req, res) => {
 router.get("/", verifyToken, isClient, async (req, res) => {
   try {
     const reels = await Reels.find().sort({ order: 1 });
+    
     for (const reel of reels) {
       if (reel.videoKey) {
-        let videoUrl = "";
-        videoUrl = await generateGetPresignedUrl(reel.videoKey);
+      reel.videoUrl = await generateGetPresignedUrl(reel.videoKey);
       }
     }
 
@@ -145,8 +145,7 @@ router.get(
 
       for (const reel of reels) {
         if (reel.videoKey) {
-          let videoUrl = "";
-          videoUrl = await generateGetPresignedUrl(reel.videoKey);
+        reel.videoUrl = await generateGetPresignedUrl(reel.videoKey);
         }
       }
 
