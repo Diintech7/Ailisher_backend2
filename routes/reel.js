@@ -13,6 +13,7 @@ const {
   generateGetPresignedUrl,
   deleteObject,
 } = require("../utils/r2");
+const { default: mongoose } = require("mongoose");
 
 router.post("/upload-url", verifyToken, isClient, async (req, res) => {
   try {
@@ -112,8 +113,10 @@ router.post("/", verifyToken, isClient, async (req, res) => {
 // @access  Admin only
 router.get("/", verifyToken, isClient, async (req, res) => {
   try {
-    const reels = await Reels.find().sort({ order: 1 });
-    
+    const userId = req.user._id;
+    const createdBy = new mongoose.Types.ObjectId(userId);
+    const reels = await Reels.find({createdBy}).sort({ order: 1 });
+
     for (const reel of reels) {
       if (reel.videoKey) {
       reel.videoUrl = await generateGetPresignedUrl(reel.videoKey);
@@ -140,8 +143,9 @@ router.get(
   ensureUserBelongsToClient,
   async (req, res) => {
     try {
+      const createdBy = new mongoose.Types.ObjectId(req.clientInfo.id)
       const userId = req.user.id;
-      const reels = await Reels.find().sort({ order: 1 });
+      const reels = await Reels.find({createdBy}).sort({ order: 1 });
 
       for (const reel of reels) {
         if (reel.videoKey) {
