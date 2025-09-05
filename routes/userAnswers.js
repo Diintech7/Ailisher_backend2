@@ -23,6 +23,10 @@ const {
   generateCustomEvaluationPrompt,
   getServiceForTask,
   cleanExtractedTexts,
+  // new helpers for auto annotations (safe to import)
+  AUTO_ANNOTATIONS_ENABLED,
+  parseImageAnnotations,
+  mapCommentsToImages,
 } = require("../services/aiServices");
 
 router.use("/crud", crud);
@@ -417,6 +421,11 @@ router.post(
       }
 
       const isManualEvaluation = question.evaluationMode === "manual";
+      if(!isManualEvaluation)
+      {
+        const AUTO_ANNOTATIONS_ENABLED = process.env.AUTO_ANNOTATIONS_ENABLED === 'true';
+      }
+
       let evaluation = null;
       let extractedTexts = [];
 
@@ -463,7 +472,17 @@ router.post(
           if (hasValidText) {
             try {
               const evaluationService = await getServiceForTask("evaluation");
-              const prompt = generateEvaluationPrompt(question, extractedTexts);
+              // Only include per-image annotation instructions in auto mode
+              const includeImageAnnotations = question.evaluationMode !== "manual";
+              console.log('[Annot] gates', {
+                mode: question.evaluationMode,
+                autoFlag: undefined,
+                autoFlagBool: undefined,
+                includeImageAnnotations,
+                imagesCount: answerImages?.length || 0,
+                extractedTextsCount: extractedTexts?.length || 0,
+              });
+              const prompt = generateEvaluationPrompt(question, extractedTexts, { includeImageAnnotations });
 
               if (evaluationService.serviceName === "gemini") {
                 const response = await axios.post(
@@ -494,6 +513,26 @@ router.post(
                 if (response.status === 200 && response.data?.candidates?.[0]?.content) {
                   const evaluationText = response.data.candidates[0].content.parts[0].text;
                   evaluation = parseEvaluationResponse(evaluationText, question);
+                  // Attach per-image comments for auto mode (flag-guarded)
+                  if (includeImageAnnotations) {
+                    try {
+                      let perImage = parseImageAnnotations(evaluationText, answerImages.length);
+                      const needsFallback = !perImage || perImage.every(arr => arr.length === 0);
+                      if (needsFallback) {
+                        const candidates = [
+                          ...(evaluation.comments || []),
+                          ...((evaluation.analysis?.strengths || []).map(s => `✓ ${s}`)),
+                          ...((evaluation.analysis?.weaknesses || []).map(w => `⚠ ${w}`)),
+                        ];
+                        perImage = mapCommentsToImages(candidates, extractedTexts, 2);
+                        console.log('[Annot] Fallback mapping used (gemini)');
+                      }
+                      evaluation.perImageComments = perImage;
+                      console.log('[Annot] perImageComments (gemini):', perImage.map(x => x.length));
+                    } catch (mapErr) {
+                      console.warn('[Annot] Per-image annotation mapping failed (gemini):', mapErr.message);
+                    }
+                  }
                   evaluation.evaluationMethod = "gemini";
                 } else {
                   throw new Error("Invalid response from Gemini API");
@@ -524,6 +563,26 @@ router.post(
                 if (response.data?.choices?.[0]?.message?.content) {
                   const evaluationText = response.data.choices[0].message.content;
                   evaluation = parseEvaluationResponse(evaluationText, question);
+                  // Attach per-image comments for auto mode (flag-guarded)
+                  if (includeImageAnnotations) {
+                    try {
+                      let perImage = parseImageAnnotations(evaluationText, answerImages.length);
+                      const needsFallback = !perImage || perImage.every(arr => arr.length === 0);
+                      if (needsFallback) {
+                        const candidates = [
+                          ...(evaluation.comments || []),
+                          ...((evaluation.analysis?.strengths || []).map(s => `✓ ${s}`)),
+                          ...((evaluation.analysis?.weaknesses || []).map(w => `⚠ ${w}`)),
+                        ];
+                        perImage = mapCommentsToImages(candidates, extractedTexts, 2);
+                        console.log('[Annot] Fallback mapping used (openai)');
+                      }
+                      evaluation.perImageComments = perImage;
+                      console.log('[Annot] perImageComments (openai):', perImage.map(x => x.length));
+                    } catch (mapErr) {
+                      console.warn('[Annot] Per-image annotation mapping failed (openai):', mapErr.message);
+                    }
+                  }
                   evaluation.evaluationMethod = "openai";
                 } else {
                   throw new Error("Invalid response from OpenAI API");
@@ -536,9 +595,40 @@ router.post(
               if (!evaluation) {
                 evaluation = generateMockEvaluation(question);
               }
+
+              // Final safeguard: if auto mode and no per-image yet, map fallback
+              if (includeImageAnnotations && evaluation && (!evaluation.perImageComments || evaluation.perImageComments.every(arr => (arr || []).length === 0))) {
+                try {
+                  const candidates = [
+                    ...(evaluation.comments || []),
+                    ...((evaluation.analysis?.strengths || []).map(s => `✓ ${s}`)),
+                    ...((evaluation.analysis?.weaknesses || []).map(w => `⚠ ${w}`)),
+                  ];
+                  const perImage = mapCommentsToImages(candidates, extractedTexts, 2);
+                  evaluation.perImageComments = perImage;
+                } catch (fallbackErr) {
+                  console.warn("Per-image fallback mapping (final) failed:", fallbackErr.message);
+                }
+              }
             } catch (evaluationError) {
               console.error("AI evaluation failed:", evaluationError.message);
               evaluation = generateMockEvaluation(question);
+              // Attach fallback per-image mapping even on AI failure (auto mode only)
+              const includeImageAnnotationsOnError = question.evaluationMode !== "manual" && AUTO_ANNOTATIONS_ENABLED === true;
+              if (includeImageAnnotationsOnError) {
+                try {
+                  const candidates = [
+                    ...(evaluation.comments || []),
+                    ...((evaluation.analysis?.strengths || []).map(s => `✓ ${s}`)),
+                    ...((evaluation.analysis?.weaknesses || []).map(w => `⚠ ${w}`)),
+                  ];
+                  const perImage = mapCommentsToImages(candidates, extractedTexts, 2);
+                  evaluation.perImageComments = perImage;
+                  console.log('[Annot] perImageComments (fallback-on-error):', perImage.map(x => x.length));
+                } catch (fallbackErr) {
+                  console.warn("Per-image fallback mapping (on error) failed:", fallbackErr.message);
+                }
+              }
             }
           } else {
             if (req.files && req.files.length > 0) {
@@ -609,6 +699,72 @@ router.post(
           userAnswerData.submissionStatus = "evaluated";
           userAnswerData.publishStatus = "published";
           userAnswerData.reviewStatus = null;
+          // Attempt to generate auto annotations via Cloudinary overlays (non-blocking)
+          try {
+            const includeImageAnnotations = (question.evaluationMode !== "manual");
+            if (includeImageAnnotations && Array.isArray(answerImages) && answerImages.length > 0) {
+              const annotations = [];
+              for (let i = 0; i < answerImages.length; i++) {
+                const img = answerImages[i];
+                const comments = Array.isArray(evaluation.perImageComments?.[i]) && evaluation.perImageComments[i].length > 0
+                  ? evaluation.perImageComments[i]
+                  : (evaluation.comments || []).slice(0, 3);
+                if (!img.cloudinaryPublicId) continue;
+                // Wrap comments to ensure they stay on page; at most ~12 lines
+                const wrapAndLimit = (arr, maxCharsPerLine = 42, maxLines = 12) => {
+                  const lines = [];
+                  const pushWrapped = (s) => {
+                    const words = (s || '').split(/\s+/);
+                    let line = '';
+                    for (const w of words) {
+                      if ((line + (line ? ' ' : '') + w).length > maxCharsPerLine) {
+                        if (line) lines.push(line);
+                        line = w;
+                        if (lines.length >= maxLines) break;
+                      } else {
+                        line = line ? line + ' ' + w : w;
+                      }
+                    }
+                    if (lines.length < maxLines && line) lines.push(line);
+                  };
+                  for (const c of arr) {
+                    if (lines.length >= maxLines) break;
+                    pushWrapped(String(c).trim());
+                  }
+                  if (lines.length === 0) lines.push('');
+                  return lines.slice(0, maxLines).join('\n');
+                };
+                const text = wrapAndLimit(comments, 42, 12);
+                if (!text) continue;
+                const annotatedUrl = cloudinary.url(img.cloudinaryPublicId, {
+                  secure: true,
+                  transformation: [
+                    {
+                      overlay: { font_family: 'Arial', font_size: 20,font_weight: 'bold', text },
+                      width: 1000,
+                      crop: 'fit',
+                      color: '#ff0000',
+                      gravity: 'north',
+                      y: 34,
+                      opacity: 80,
+                    },
+                  ],
+                });
+                annotations.push({
+                  s3Key: `cloudinary:${img.cloudinaryPublicId}:auto-annotated`,
+                  downloadUrl: annotatedUrl,
+                  uploadedAt: new Date(),
+                });
+              }
+              if (annotations.length > 0) {
+                userAnswerData.annotations = annotations;
+              } else {
+                console.log('[Annot] no annotations prepared (no comments or missing publicId).');
+              }
+            }
+          } catch (annErr) {
+            console.warn('Auto annotation (overlay) failed:', annErr.message);
+          }
         } else {
           userAnswerData.submissionStatus = "submitted";
           userAnswerData.reviewStatus = null;
@@ -668,6 +824,13 @@ router.post(
 
       if (evaluation) {
         responseData.evaluation = evaluation;
+      }
+      if (evaluation?.perImageComments) {
+        responseData.perImageComments = evaluation.perImageComments;
+      }
+      if (userAnswerData.annotations && userAnswerData.annotations.length > 0) {
+        responseData.annotations = userAnswerData.annotations;
+        responseData.annotationsCount = userAnswerData.annotations.length;
       }
       if (extractedTexts.length > 0) {
         responseData.extractedTexts = extractedTexts;
