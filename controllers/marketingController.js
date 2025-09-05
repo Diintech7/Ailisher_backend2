@@ -202,6 +202,14 @@ exports.getMarketing = async (req, res) => {
       Marketing.countDocuments(filter)
     ]);
 
+    for(const market of marketing)
+    {
+      if(market.imageKey)
+      {
+      market.imageUrl = await generateGetPresignedUrl(market.imageKey)
+      }
+    }
+
     res.json({
       success: true,
       data: marketing,
@@ -257,6 +265,14 @@ exports.getMarketingForMobile = async (req, res) => {
         .lean(),
       Marketing.countDocuments(filter)
     ]);
+
+    for(const market of marketing)
+      {
+        if(market.imageKey)
+        {
+        market.imageUrl = await generateGetPresignedUrl(market.imageKey)
+        }
+      }
 
     res.json({
       success: true,

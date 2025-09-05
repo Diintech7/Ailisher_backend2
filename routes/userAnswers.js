@@ -614,7 +614,7 @@ router.post(
               console.error("AI evaluation failed:", evaluationError.message);
               evaluation = generateMockEvaluation(question);
               // Attach fallback per-image mapping even on AI failure (auto mode only)
-              const includeImageAnnotationsOnError = question.evaluationMode !== "manual" && AUTO_ANNOTATIONS_ENABLED === true;
+              const includeImageAnnotationsOnError = question.evaluationMode !== "manual"
               if (includeImageAnnotationsOnError) {
                 try {
                   const candidates = [
@@ -622,7 +622,7 @@ router.post(
                     ...((evaluation.analysis?.strengths || []).map(s => `✓ ${s}`)),
                     ...((evaluation.analysis?.weaknesses || []).map(w => `⚠ ${w}`)),
                   ];
-                  const perImage = mapCommentsToImages(candidates, extractedTexts, 2);
+                  const perImage = mapCommentsToImages(candidates, extractedTexts, 3);
                   evaluation.perImageComments = perImage;
                   console.log('[Annot] perImageComments (fallback-on-error):', perImage.map(x => x.length));
                 } catch (fallbackErr) {
