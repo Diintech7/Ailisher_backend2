@@ -1720,6 +1720,7 @@ router.get('/answers/evaluator/accepted', verifyTokenforevaluator, [
         submittedAt: 1,
         acceptedAt: 1,
         evaluation: 1,
+        hindiEvaluation: 1,
         feedback: 1,
         extractedTexts: 1,
         metadata: 1,
