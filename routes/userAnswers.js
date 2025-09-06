@@ -425,9 +425,7 @@ router.post(
       }
 
       const isManualEvaluation = question.evaluationMode === "manual"
-      if (!isManualEvaluation) {
-        const AUTO_ANNOTATIONS_ENABLED = process.env.AUTO_ANNOTATIONS_ENABLED === "true"
-      }
+     
 
       let evaluation = null
       let extractedTexts = []
@@ -484,14 +482,6 @@ router.post(
             try {
               // Only include per-image annotation instructions in auto mode
               const includeImageAnnotations = question.evaluationMode !== "manual"
-              console.log("[Annot] gates", {
-                mode: question.evaluationMode,
-                autoFlag: undefined,
-                autoFlagBool: undefined,
-                includeImageAnnotations,
-                imagesCount: answerImages?.length || 0,
-                extractedTextsCount: extractedTexts?.length || 0,
-              })
 
               const prompt = generateEvaluationPrompt(question, extractedTexts)
 
@@ -1033,7 +1023,6 @@ router.post(
                       fontFamily: 'Arial',
                       fontWeight: 'bold',
                       color: '#FF0000', // bright red text
-                      backgroundColor: 'rgba(0,0,0,0.7)', // darker black background for contrast
                       padding: 10,
                       borderRadius: 6,
                       textShadow: '2px 2px 6px rgba(0,0,0,0.9)', // extra shadow to make red pop
