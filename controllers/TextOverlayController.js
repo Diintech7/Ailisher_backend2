@@ -59,9 +59,59 @@ const overlayTextOnImage = async (req, res) => {
       inputBuffer = Buffer.from(resp.data);
     }
 
-    const clean = cleanTextForDrawtext(text);
-    if (!clean.trim()) {
-      return res.status(400).json({ error: 'Text is empty after cleaning' });
+    // Process text to create properly wrapped lines
+    const processTextForWrapping = (text, maxCharsPerLine = 50, maxLines = 10) => {
+      if (!text || typeof text !== 'string') return [];
+      
+      const lines = text.split('\n');
+      const wrappedLines = [];
+      
+      for (const line of lines) {
+        if (wrappedLines.length >= maxLines) break;
+        
+        const cleanLine = line.trim();
+        if (!cleanLine) continue;
+        
+        // If line is already short enough, use it as is
+        if (cleanLine.length <= maxCharsPerLine) {
+          wrappedLines.push(cleanLine);
+          continue;
+        }
+        
+        // Split long line into words and wrap
+        const words = cleanLine.split(/\s+/);
+        let currentLine = '';
+        
+        for (const word of words) {
+          if (wrappedLines.length >= maxLines) break;
+          
+          const testLine = currentLine ? `${currentLine} ${word}` : word;
+          
+          if (testLine.length > maxCharsPerLine) {
+            if (currentLine) {
+              wrappedLines.push(currentLine);
+              currentLine = word;
+            } else {
+              // Single word too long, truncate it
+              wrappedLines.push(word.substring(0, maxCharsPerLine - 3) + '...');
+              currentLine = '';
+            }
+          } else {
+            currentLine = testLine;
+          }
+        }
+        
+        if (currentLine && wrappedLines.length < maxLines) {
+          wrappedLines.push(currentLine);
+        }
+      }
+      
+      return wrappedLines.length > 0 ? wrappedLines : ['No text available'];
+    };
+
+    const textLines = processTextForWrapping(text, 50, 10);
+    if (textLines.length === 0) {
+      return res.status(400).json({ error: 'Text is empty after processing' });
     }
 
     // Normalize color: accept CSS hex like #RRGGBB or simple names; default to white
@@ -99,28 +149,27 @@ const overlayTextOnImage = async (req, res) => {
         ];
 
     const latinFont = latinCandidates.find(p => fs.existsSync(p)) || null;
-    const size = Number.isFinite(Number(fontsize)) ? Number(fontsize) : 48;
-    const posX = '(w-text_w)/2';
-    const posY = '120';
+    const size = Number.isFinite(Number(fontsize)) ? Number(fontsize) : 16;
+    const lineHeight = size * 1.4; // Line height for spacing
+    const startY = 50;
 
-    // Write drawtext content to a temporary UTF-8 file (safer than inline escaping)
-    const tempDir = path.join(__dirname, '../temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-    const textfilePath = path.join(tempDir, `overlay_text_${Date.now()}.txt`);
-    fs.writeFileSync(textfilePath, clean, { encoding: 'utf8' });
-    const textfile = toFilterPath(textfilePath);
+    // Create multiple drawtext filters for each line
+    const drawtextFilters = textLines.map((line, index) => {
+      const cleanLine = cleanTextForDrawtext(line);
+      const yPos = startY + (index * lineHeight);
+      const boxOptions = boxAlpha > 0
+        ? `:box=1:boxcolor=${boxBaseColor}@${boxAlpha}:boxborderw=8`
+        : '';
+      
+      return latinFont
+        ? `drawtext=text='${cleanLine}':fontfile='${toFilterPath(latinFont)}':fontcolor=${fontColor}:fontsize=${size}${boxOptions}:x=(w-text_w)/2:y=${yPos}`
+        : `drawtext=text='${cleanLine}':fontcolor=${fontColor}:fontsize=${size}${boxOptions}:x=(w-text_w)/2:y=${yPos}`;
+    });
 
-    const boxOptions = boxAlpha > 0
-      ? `:box=1:boxcolor=${boxBaseColor}@${boxAlpha}:boxborderw=12`
-      : '';
+    // Combine all drawtext filters
+    const combinedFilter = drawtextFilters.join(',');
 
-    const drawtext = latinFont
-      ? `drawtext=textfile='${textfile}':fontfile='${toFilterPath(latinFont)}':fontcolor=${fontColor}:fontsize=${size}${boxOptions}:x=${posX}:y=${posY}`
-      : `drawtext=textfile='${textfile}':fontcolor=${fontColor}:fontsize=${size}${boxOptions}:x=${posX}:y=${posY}`;
-
-    // Process entirely in-memory using streams (only the text is on disk)
+    // Process entirely in-memory using streams
     const inputStream = Readable.from(inputBuffer);
     const chunks = [];
 
@@ -129,25 +178,22 @@ const overlayTextOnImage = async (req, res) => {
         .input(inputStream)
         .inputOptions(['-f', 'image2pipe'])
         .outputOptions([
-          '-vf', drawtext,
+          '-vf', combinedFilter,
           '-frames:v', '1',
           '-vcodec', 'png'
         ])
         .format('image2pipe')
         .on('start', (cmd) => { console.log('FFmpeg image overlay command:', cmd); })
         .on('error', (err) => {
-          try { if (fs.existsSync(textfilePath)) fs.unlinkSync(textfilePath); } catch (e) {}
           reject(err);
         })
         .on('end', () => {
-          try { if (fs.existsSync(textfilePath)) fs.unlinkSync(textfilePath); } catch (e) {}
           resolve();
         });
 
       const ffstream = command.pipe();
       ffstream.on('data', (c) => chunks.push(c));
       ffstream.on('error', (err) => {
-        try { if (fs.existsSync(textfilePath)) fs.unlinkSync(textfilePath); } catch (e) {}
         reject(err);
       });
     });

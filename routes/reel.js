@@ -177,6 +177,40 @@ router.get(
   }
 );
 
+// Make a reel popular or remove from popular
+router.patch('/popular/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isPopular = true } = req.body; // default true, pass false if you want to unmark
+
+    const reel = await Reels.findByIdAndUpdate(
+      id,
+      { isPopular },
+      { new: true }
+    );
+
+    if (!reel) {
+      return res.status(404).json({
+        success: false,
+        message: "Reel not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: isPopular ? "Reel marked as popular" : "Reel removed from popular",
+      data: reel,
+    });
+  } catch (error) {
+    console.error("Error updating reel popularity:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+});
+
+
 router.get('/popular',async(req,res)=>{
   try{
     const reels = await Reels.find({ active: true, isEnabled: true, isPopular:true })

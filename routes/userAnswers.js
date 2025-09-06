@@ -10,7 +10,8 @@ const { validationResult, param, body, query } = require("express-validator");
 const { authenticateMobileUser } = require("../middleware/mobileAuth");
 const crud = require("./answerapis");
 const { submitEvaluationFeedback } = require("../controllers/userAnswers");
-const { refreshAnnotatedImageUrls } = require("../utils/s3");
+const { refreshAnnotatedImageUrls, generateAnnotatedImageUrl, generatePresignedUrl, s3Client, uploadFileToS3 } = require("../utils/s3");
+const { overlayTextOnImage } = require("../controllers/TextOverlayController");
 const axios = require("axios");
 const SubjectiveTest = require("../models/SubjectiveTest");
 const SubjectiveTestQuestion = require("../models/SubjectiveTestQuestion");
@@ -474,15 +475,8 @@ router.post(
               const evaluationService = await getServiceForTask("evaluation");
               // Only include per-image annotation instructions in auto mode
               const includeImageAnnotations = question.evaluationMode !== "manual";
-              console.log('[Annot] gates', {
-                mode: question.evaluationMode,
-                autoFlag: undefined,
-                autoFlagBool: undefined,
-                includeImageAnnotations,
-                imagesCount: answerImages?.length || 0,
-                extractedTextsCount: extractedTexts?.length || 0,
-              });
-              const prompt = generateEvaluationPrompt(question, extractedTexts, { includeImageAnnotations });
+              
+              const prompt = generateEvaluationPrompt(question, extractedTexts );
 
               if (evaluationService.serviceName === "gemini") {
                 const response = await axios.post(
@@ -614,7 +608,7 @@ router.post(
               console.error("AI evaluation failed:", evaluationError.message);
               evaluation = generateMockEvaluation(question);
               // Attach fallback per-image mapping even on AI failure (auto mode only)
-              const includeImageAnnotationsOnError = question.evaluationMode !== "manual"
+              const includeImageAnnotationsOnError = question.evaluationMode !== "manual";
               if (includeImageAnnotationsOnError) {
                 try {
                   const candidates = [
@@ -622,7 +616,7 @@ router.post(
                     ...((evaluation.analysis?.strengths || []).map(s => `✓ ${s}`)),
                     ...((evaluation.analysis?.weaknesses || []).map(w => `⚠ ${w}`)),
                   ];
-                  const perImage = mapCommentsToImages(candidates, extractedTexts, 3);
+                  const perImage = mapCommentsToImages(candidates, extractedTexts, 2);
                   evaluation.perImageComments = perImage;
                   console.log('[Annot] perImageComments (fallback-on-error):', perImage.map(x => x.length));
                 } catch (fallbackErr) {
@@ -708,53 +702,121 @@ router.post(
                 const img = answerImages[i];
                 const comments = Array.isArray(evaluation.perImageComments?.[i]) && evaluation.perImageComments[i].length > 0
                   ? evaluation.perImageComments[i]
-                  : (evaluation.comments || []).slice(0, 3);
+                  : (evaluation.comments || []).slice(0, 8);
                 if (!img.cloudinaryPublicId) continue;
-                // Wrap comments to ensure they stay on page; at most ~12 lines
-                const wrapAndLimit = (arr, maxCharsPerLine = 42, maxLines = 12) => {
+                // Professional text wrapping for better readability and proper line breaks
+                const formatCommentsForDisplay = (comments, maxCharsPerLine = 50, maxLines = 15) => {
+                  if (!Array.isArray(comments) || comments.length === 0) {
+                    return '';
+                  }
+                  
                   const lines = [];
-                  const pushWrapped = (s) => {
-                    const words = (s || '').split(/\s+/);
-                    let line = '';
-                    for (const w of words) {
-                      if ((line + (line ? ' ' : '') + w).length > maxCharsPerLine) {
-                        if (line) lines.push(line);
-                        line = w;
-                        if (lines.length >= maxLines) break;
+                  let currentLine = '';
+                  
+                  for (const comment of comments) {
+                    if (lines.length >= maxLines) break;
+                    
+                    const cleanComment = String(comment).trim();
+                    if (!cleanComment) continue;
+                    
+                    // Split comment into words
+                    const words = cleanComment.split(/\s+/);
+                    
+                    for (const word of words) {
+                      if (lines.length >= maxLines) break;
+                      
+                      const testLine = currentLine ? `${currentLine} ${word}` : word;
+                      
+                      // If adding this word would exceed the line limit
+                      if (testLine.length > maxCharsPerLine) {
+                        // Save current line if it has content
+                        if (currentLine) {
+                          lines.push(currentLine);
+                          currentLine = word;
+                        } else {
+                          // If single word is too long, truncate it
+                          lines.push(word.substring(0, maxCharsPerLine - 3) + '...');
+                          currentLine = '';
+                        }
                       } else {
-                        line = line ? line + ' ' + w : w;
+                        currentLine = testLine;
                       }
                     }
-                    if (lines.length < maxLines && line) lines.push(line);
-                  };
-                  for (const c of arr) {
-                    if (lines.length >= maxLines) break;
-                    pushWrapped(String(c).trim());
                   }
-                  if (lines.length === 0) lines.push('');
-                  return lines.slice(0, maxLines).join('\n');
+                  
+                  // Add the last line if it has content
+                  if (currentLine && lines.length < maxLines) {
+                    lines.push(currentLine);
+                  }
+                  
+                  // Ensure we have at least one line
+                  if (lines.length === 0) {
+                    lines.push('No comments available');
+                  }
+                  
+                  return lines.join('\n');
                 };
-                const text = wrapAndLimit(comments, 42, 12);
+                
+                const text = formatCommentsForDisplay(comments, 50, 15);
                 if (!text) continue;
-                const annotatedUrl = cloudinary.url(img.cloudinaryPublicId, {
-                  secure: true,
-                  transformation: [
-                    {
-                      overlay: { font_family: 'Arial', font_size: 20,font_weight: 'bold', text },
-                      width: 1000,
-                      crop: 'fit',
-                      color: '#ff0000',
-                      gravity: 'north',
-                      y: 34,
-                      opacity: 80,
-                    },
-                  ],
-                });
-                annotations.push({
-                  s3Key: `cloudinary:${img.cloudinaryPublicId}:auto-annotated`,
-                  downloadUrl: annotatedUrl,
-                  uploadedAt: new Date(),
-                });
+                
+                // Generate S3 key for annotated image (following your pattern)
+                try {
+                  const fileExtension = '.png'; // Use PNG extension for annotated images
+                  const s3Key = `${req.clientInfo.businessName}/auto-annotated-images/${req.user.clientId}/${questionId}/${Date.now()}_${i}${fileExtension}`;
+                  
+                  // Create annotated image by overlaying text on the original image
+                  const mockReq = {
+                    body: {
+                      imageUrl: img.imageUrl,
+                      text: text,
+                      fontsize: 18,
+                      fontFamily: 'Arial',
+                      fontWeight: 'bold',
+                      color: '#FFFFFF', 
+                      bgOpacity: 0.6,
+                    }
+                  };
+                  
+                  let annotatedImageBase64 = null;
+                  
+                  const mockRes = {
+                    json: (data) => {
+                      if (data.success && data.image) {
+                        annotatedImageBase64 = data.image;
+                      } else {
+                        throw new Error('Failed to create annotated image');
+                      }
+                    }
+                  };
+                  
+                  // Call the overlayTextOnImage function
+                  await overlayTextOnImage(mockReq, mockRes);
+                  
+                  if (annotatedImageBase64) {
+                    // Convert base64 image to buffer
+                    const imageBuffer = Buffer.from(annotatedImageBase64, 'base64');
+                    
+                    // Upload the annotated image to S3
+                    const uploadedKey = await uploadFileToS3(
+                      imageBuffer, 
+                      s3Key, 
+                      'image/png'
+                    );
+                    
+                    // Generate download URL for the uploaded annotated image
+                    const downloadUrl = await generateAnnotatedImageUrl(uploadedKey);
+                    
+                    annotations.push({
+                      s3Key: uploadedKey,
+                      downloadUrl: downloadUrl,
+                      uploadedAt: new Date(),
+                    });
+                  }
+                  
+                } catch (s3Error) {
+                  console.warn('Failed to create or upload annotated image:', s3Error.message);
+                }
               }
               if (annotations.length > 0) {
                 userAnswerData.annotations = annotations;
@@ -824,9 +886,6 @@ router.post(
 
       if (evaluation) {
         responseData.evaluation = evaluation;
-      }
-      if (evaluation?.perImageComments) {
-        responseData.perImageComments = evaluation.perImageComments;
       }
       if (userAnswerData.annotations && userAnswerData.annotations.length > 0) {
         responseData.annotations = userAnswerData.annotations;
@@ -1444,4 +1503,5 @@ router.get("/:answerId", authenticateMobileUser, async (req, res) => {
   }
 });
 
+module.exports = router;
 module.exports = router;

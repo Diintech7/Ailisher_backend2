@@ -788,25 +788,19 @@ Your conclusion is relevant as it outlines steps---but it may be concluded as—
 Your conclusion is relevant but too long — it needs to be concise, within 20–30 words.`;
 }
 
-const generateEvaluationPrompt = (question, extractedTexts,{includeImageAnnotations}) => {
+const generateEvaluationPrompt = (question, extractedTexts ) => {
   const combinedText = extractedTexts.join("\n\n--- Next Image ---\n\n");
   
   // Use the stored evaluation guideline (will always have a value - either custom or default)
   const evaluationFramework = question.evaluationGuideline || getEvaluationFrameworkText();
 
-  let prompt = `Please evaluate this student's answer to the given question using the following evaluation framework.\n\n${evaluationFramework}\n\nQUESTION:\n${question.question}\n\nMAXIMUM MARKS: ${question.metadata?.maximumMarks || 10}\n\nSTUDENT'S ANSWER (extracted from images):\n${combinedText}\n\nPlease use the exact section headers as shown below, and do not change their names or order.\n\nRELEVANCY: [Score out of 100 - How relevant is the answer to the question]\nSCORE: [Score out of ${question.metadata?.maximumMarks || 10}]\n\nIntroduction:\n[Your analysis of the introduction]\n\nBody:\n[Your analysis of the body]\n\nConclusion:\n[Your analysis of the conclusion]\n\nStrengths:\n[List 2-3 strengths]\n\nWeaknesses:\n[List 2-3 weaknesses]\n\nSuggestions:\n[List 2-3 suggestions]\n\nFeedback:\n[Overall feedback]\n\nComments:\n[3-4 detailed comments (5-12 words each)]\n`;
-  console.log(includeImageAnnotations)
-  // Append per-image annotation request only when enabled
-  if (includeImageAnnotations && Array.isArray(extractedTexts) && extractedTexts.length > 0) {
-    prompt += `\nImage Annotations:\n`;
-    for (let i = 0; i < extractedTexts.length; i++) {
-      prompt += `- Image ${i + 1}: [max 2 comments, <= 50 chars each; write "none" if not applicable]\n`;
-    }
-  }
+  let prompt = `Please evaluate this student's answer to the given question using the following evaluation framework.\n\n${evaluationFramework}\n\nQUESTION:\n${question.question}\n\nMAXIMUM MARKS: ${question.metadata?.maximumMarks || 10}\n\nSTUDENT'S ANSWER (extracted from images):\n${combinedText}\n\nPlease use the exact section headers as shown below, and do not change their names or order.\n\nRELEVANCY: [Score out of 100 - How relevant is the answer to the question]\nSCORE: [Score out of ${question.metadata?.maximumMarks || 10}]\n\nIntroduction:\n[Your analysis of the introduction]\n\nBody:\n[Your analysis of the body]\n\nConclusion:\n[Your analysis of the conclusion]\n\nStrengths:\n[List 2-3 strengths]\n\nWeaknesses:\n[List 2-3 weaknesses]\n\nSuggestions:\n[List 2-3 suggestions]\n\nFeedback:\n[Overall feedback]\n\nComments:\n[5-8 detailed comments providing specific feedback on the student's work]\n`;
+ 
 
   prompt += `\nRemark:\n[1-2 line summary of the overall answer quality]\n`;
   return prompt;
 };
+
 
 const generateCustomEvaluationPrompt = (question, extractedTexts, userPrompt, options = {}) => {
   const { includeExtractedText = true, includeQuestionDetails = true, maxMarks } = options;
@@ -951,8 +945,8 @@ function parseImageAnnotations(evaluationText, totalImages) {
         .split(/;|\|/)
         .map(s => s.trim())
         .filter(Boolean)
-        .slice(0, 2)
-        .map(c => (c.length > 50 ? c.slice(0, 47) + '...' : c));
+        .slice(0, 5)
+        .map(c => (c.length > 200 ? c.slice(0, 197) + '...' : c));
       if (comments.length > 0) result[idx] = comments;
     }
     return result;
@@ -963,7 +957,7 @@ function parseImageAnnotations(evaluationText, totalImages) {
 }
 
 // Simple fallback mapper using token overlap
-function mapCommentsToImages(comments, extractedTexts, maxPerImage = 3) {
+function mapCommentsToImages(comments, extractedTexts, maxPerImage = 2) {
   const normalize = s => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
   const tokenize = s => new Set(normalize(s).split(' ').filter(w => w.length > 2));
   const textTokens = Array.isArray(extractedTexts) ? extractedTexts.map(tokenize) : [];
@@ -977,7 +971,7 @@ function mapCommentsToImages(comments, extractedTexts, maxPerImage = 3) {
       if (overlap > bestScore) { bestScore = overlap; bestIdx = i; }
     }
     if (bestIdx >= 0 && bestScore > 0 && perImage[bestIdx].length < maxPerImage) {
-      perImage[bestIdx].push(c.length > 50 ? c.slice(0, 47) + '...' : c);
+      perImage[bestIdx].push(c.length > 200 ? c.slice(0, 197) + '...' : c);
     }
   }
   return perImage;
