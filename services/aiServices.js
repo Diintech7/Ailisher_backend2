@@ -1132,12 +1132,14 @@ const detectLanguage = (text) => {
 
 // Generate Hindi evaluation prompt
 const generateCustomHindiEvaluationPrompt = (question, extractedTexts ) => {
+
   const combinedText = extractedTexts.join("\n\n--- Next Image ---\n\n");
   
   // Use the stored evaluation guideline (will always have a value - either custom or default)
   const evaluationFramework = question.evaluationGuideline || getEvaluationFrameworkText();
 
   let prompt = `कृपया इस छात्र के उत्तर का मूल्यांकन निम्नलिखित मूल्यांकन ढांचे का उपयोग करके करें।\n\n${evaluationFramework}\n\nप्रश्न:\n${question.question}\n\nअधिकतम अंक: ${question.metadata?.maximumMarks || 10}\n\nछात्र का उत्तर (छवियों से निकाला गया):\n${combinedText}\n\nकृपया नीचे दिखाए गए अनुभाग शीर्षकों का उपयोग करें, और उनके नाम या क्रम को न बदलें।\n\nप्रासंगिकता: [100 में से स्कोर - उत्तर कितना प्रासंगिक है]\nस्कोर: [${question.metadata?.maximumMarks || 10} में से स्कोर]\n\nपरिचय:\n[परिचय का आपका विश्लेषण]\n\nमुख्य भाग:\n[मुख्य भाग का आपका विश्लेषण]\n\nनिष्कर्ष:\n[निष्कर्ष का आपका विश्लेषण]\n\nमजबूत पक्ष:\n[2-3 मजबूत पक्ष]\n\nकमजोर पक्ष:\n[2-3 कमजोर पक्ष]\n\nसुझाव:\n[2-3 सुझाव]\n\nफीडबैक:\n[समग्र फीडबैक]\n\nटिप्पणियां:\n[5-8 विस्तृत टिप्पणियां जो छात्र के कार्य पर विशिष्ट फीडबैक प्रदान करें]\n`;
+
 
   prompt += `\nटिप्पणी:\n[समग्र उत्तर गुणवत्ता का 1-2 पंक्ति सारांश]\n`;
   return prompt;

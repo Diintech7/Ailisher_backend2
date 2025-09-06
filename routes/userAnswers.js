@@ -495,6 +495,7 @@ router.post(
 
               const prompt = generateEvaluationPrompt(question, extractedTexts)
 
+
               if (evaluationService.serviceName === "gemini") {
                 const response = await axios.post(
                   `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
@@ -571,21 +572,24 @@ router.post(
                   // Attach per-image comments for auto mode (flag-guarded)
                   if (includeImageAnnotations) {
                     try {
-                      let perImage = parseImageAnnotations(evaluationText, answerImages.length);
-                      const needsFallback = !perImage || perImage.every(arr => arr.length === 0);
+                      let perImage = parseImageAnnotations(evaluationText, answerImages.length)
+                      const needsFallback = !perImage || perImage.every((arr) => arr.length === 0)
                       if (needsFallback) {
                         const candidates = [
                           ...(evaluation.comments || []),
-                          ...((evaluation.analysis?.strengths || []).map(s => `✓ ${s}`)),
-                          ...((evaluation.analysis?.weaknesses || []).map(w => `⚠ ${w}`)),
-                        ];
-                        perImage = mapCommentsToImages(candidates, extractedTexts, 2);
-                        console.log('[Annot] Fallback mapping used (gemini)');
+                          ...(evaluation.analysis?.strengths || []).map((s) => `✓ ${s}`),
+                          ...(evaluation.analysis?.weaknesses || []).map((w) => `⚠ ${w}`),
+                        ]
+                        perImage = mapCommentsToImages(candidates, extractedTexts, 2)
+                        console.log("[Annot] Fallback mapping used (gemini)")
                       }
-                      evaluation.perImageComments = perImage;
-                      console.log('[Annot] perImageComments (gemini):', perImage.map(x => x.length));
+                      evaluation.perImageComments = perImage
+                      console.log(
+                        "[Annot] perImageComments (gemini):",
+                        perImage.map((x) => x.length),
+                      )
                     } catch (mapErr) {
-                      console.warn('[Annot] Per-image annotation mapping failed (gemini):', mapErr.message);
+                      console.warn("[Annot] Per-image annotation mapping failed (gemini):", mapErr.message)
                     }
                   }
                   evaluation.evaluationMethod = "gemini"
@@ -662,21 +666,24 @@ router.post(
                   // Attach per-image comments for auto mode (flag-guarded)
                   if (includeImageAnnotations) {
                     try {
-                      let perImage = parseImageAnnotations(evaluationText, answerImages.length);
-                      const needsFallback = !perImage || perImage.every(arr => arr.length === 0);
+                      let perImage = parseImageAnnotations(evaluationText, answerImages.length)
+                      const needsFallback = !perImage || perImage.every((arr) => arr.length === 0)
                       if (needsFallback) {
                         const candidates = [
                           ...(evaluation.comments || []),
-                          ...((evaluation.analysis?.strengths || []).map(s => `✓ ${s}`)),
-                          ...((evaluation.analysis?.weaknesses || []).map(w => `⚠ ${w}`)),
-                        ];
-                        perImage = mapCommentsToImages(candidates, extractedTexts, 2);
-                        console.log('[Annot] Fallback mapping used (openai)');
+                          ...(evaluation.analysis?.strengths || []).map((s) => `✓ ${s}`),
+                          ...(evaluation.analysis?.weaknesses || []).map((w) => `⚠ ${w}`),
+                        ]
+                        perImage = mapCommentsToImages(candidates, extractedTexts, 2)
+                        console.log("[Annot] Fallback mapping used (openai)")
                       }
-                      evaluation.perImageComments = perImage;
-                      console.log('[Annot] perImageComments (openai):', perImage.map(x => x.length));
+                      evaluation.perImageComments = perImage
+                      console.log(
+                        "[Annot] perImageComments (openai):",
+                        perImage.map((x) => x.length),
+                      )
                     } catch (mapErr) {
-                      console.warn('[Annot] Per-image annotation mapping failed (openai):', mapErr.message);
+                      console.warn("[Annot] Per-image annotation mapping failed (openai):", mapErr.message)
                     }
                   }
                   evaluation.evaluationMethod = "openai"
@@ -764,16 +771,17 @@ router.post(
 
             // Final safeguard: if auto mode and no per-image yet, map fallback
               if (includeImageAnnotations && evaluation && (!evaluation.perImageComments || evaluation.perImageComments.every(arr => (arr || []).length === 0))) {
+
                 try {
                   const candidates = [
                     ...(evaluation.comments || []),
-                    ...((evaluation.analysis?.strengths || []).map(s => `✓ ${s}`)),
-                    ...((evaluation.analysis?.weaknesses || []).map(w => `⚠ ${w}`)),
-                  ];
-                  const perImage = mapCommentsToImages(candidates, extractedTexts, 2);
-                  evaluation.perImageComments = perImage;
+                    ...(evaluation.analysis?.strengths || []).map((s) => `✓ ${s}`),
+                    ...(evaluation.analysis?.weaknesses || []).map((w) => `⚠ ${w}`),
+                  ]
+                  const perImage = mapCommentsToImages(candidates, extractedTexts, 2)
+                  evaluation.perImageComments = perImage
                 } catch (fallbackErr) {
-                  console.warn("Per-image fallback mapping (final) failed:", fallbackErr.message);
+                  console.warn("Per-image fallback mapping (final) failed:", fallbackErr.message)
                 }
               }
             } catch (evaluationError) {
@@ -862,8 +870,9 @@ router.post(
                   const perImage = mapCommentsToImages(candidates, extractedTexts, 2);
                   evaluation.perImageComments = perImage;
                   console.log('[Annot] perImageComments (fallback-on-error):', perImage.map(x => x.length));
+
                 } catch (fallbackErr) {
-                  console.warn("Per-image fallback mapping (on error) failed:", fallbackErr.message);
+                  console.warn("Per-image fallback mapping (on error) failed:", fallbackErr.message)
                 }
               }
             }
@@ -940,14 +949,14 @@ router.post(
           userAnswerData.evaluation = evaluation
         }
         if (!isManualEvaluation) {
-          userAnswerData.submissionStatus = "evaluated";
-          userAnswerData.publishStatus = "published";
-          userAnswerData.reviewStatus = null;
+          userAnswerData.submissionStatus = "evaluated"
+          userAnswerData.publishStatus = "published"
+          userAnswerData.reviewStatus = null
           // Attempt to generate auto annotations via Cloudinary overlays (non-blocking)
           try {
-            const includeImageAnnotations = (question.evaluationMode !== "manual");
+            const includeImageAnnotations = question.evaluationMode !== "manual"
             if (includeImageAnnotations && Array.isArray(answerImages) && answerImages.length > 0) {
-              const annotations = [];
+              const annotations = []
               for (let i = 0; i < answerImages.length; i++) {
                 const img = answerImages[i];
                 const comments = Array.isArray(evaluation.perImageComments?.[i]) && evaluation.perImageComments[i].length > 0
@@ -1072,15 +1081,16 @@ router.post(
                 } catch (s3Error) {
                   console.warn('Failed to create or upload annotated image:', s3Error.message);
                 }
+
               }
               if (annotations.length > 0) {
-                userAnswerData.annotations = annotations;
+                userAnswerData.annotations = annotations
               } else {
-                console.log('[Annot] no annotations prepared (no comments or missing publicId).');
+                console.log("[Annot] no annotations prepared (no comments or missing publicId).")
               }
             }
           } catch (annErr) {
-            console.warn('Auto annotation (overlay) failed:', annErr.message);
+            console.warn("Auto annotation (overlay) failed:", annErr.message)
           }
         } else {
           userAnswerData.submissionStatus = "submitted"
@@ -1144,6 +1154,7 @@ router.post(
       }
       if (userAnswerData.hindiEvaluation) {
         responseData.hindiEvaluation = userAnswerData.hindiEvaluation
+
       }
       if (userAnswerData.annotations && userAnswerData.annotations.length > 0) {
         responseData.annotations = userAnswerData.annotations
@@ -2000,3 +2011,4 @@ router.get("/:answerId", authenticateMobileUser, async (req, res) => {
 })
 
 module.exports = router
+
