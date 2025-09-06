@@ -1107,6 +1107,194 @@ function cleanExtractedTexts(extractedTexts) {
   }).filter(Boolean);
 }
 
+// Language detection function
+const detectLanguage = (text) => {
+  if (!text || typeof text !== 'string') return 'english';
+  
+  // Simple Hindi detection based on Devanagari script
+  const hindiRegex = /[\u0900-\u097F]/;
+  const hindiMatches = (text.match(hindiRegex) || []).length;
+  const totalChars = text.replace(/\s/g, '').length;
+  
+  console.log(`[Language Detection] Hindi matches: ${hindiMatches}, Total chars: ${totalChars}, Ratio: ${totalChars > 0 ? (hindiMatches / totalChars).toFixed(3) : 0}`);
+  console.log(`[Language Detection] Sample text: ${text.substring(0, 200)}`);
+  
+  // If more than 15% of characters are Hindi, consider it Hindi (further lowered threshold)
+  if (totalChars > 0 && (hindiMatches / totalChars) > 0.15) {
+    console.log(`[Language Detection] Detected as HINDI`);
+    return 'hindi';
+  }
+  
+  // Additional check: if there are any Hindi words (more than 3 consecutive Hindi characters)
+  const hindiWords = text.match(/[\u0900-\u097F]{3,}/g);
+  if (hindiWords && hindiWords.length > 0) {
+    console.log(`[Language Detection] Found Hindi words: ${hindiWords.length}, Detected as HINDI`);
+    return 'hindi';
+  }
+  
+  console.log(`[Language Detection] Detected as ENGLISH`);
+  return 'english';
+};
+
+// Generate Hindi evaluation prompt
+const generateCustomHindiEvaluationPrompt = (question, extractedTexts, options = {}) => {
+  const { includeImageAnnotations = false } = options;
+  const combinedText = extractedTexts.join("\n\n--- Next Image ---\n\n");
+  
+  // Use the stored evaluation guideline (will always have a value - either custom or default)
+  const evaluationFramework = question.evaluationGuideline || getEvaluationFrameworkText();
+
+  let prompt = `कृपया इस छात्र के उत्तर का मूल्यांकन निम्नलिखित मूल्यांकन ढांचे का उपयोग करके करें।\n\n${evaluationFramework}\n\nप्रश्न:\n${question.question}\n\nअधिकतम अंक: ${question.metadata?.maximumMarks || 10}\n\nछात्र का उत्तर (छवियों से निकाला गया):\n${combinedText}\n\nकृपया नीचे दिखाए गए अनुभाग शीर्षकों का उपयोग करें, और उनके नाम या क्रम को न बदलें।\n\nप्रासंगिकता: [100 में से स्कोर - उत्तर कितना प्रासंगिक है]\nस्कोर: [${question.metadata?.maximumMarks || 10} में से स्कोर]\n\nपरिचय:\n[परिचय का आपका विश्लेषण]\n\nमुख्य भाग:\n[मुख्य भाग का आपका विश्लेषण]\n\nनिष्कर्ष:\n[निष्कर्ष का आपका विश्लेषण]\n\nमजबूत पक्ष:\n[2-3 मजबूत पक्ष सूचीबद्ध करें]\n\nकमजोर पक्ष:\n[2-3 कमजोर पक्ष सूचीबद्ध करें]\n\nसुझाव:\n[2-3 सुझाव सूचीबद्ध करें]\n\nफीडबैक:\n[समग्र फीडबैक]\n\nटिप्पणियां:\n[3-4 विस्तृत टिप्पणियां (प्रत्येक 5-12 शब्द)]\n`;
+
+  // Append per-image annotation request only when enabled
+  if (includeImageAnnotations && Array.isArray(extractedTexts) && extractedTexts.length > 0) {
+    prompt += `\nछवि टिप्पणियां:\n`;
+    for (let i = 0; i < extractedTexts.length; i++) {
+      prompt += `- छवि ${i + 1}: [अधिकतम 2 टिप्पणियां, <= 50 वर्ण प्रत्येक; यदि लागू नहीं है तो "कोई नहीं" लिखें]\n`;
+    }
+  }
+
+  prompt += `\nटिप्पणी:\n[समग्र उत्तर गुणवत्ता का 1-2 पंक्ति सारांश]\n`;
+  return prompt;
+};
+
+// Parse Hindi evaluation response
+const parseHindiEvaluationResponse = (evaluationText, question) => {
+  try {
+    const lines = evaluationText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    
+    const evaluation = {
+      relevancy: 75,
+      score: Math.floor((question.metadata?.maximumMarks || 10) * 0.75),
+      remark: "",
+      comments: [],
+      analysis: {
+        introduction: [],
+        body: [],
+        conclusion: [],
+        strengths: [],
+        weaknesses: [],
+        suggestions: [],
+        feedback: []
+      }
+    };
+    
+    let currentSection = "";
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      if (/प्रासंगिकता[:\-\s]/i.test(line)) {
+        const match = line.match(/(\d+)/);
+        if (match) evaluation.relevancy = Math.min(100, Math.max(0, Number.parseInt(match[1])));
+        currentSection = "";
+      } else if (/स्कोर[:\-\s]/i.test(line)) {
+        const match = line.match(/(\d+)/);
+        if (match) evaluation.score = Math.min(question.metadata?.maximumMarks || 10, Math.max(0, Number.parseInt(match[1])));
+        currentSection = "";
+      } else {
+        // Section header detection for Hindi
+        if (/^(परिचय|intro)[:\-\s]*/i.test(line)) {
+          currentSection = "introduction";
+          const afterColon = line.replace(/^(परिचय|intro)[:\-\s]*/i, '').trim();
+          if (afterColon) evaluation.analysis.introduction.push(afterColon);
+        } else if (/^(मुख्य भाग|body|body section|main body)[:\-\s]*/i.test(line)) {
+          currentSection = "body";
+          const afterColon = line.replace(/^(मुख्य भाग|body|body section|main body)[:\-\s]*/i, '').trim();
+          if (afterColon) evaluation.analysis.body.push(afterColon);
+        } else if (/^(निष्कर्ष|conclusion|conclusion section)[:\-\s]*/i.test(line)) {
+          currentSection = "conclusion";
+          const afterColon = line.replace(/^(निष्कर्ष|conclusion|conclusion section)[:\-\s]*/i, '').trim();
+          if (afterColon) evaluation.analysis.conclusion.push(afterColon);
+        } else if (/^(मजबूत पक्ष|strengths?)[:\-\s]*/i.test(line)) {
+          currentSection = "strengths";
+          const afterColon = line.replace(/^(मजबूत पक्ष|strengths?)[:\-\s]*/i, '').trim();
+          if (afterColon) evaluation.analysis.strengths.push(afterColon);
+        } else if (/^(कमजोर पक्ष|weaknesses?|areas for improvement)[:\-\s]*/i.test(line)) {
+          currentSection = "weaknesses";
+          const afterColon = line.replace(/^(कमजोर पक्ष|weaknesses?|areas for improvement)[:\-\s]*/i, '').trim();
+          if (afterColon) evaluation.analysis.weaknesses.push(afterColon);
+        } else if (/^(सुझाव|suggestions?|recommendations?)[:\-\s]*/i.test(line)) {
+          currentSection = "suggestions";
+          const afterColon = line.replace(/^(सुझाव|suggestions?|recommendations?)[:\-\s]*/i, '').trim();
+          if (afterColon) evaluation.analysis.suggestions.push(afterColon);
+        } else if (/^(फीडबैक|feedback)[:\-\s]*/i.test(line)) {
+          currentSection = "feedback";
+          const afterColon = line.replace(/^(फीडबैक|feedback)[:\-\s]*/i, '').trim();
+          if (afterColon) evaluation.analysis.feedback.push(afterColon);
+        } else if (/^(टिप्पणियां|comments?)[:\-\s]*/i.test(line)) {
+          currentSection = "comments";
+          const afterColon = line.replace(/^(टिप्पणियां|comments?)[:\-\s]*/i, '').trim();
+          if (afterColon) evaluation.comments.push(afterColon);
+        } else if (/^(टिप्पणी|remark|overall remark|summary)[:\-\s]*/i.test(line)) {
+          currentSection = "remark";
+          const afterColon = line.replace(/^(टिप्पणी|remark|overall remark|summary)[:\-\s]*/i, '').trim();
+          if (afterColon) evaluation.remark = afterColon;
+        } else {
+          // If inside a section, add lines
+          if (currentSection) {
+            if (currentSection === 'remark') {
+              if (line && !/^(टिप्पणी|remark|overall remark|summary)[:\-\s]*/i.test(line)) {
+                evaluation.remark += (evaluation.remark ? ' ' : '') + line;
+              }
+            } else if (currentSection === 'comments') {
+              if (line && !/^(टिप्पणियां|comments?)[:\-\s]*/i.test(line)) {
+                evaluation.comments.push(line);
+              }
+            } else if (currentSection === 'feedback') {
+              if (line && !/^(फीडबैक|feedback)[:\-\s]*/i.test(line)) {
+                evaluation.analysis.feedback.push(line);
+              }
+            } else if (evaluation.analysis[currentSection] && !/^(परिचय|मुख्य भाग|निष्कर्ष|मजबूत पक्ष|कमजोर पक्ष|सुझाव|फीडबैक)[:\-\s]*/i.test(line)) {
+              evaluation.analysis[currentSection].push(line);
+            }
+          }
+        }
+      }
+    }
+    
+    // Clean up: remove header lines, deduplicate, and set defaults if empty
+    Object.keys(evaluation.analysis).forEach(section => {
+      evaluation.analysis[section] = evaluation.analysis[section]
+        .filter(item => item && !/^(परिचय|मुख्य भाग|निष्कर्ष|मजबूत पक्ष|कमजोर पक्ष|सुझाव|फीडबैक)[:\-\s]*/i.test(item))
+        .map(item => item.trim())
+        .filter((item, idx, arr) => item && arr.indexOf(item) === idx);
+      if (evaluation.analysis[section].length === 0) {
+        evaluation.analysis[section] = ['AI द्वारा कोई सामग्री प्रदान नहीं की गई।'];
+      }
+    });
+    
+    if (evaluation.comments.length === 0) {
+      evaluation.comments = ['AI द्वारा कोई टिप्पणी प्रदान नहीं की गई।'];
+    }
+    if (!evaluation.remark || evaluation.remark.length === 0) {
+      evaluation.remark = 'AI द्वारा कोई टिप्पणी प्रदान नहीं की गई।';
+    }
+    
+    return evaluation;
+  } catch (error) {
+    console.error("Error parsing Hindi evaluation:", error);
+    return {
+      relevancy: 75,
+      score: Math.floor((question.metadata?.maximumMarks || 10) * 0.75),
+      remark: "मूल्यांकन पार्स करने में त्रुटि",
+      comments: ["मूल्यांकन पार्स करने में त्रुटि"],
+      analysis: {
+        introduction: ["मूल्यांकन पार्स करने में त्रुटि"],
+        body: ["मूल्यांकन पार्स करने में त्रुटि"],
+        conclusion: ["मूल्यांकन पार्स करने में त्रुटि"],
+        strengths: ["मूल्यांकन पार्स करने में त्रुटि"],
+        weaknesses: ["मूल्यांकन पार्स करने में त्रुटि"],
+        suggestions: ["मूल्यांकन पार्स करने में त्रुटि"],
+        feedback: ["मूल्यांकन पार्स करने में त्रुटि"]
+      }
+    };
+  }
+};
+
 module.exports = {
   validateTextRelevanceToQuestion,
   extractTextFromImages,
@@ -1122,4 +1310,8 @@ module.exports = {
   // new helpers (safe to import optionally)
   parseImageAnnotations,
   mapCommentsToImages,
+  // Hindi evaluation functions
+  detectLanguage,
+  generateCustomHindiEvaluationPrompt,
+  parseHindiEvaluationResponse,
 };
