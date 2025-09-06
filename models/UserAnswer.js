@@ -241,6 +241,58 @@ const userAnswerSchema = new mongoose.Schema({
       }]
     }
   },
+  hindiEvaluation: {
+    relevancy: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0
+    },
+    score: {
+      type: Number,
+      min: 0
+    },
+    remark: {
+      type: String,
+      trim: true,
+      maxlength: 250
+    },
+    comments: [{
+      type: String,
+      trim: true,
+      maxlength: 800
+    }],
+    analysis: {
+      introduction: [{
+        type: String,
+        trim: true
+      }],
+      body: [{
+        type: String,
+        trim: true
+      }],
+      conclusion: [{
+        type: String,
+        trim: true
+      }],
+      strengths: [{
+        type: String,
+        trim: true
+      }],
+      weaknesses: [{
+        type: String,
+        trim: true
+      }],
+      suggestions: [{
+        type: String,
+        trim: true
+      }],
+      feedback: [{
+        type: String,
+        trim: true
+      }]
+    }
+  },
   annotations: [{
     s3Key: {
       type: String,
