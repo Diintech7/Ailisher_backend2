@@ -8,7 +8,7 @@ const {
     deleteImage 
 } = require('../controllers/ImageGenerator');
 const { verifyToken, isClient } = require('../middleware/auth');
-const { overlayTextOnImage } = require('../controllers/TextOverlayController');
+const { overlayTextOnImage } = require('../controllers/imagetextoverlaycontroller');
 
 // Image generation
 router.post('/generate-image', verifyToken, isClient, generateImage);
@@ -23,7 +23,7 @@ router.get('/my-images', verifyToken, isClient, getUserImages);
 router.delete('/images/:id', verifyToken, isClient, deleteImage);
 
 // Overlay text
-router.post('/overlay-text', verifyToken, isClient, overlayTextOnImage);
+router.post('/overlay-text', verifyToken, isClient, overlayTextOnImage );
 
 
 
