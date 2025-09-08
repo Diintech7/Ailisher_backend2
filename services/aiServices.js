@@ -1151,10 +1151,32 @@ const generateCustomHindiEvaluationPrompt = (question, extractedTexts ) => {
   return prompt;
 };
 
+// Normalize Hindi evaluation text: make headers standalone lines and strip markdown markers around headers
+function normalizeHindiEvaluationText(raw) {
+  try {
+    if (!raw || typeof raw !== 'string') return '';
+    let t = raw.replace(/\r\n?/g, '\n');
+    // Replace bolded headers like **मुख्य भाग:** with plain 'मुख्य भाग:'
+    const hdr = '(परिचय|मुख्य भाग|निष्कर्ष|मजबूत पक्ष|कमजोर पक्ष|सुझाव|फीडबैक|टिप्पणियां|टिप्पणी)';
+    const boldHdr = new RegExp(`\n?\**\s*${hdr}\s*\**\s*[:：]?`, 'gi');
+    t = t.replace(boldHdr, (m, name) => `\n${name}:\n`);
+    // Also ensure plain headers mid-line become their own lines
+    const midHdrWithColon = new RegExp(`${hdr}\s*[:：]`, 'gi');
+    t = t.replace(midHdrWithColon, (m) => `\n${m}\n`);
+    // Ensure English section labels, if any, are split too
+    const engHdr = '(Introduction|Body|Conclusion|Strengths|Weaknesses|Suggestions|Feedback|Comments|Remark)';
+    const engMid = new RegExp(`${engHdr}\s*[:：]`, 'gi');
+    t = t.replace(engMid, (m) => `\n${m}\n`);
+    return t;
+  } catch (_) {
+    return String(raw || '');
+  }
+}
+
 // Parse Hindi evaluation response
 const parseHindiEvaluationResponse = (evaluationText, question) => {
   try {
-    const lines = evaluationText
+    const lines = normalizeHindiEvaluationText(evaluationText)
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
@@ -1288,6 +1310,260 @@ const parseHindiEvaluationResponse = (evaluationText, question) => {
   }
 };
 
+// Translate an English evaluation object into a structured Hindi evaluation
+// Uses the configured evaluation AI service and preserves the section schema
+async function translateEvaluationToHindi(evaluation, question) {
+  try {
+    if (!evaluation || typeof evaluation !== 'object') return null;
+    const service = await getServiceForTask("evaluation");
+
+    const maxMarks = question?.metadata?.maximumMarks || 10;
+    const englishBlock = `RELEVANCY: ${Number.isFinite(evaluation.relevancy) ? evaluation.relevancy : 75}
+SCORE: ${Number.isFinite(evaluation.score) ? evaluation.score : Math.floor(maxMarks * 0.7)}
+
+Introduction:
+${(evaluation.analysis?.introduction || []).join('\n')}
+
+Body:
+${(evaluation.analysis?.body || []).join('\n')}
+
+Conclusion:
+${(evaluation.analysis?.conclusion || []).join('\n')}
+
+Strengths:
+${(evaluation.analysis?.strengths || []).join('\n')}
+
+Weaknesses:
+${(evaluation.analysis?.weaknesses || []).join('\n')}
+
+Suggestions:
+${(evaluation.analysis?.suggestions || []).join('\n')}
+
+Feedback:
+${(evaluation.analysis?.feedback || []).join('\n')}
+
+Comments:
+${(evaluation.comments || []).join('\n')}
+
+Remark:
+${evaluation.remark || ''}`;
+
+    const instruction = `Convert the following evaluation to Hindi, preserving meaning and structure.
+Use EXACT Hindi section headers and order as shown below. Do not add new sections. Keep numeric scores unchanged.
+
+प्रासंगिकता: [RELEVANCY number]
+स्कोर: [SCORE number]
+
+परिचय:
+[translated points]
+
+मुख्य भाग:
+[translated points]
+
+निष्कर्ष:
+[translated points]
+
+मजबूत पक्ष:
+[translated bullets]
+
+कमजोर पक्ष:
+[translated bullets]
+
+सुझाव:
+[translated bullets]
+
+फीडबैक:
+[translated lines]
+
+टिप्पणियां:
+[translated short comments]
+
+टिप्पणी:
+[translated 1-2 line remark]
+
+Now translate this content: \n\n${englishBlock}`;
+
+    let aiText = null;
+    if (service.serviceName === 'gemini') {
+      const resp = await axios.post(
+        `${service.apiUrl}?key=${service.apiKey}`,
+        {
+          contents: [
+            { parts: [ { text: instruction } ] }
+          ],
+          generationConfig: { temperature: 0.4, topK: 40, topP: 0.9, maxOutputTokens: 2048 }
+        },
+        { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
+      );
+      aiText = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    } else if (service.serviceName === 'openai') {
+      const resp = await axios.post(
+        service.apiUrl,
+        {
+          model: 'gpt-4o-mini',
+          messages: [ { role: 'user', content: instruction } ],
+          max_tokens: 1500,
+          temperature: 0.4,
+        },
+        { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${service.apiKey}` }, timeout: 30000 }
+      );
+      aiText = resp.data?.choices?.[0]?.message?.content || null;
+    }
+
+    if (!aiText || typeof aiText !== 'string') return null;
+    return parseHindiEvaluationResponse(aiText, question);
+  } catch (e) {
+    console.warn('translateEvaluationToHindi failed:', e.message);
+    return null;
+  }
+}
+
+// Ensure fields meet storage constraints (e.g., remark length)
+function enforceEvaluationLimits(evaluation, options = {}) {
+  try {
+    if (!evaluation || typeof evaluation !== 'object') return evaluation;
+    const maxRemark = Number.isFinite(options.maxRemark) ? options.maxRemark : 250;
+    const clamp = (s, n) => (typeof s === 'string' && s.length > n ? s.slice(0, n - 1) + '…' : s);
+    evaluation.remark = clamp(evaluation.remark || '', maxRemark);
+    if (evaluation.hindiEvaluation && typeof evaluation.hindiEvaluation === 'object') {
+      evaluation.hindiEvaluation.remark = clamp(evaluation.hindiEvaluation.remark || '', maxRemark);
+    }
+    return evaluation;
+  } catch (_) {
+    return evaluation;
+  }
+}
+
+// Lightweight text translation EN -> HI using the configured evaluation service
+async function translateTextToHindi(text) {
+  try {
+    if (!text || typeof text !== 'string') return '';
+    // Always prefer Gemini for translation
+    let gemini = null;
+    try {
+      const active = await AiServiceConfig.getActiveServices();
+      gemini = (active || []).find(s => s.serviceName === 'gemini');
+    } catch (_) {}
+    const instruction = `Translate the following text to Hindi. Keep it concise and natural.\nTEXT:\n${text}`;
+    if (gemini && gemini.apiUrl && gemini.apiKey) {
+      try {
+        const resp = await axios.post(
+          `${gemini.apiUrl}?key=${gemini.apiKey}`,
+          { contents: [ { parts: [ { text: instruction } ] } ], generationConfig: { temperature: 0.2, maxOutputTokens: 512 } },
+          { headers: { 'Content-Type': 'application/json' }, timeout: 20000 }
+        );
+        const out = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (out) return out;
+      } catch (_) { /* fall back below */ }
+    }
+    // Fallback to current evaluation service
+    const service = await getServiceForTask('evaluation');
+    if (service.serviceName === 'gemini') {
+      const resp = await axios.post(
+        `${service.apiUrl}?key=${service.apiKey}`,
+        { contents: [ { parts: [ { text: instruction } ] } ], generationConfig: { temperature: 0.2, maxOutputTokens: 512 } },
+        { headers: { 'Content-Type': 'application/json' }, timeout: 20000 }
+      );
+      return resp.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    } else if (service.serviceName === 'openai') {
+      const resp = await axios.post(
+        service.apiUrl,
+        { model: 'gpt-4o-mini', messages: [ { role: 'user', content: instruction } ], max_tokens: 400, temperature: 0.2 },
+        { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${service.apiKey}` }, timeout: 20000 }
+      );
+      return resp.data?.choices?.[0]?.message?.content?.trim() || '';
+    }
+    return '';
+  } catch (_) {
+    return '';
+  }
+}
+
+// Enrich a parsed Hindi evaluation by translating missing/placeholder sections from English
+async function enrichHindiEvaluationFromEnglish(englishEval, hindiEval) {
+  try {
+    const target = { ...(hindiEval || {}) };
+    const isMissing = (arr) => !Array.isArray(arr) || arr.length === 0 || arr.every(x => /AI द्वारा कोई सामग्री प्रदान नहीं की गई।/i.test(String(x || '')));
+    const ensureArray = (v) => Array.isArray(v) ? v : (v ? [String(v)] : []);
+    const sections = ['introduction','body','conclusion','strengths','weaknesses','suggestions','feedback'];
+    target.analysis = target.analysis || { introduction:[], body:[], conclusion:[], strengths:[], weaknesses:[], suggestions:[], feedback:[] };
+
+    for (const s of sections) {
+      if (isMissing(target.analysis[s])) {
+        const english = ensureArray(englishEval?.analysis?.[s]);
+        if (english.length > 0) {
+          const translated = await translateTextToHindi(english.join('\n'));
+          if (translated) {
+            target.analysis[s] = translated.split('\n').map(x => x.trim()).filter(Boolean);
+          }
+        }
+      }
+    }
+    if (!Array.isArray(target.comments) || target.comments.length === 0 || target.comments[0] === 'AI द्वारा कोई टिप्पणी प्रदान नहीं की गई।') {
+      const engComments = ensureArray(englishEval?.comments);
+      if (engComments.length > 0) {
+        const translated = await translateTextToHindi(engComments.join('\n'));
+        if (translated) target.comments = translated.split('\n').map(x => x.trim()).filter(Boolean);
+      }
+    }
+    if (!target.remark || target.remark === 'AI द्वारा कोई टिप्पणी प्रदान नहीं की गई।') {
+      const engRemark = englishEval?.remark || '';
+      if (engRemark) {
+        const translated = await translateTextToHindi(engRemark);
+        if (translated) target.remark = translated.trim();
+      }
+    }
+    // Keep numeric fields
+    if (typeof target.relevancy !== 'number' && typeof englishEval?.relevancy === 'number') target.relevancy = englishEval.relevancy;
+    if (typeof target.score !== 'number' && typeof englishEval?.score === 'number') target.score = englishEval.score;
+    return target;
+  } catch (_) {
+    return hindiEval;
+  }
+}
+
+// Exact, per-field translation of an English evaluation object to Hindi
+async function directTranslateEvaluationToHindi(englishEval) {
+  const clone = (o) => JSON.parse(JSON.stringify(o || {}));
+  const base = clone(englishEval);
+  const hindi = {
+    relevancy: typeof base.relevancy === 'number' ? base.relevancy : 0,
+    score: typeof base.score === 'number' ? base.score : 0,
+    remark: '',
+    comments: [],
+    analysis: {
+      introduction: [],
+      body: [],
+      conclusion: [],
+      strengths: [],
+      weaknesses: [],
+      suggestions: [],
+      feedback: []
+    }
+  };
+  try {
+    // Remark
+    if (base.remark) hindi.remark = (await translateTextToHindi(base.remark)) || '';
+    // Comments
+    if (Array.isArray(base.comments) && base.comments.length > 0) {
+      const translated = await translateTextToHindi(base.comments.join('\n'));
+      if (translated) hindi.comments = translated.split('\n').map(s => s.trim()).filter(Boolean);
+    }
+    // Sections
+    const sections = ['introduction','body','conclusion','strengths','weaknesses','suggestions','feedback'];
+    for (const s of sections) {
+      const src = Array.isArray(base.analysis?.[s]) ? base.analysis[s] : [];
+      if (src.length > 0) {
+        const translated = await translateTextToHindi(src.join('\n'));
+        if (translated) hindi.analysis[s] = translated.split('\n').map(x => x.trim()).filter(Boolean);
+      }
+    }
+  } catch (e) {
+    console.warn('directTranslateEvaluationToHindi failed:', e.message);
+  }
+  return hindi;
+}
+
 module.exports = {
   validateTextRelevanceToQuestion,
   extractTextFromImages,
@@ -1307,4 +1583,9 @@ module.exports = {
   detectLanguage,
   generateCustomHindiEvaluationPrompt,
   parseHindiEvaluationResponse,
+  translateEvaluationToHindi,
+  enforceEvaluationLimits,
+  translateTextToHindi,
+  enrichHindiEvaluationFromEnglish,
+  directTranslateEvaluationToHindi,
 };

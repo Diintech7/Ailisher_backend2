@@ -28,9 +28,13 @@ const {
   parseImageAnnotations,
   mapCommentsToImages,
   detectLanguage,
-  generateDualLanguageEvaluation,
   generateCustomHindiEvaluationPrompt,
   parseHindiEvaluationResponse,
+  translateEvaluationToHindi,
+  enforceEvaluationLimits,
+  translateTextToHindi,
+  enrichHindiEvaluationFromEnglish,
+  directTranslateEvaluationToHindi,
 } = require("../services/aiServices")
 
 router.use("/crud", crud)
@@ -237,6 +241,23 @@ router.post(
         if (!evaluation) {
           throw new Error("No evaluation service available or configured")
         }
+
+        // If the original answer content is Hindi, translate the English evaluation to Hindi as well
+        try {
+          const combinedText = (userAnswer.extractedTexts || []).join(' ')
+          const lang = detectLanguage(combinedText)
+          if (lang === 'hindi' && evaluation && !evaluation.hindiEvaluation) {
+            const hindiEval = await translateEvaluationToHindi(evaluation, question)
+            if (hindiEval) {
+              evaluation.hindiEvaluation = hindiEval
+            }
+          }
+        } catch (e) {
+          console.warn('[manual] Hindi translation attempt failed:', e.message)
+        }
+
+        // Enforce storage limits
+        evaluation = enforceEvaluationLimits(evaluation, { maxRemark: 250 })
 
         userAnswer.evaluation = {
           ...evaluation,
@@ -519,41 +540,30 @@ router.post(
                   if (detectedLanguage === "hindi") {
                     console.log("[v0] Generating Hindi evaluation for detected Hindi text")
                     try {
-                      const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, {
-                        includeImageAnnotations,
-                      })
-                      const hindiResponse = await axios.post(
-                        `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
-                        {
-                          contents: [
-                            {
-                              parts: [
-                                {
-                                  text: hindiPrompt,
-                                },
-                              ],
-                            },
-                          ],
-                          generationConfig: {
-                            temperature: 0.7,
-                            topK: 40,
-                            topP: 0.95,
-                            maxOutputTokens: 2048,
-                          },
-                        },
-                        {
-                          headers: { "Content-Type": "application/json" },
-                          timeout: 30000,
-                        },
-                      )
-
-                      if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
-                        const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
-                        const hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
-                        // Store Hindi evaluation separately in the evaluation object
+                      // Prefer direct translation of the English evaluation to ensure fidelity
+                      const hindiEvaluation = await translateEvaluationToHindi(evaluation, question)
+                      if (hindiEvaluation) {
                         evaluation.hindiEvaluation = hindiEvaluation
-                        console.log("[v0] Hindi evaluation generated successfully")
+                      } else {
+                        const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, { includeImageAnnotations })
+                        const hindiResponse = await axios.post(
+                          `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
+                          { contents: [ { parts: [ { text: hindiPrompt } ] } ], generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 2048 } },
+                          { headers: { "Content-Type": "application/json" }, timeout: 30000 },
+                        )
+                        if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
+                          const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
+                          let parsed = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                          // If feedback is empty, translate English feedback list as fallback
+                          const engFeedback = (evaluation.analysis?.feedback || []).join('\n')
+                          if ((parsed.analysis?.feedback || []).every(x => /AI द्वारा कोई सामग्री प्रदान नहीं की गई।/.test(String(x)))) {
+                            const translated = await translateTextToHindi(engFeedback)
+                            if (translated) parsed.analysis.feedback = translated.split('\n').map(s => s.trim()).filter(Boolean)
+                          }
+                          evaluation.hindiEvaluation = parsed
+                        }
                       }
+                      evaluation = enforceEvaluationLimits(evaluation, { maxRemark: 250 })
                     } catch (hindiError) {
                       console.error("[v0] Hindi evaluation failed:", hindiError.message)
                     }
@@ -612,37 +622,19 @@ router.post(
                   if (detectedLanguage === "hindi") {
                     console.log("[v0] Generating Hindi evaluation for detected Hindi text")
                     try {
-                      const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, {
-                        includeImageAnnotations,
-                      })
-                      const hindiResponse = await axios.post(
-                        evaluationService.apiUrl,
-                        {
-                          model: "gpt-4o-mini",
-                          messages: [
-                            {
-                              role: "user",
-                              content: hindiPrompt,
-                            },
-                          ],
-                          max_tokens: 1500,
-                          temperature: 0.7,
-                        },
-                        {
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${evaluationService.apiKey}`,
-                          },
-                          timeout: 30000,
-                        },
-                      )
-
-                      if (hindiResponse.data?.choices?.[0]?.message?.content) {
-                        const hindiEvaluationText = hindiResponse.data.choices[0].message.content
-                        const hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
-                        // Store Hindi evaluation separately in the evaluation object
-                        evaluation.hindiEvaluation = hindiEvaluation
-                        console.log("[v0] Hindi evaluation generated successfully")
+                      const hindiEvaluation = await translateEvaluationToHindi(evaluation, question)
+                      if (hindiEvaluation) evaluation.hindiEvaluation = hindiEvaluation
+                      else {
+                        const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, { includeImageAnnotations })
+                        const hindiResponse = await axios.post(
+                          evaluationService.apiUrl,
+                          { model: "gpt-4o-mini", messages: [ { role: "user", content: hindiPrompt } ], max_tokens: 1500, temperature: 0.7 },
+                          { headers: { "Content-Type": "application/json", Authorization: `Bearer ${evaluationService.apiKey}` }, timeout: 30000 },
+                        )
+                        if (hindiResponse.data?.choices?.[0]?.message?.content) {
+                          const hindiEvaluationText = hindiResponse.data.choices[0].message.content
+                          evaluation.hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                        }
                       }
                     } catch (hindiError) {
                       console.error("[v0] Hindi evaluation failed:", hindiError.message)
@@ -680,46 +672,36 @@ router.post(
               if (!evaluation) {
                 evaluation = generateMockEvaluation(question)
               }
+              // Enforce storage limits (e.g., remark length)
+              evaluation = enforceEvaluationLimits(evaluation, { maxRemark: 250 })
 
               // Generate Hindi evaluation for fallback evaluation if language is Hindi
               if (detectedLanguage === "hindi" && evaluation && !evaluation.hindiEvaluation) {
                 console.log("[v0] Generating Hindi evaluation for fallback evaluation")
                 try {
-                  const includeImageAnnotations = question.evaluationMode !== "manual"
-                  const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, {
-                    includeImageAnnotations,
-                  })
-                  const hindiResponse = await axios.post(
-                    `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
-                    {
-                      contents: [
-                        {
-                          parts: [
-                            {
-                              text: hindiPrompt,
-                            },
-                          ],
-                        },
-                      ],
-                      generationConfig: {
-                        temperature: 0.7,
-                        topK: 40,
-                        topP: 0.95,
-                        maxOutputTokens: 2048,
-                      },
-                    },
-                    {
-                      headers: { "Content-Type": "application/json" },
-                      timeout: 30000,
-                    },
-                  )
-
-                  if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
-                    const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
-                    const hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                  const hindiEvaluation = await translateEvaluationToHindi(evaluation, question)
+                  if (hindiEvaluation) {
                     evaluation.hindiEvaluation = hindiEvaluation
-                    console.log("[v0] Hindi evaluation generated successfully for fallback")
+                  } else {
+                    const includeImageAnnotations = question.evaluationMode !== "manual"
+                    const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, { includeImageAnnotations })
+                    const hindiResponse = await axios.post(
+                      `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
+                      { contents: [ { parts: [ { text: hindiPrompt } ] } ], generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 2048 } },
+                      { headers: { "Content-Type": "application/json" }, timeout: 30000 },
+                    )
+                    if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
+                      const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
+                      let parsed = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                      const engFeedback = (evaluation.analysis?.feedback || []).join('\n')
+                      if ((parsed.analysis?.feedback || []).every(x => /AI द्वारा कोई सामग्री प्रदान नहीं की गई।/.test(String(x)))) {
+                        const translated = await translateTextToHindi(engFeedback)
+                        if (translated) parsed.analysis.feedback = translated.split('\n').map(s => s.trim()).filter(Boolean)
+                      }
+                      evaluation.hindiEvaluation = parsed
+                    }
                   }
+                  evaluation = enforceEvaluationLimits(evaluation, { maxRemark: 250 })
                 } catch (hindiError) {
                   console.error("[v0] Hindi evaluation failed for fallback:", hindiError.message)
                   // Generate a mock Hindi evaluation as fallback
@@ -769,45 +751,26 @@ router.post(
             } catch (evaluationError) {
               console.error("AI evaluation failed:", evaluationError.message)
               evaluation = generateMockEvaluation(question)
+              evaluation = enforceEvaluationLimits(evaluation, { maxRemark: 250 })
               
               // Generate Hindi evaluation for error fallback if language is Hindi
               if (detectedLanguage === "hindi" && evaluation && !evaluation.hindiEvaluation) {
                 console.log("[v0] Generating Hindi evaluation for error fallback")
                 try {
-                  const includeImageAnnotations = question.evaluationMode !== "manual"
-                  const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, {
-                    includeImageAnnotations,
-                  })
-                  const hindiResponse = await axios.post(
-                    `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
-                    {
-                      contents: [
-                        {
-                          parts: [
-                            {
-                              text: hindiPrompt,
-                            },
-                          ],
-                        },
-                      ],
-                      generationConfig: {
-                        temperature: 0.7,
-                        topK: 40,
-                        topP: 0.95,
-                        maxOutputTokens: 2048,
-                      },
-                    },
-                    {
-                      headers: { "Content-Type": "application/json" },
-                      timeout: 30000,
-                    },
-                  )
-
-                  if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
-                    const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
-                    const hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
-                    evaluation.hindiEvaluation = hindiEvaluation
-                    console.log("[v0] Hindi evaluation generated successfully for error fallback")
+                  const hindiEvaluation = await translateEvaluationToHindi(evaluation, question)
+                  if (hindiEvaluation) evaluation.hindiEvaluation = hindiEvaluation
+                  else {
+                    const includeImageAnnotations = question.evaluationMode !== "manual"
+                    const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, { includeImageAnnotations })
+                    const hindiResponse = await axios.post(
+                      `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
+                      { contents: [ { parts: [ { text: hindiPrompt } ] } ], generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 2048 } },
+                      { headers: { "Content-Type": "application/json" }, timeout: 30000 },
+                    )
+                    if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
+                      const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
+                      evaluation.hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                    }
                   }
                 } catch (hindiError) {
                   console.error("[v0] Hindi evaluation failed for error fallback:", hindiError.message)
@@ -1421,39 +1384,28 @@ router.post(
                   if (detectedLanguage === "hindi") {
                     console.log("[v0] Generating Hindi evaluation for detected Hindi text")
                     try {
-                      const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts)
-                      const hindiResponse = await axios.post(
-                        `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
-                        {
-                          contents: [
-                            {
-                              parts: [
-                                {
-                                  text: hindiPrompt,
-                                },
-                              ],
-                            },
-                          ],
-                          generationConfig: {
-                            temperature: 0.7,
-                            topK: 40,
-                            topP: 0.95,
-                            maxOutputTokens: 2048,
-                          },
-                        },
-                        {
-                          headers: { "Content-Type": "application/json" },
-                          timeout: 30000,
-                        },
-                      )
-
-                      if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
-                        const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
-                        const hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
-                        // Store Hindi evaluation separately in the evaluation object
+                      const hindiEvaluation = await translateEvaluationToHindi(evaluation, question)
+                      if (hindiEvaluation) {
                         evaluation.hindiEvaluation = hindiEvaluation
-                        console.log("[v0] Hindi evaluation generated successfully")
+                      } else {
+                        const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts)
+                        const hindiResponse = await axios.post(
+                          `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
+                          { contents: [ { parts: [ { text: hindiPrompt } ] } ], generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 2048 } },
+                          { headers: { "Content-Type": "application/json" }, timeout: 30000 },
+                        )
+                        if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
+                          const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
+                          let parsed = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                          const engFeedback = (evaluation.analysis?.feedback || []).join('\n')
+                          if ((parsed.analysis?.feedback || []).every(x => /AI द्वारा कोई सामग्री प्रदान नहीं की गई।/.test(String(x)))) {
+                            const translated = await translateTextToHindi(engFeedback)
+                            if (translated) parsed.analysis.feedback = translated.split('\n').map(s => s.trim()).filter(Boolean)
+                          }
+                          evaluation.hindiEvaluation = parsed
+                        }
                       }
+                      evaluation = enforceEvaluationLimits(evaluation, { maxRemark: 250 })
                     } catch (hindiError) {
                       console.error("[v0] Hindi evaluation failed:", hindiError.message)
                     }
@@ -1493,35 +1445,19 @@ router.post(
                   if (detectedLanguage === "hindi") {
                     console.log("[v0] Generating Hindi evaluation for detected Hindi text")
                     try {
-                      const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts)
-                      const hindiResponse = await axios.post(
-                        evaluationService.apiUrl,
-                        {
-                          model: "gpt-4o-mini",
-                          messages: [
-                            {
-                              role: "user",
-                              content: hindiPrompt,
-                            },
-                          ],
-                          max_tokens: 1500,
-                          temperature: 0.7,
-                        },
-                        {
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${evaluationService.apiKey}`,
-                          },
-                          timeout: 30000,
-                        },
-                      )
-
-                      if (hindiResponse.data?.choices?.[0]?.message?.content) {
-                        const hindiEvaluationText = hindiResponse.data.choices[0].message.content
-                        const hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
-                        // Store Hindi evaluation separately in the evaluation object
-                        evaluation.hindiEvaluation = hindiEvaluation
-                        console.log("[v0] Hindi evaluation generated successfully")
+                      const hindiEvaluation = await translateEvaluationToHindi(evaluation, question)
+                      if (hindiEvaluation) evaluation.hindiEvaluation = hindiEvaluation
+                      else {
+                        const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts)
+                        const hindiResponse = await axios.post(
+                          evaluationService.apiUrl,
+                          { model: "gpt-4o-mini", messages: [ { role: "user", content: hindiPrompt } ], max_tokens: 1500, temperature: 0.7 },
+                          { headers: { "Content-Type": "application/json", Authorization: `Bearer ${evaluationService.apiKey}` }, timeout: 30000 },
+                        )
+                        if (hindiResponse.data?.choices?.[0]?.message?.content) {
+                          const hindiEvaluationText = hindiResponse.data.choices[0].message.content
+                          evaluation.hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                        }
                       }
                     } catch (hindiError) {
                       console.error("[v0] Hindi evaluation failed:", hindiError.message)
@@ -1545,40 +1481,20 @@ router.post(
               if (detectedLanguage === "hindi" && evaluation && !evaluation.hindiEvaluation) {
                 console.log("[v0] Generating Hindi evaluation for fallback evaluation (subjective)")
                 try {
-                  const includeImageAnnotations = question.evaluationMode !== "manual"
-                  const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, {
-                    includeImageAnnotations,
-                  })
-                  const hindiResponse = await axios.post(
-                    `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
-                    {
-                      contents: [
-                        {
-                          parts: [
-                            {
-                              text: hindiPrompt,
-                            },
-                          ],
-                        },
-                      ],
-                      generationConfig: {
-                        temperature: 0.7,
-                        topK: 40,
-                        topP: 0.95,
-                        maxOutputTokens: 2048,
-                      },
-                    },
-                    {
-                      headers: { "Content-Type": "application/json" },
-                      timeout: 30000,
-                    },
-                  )
-
-                  if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
-                    const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
-                    const hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
-                    evaluation.hindiEvaluation = hindiEvaluation
-                    console.log("[v0] Hindi evaluation generated successfully for fallback (subjective)")
+                  const hindiEvaluation = await translateEvaluationToHindi(evaluation, question)
+                  if (hindiEvaluation) evaluation.hindiEvaluation = hindiEvaluation
+                  else {
+                    const includeImageAnnotations = question.evaluationMode !== "manual"
+                    const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, { includeImageAnnotations })
+                    const hindiResponse = await axios.post(
+                      `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
+                      { contents: [ { parts: [ { text: hindiPrompt } ] } ], generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 2048 } },
+                      { headers: { "Content-Type": "application/json" }, timeout: 30000 },
+                    )
+                    if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
+                      const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
+                      evaluation.hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                    }
                   }
                 } catch (hindiError) {
                   console.error("[v0] Hindi evaluation failed for fallback (subjective):", hindiError.message)
@@ -1618,40 +1534,20 @@ router.post(
               if (detectedLanguage === "hindi" && evaluation && !evaluation.hindiEvaluation) {
                 console.log("[v0] Generating Hindi evaluation for error fallback (subjective)")
                 try {
-                  const includeImageAnnotations = question.evaluationMode !== "manual"
-                  const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, {
-                    includeImageAnnotations,
-                  })
-                  const hindiResponse = await axios.post(
-                    `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
-                    {
-                      contents: [
-                        {
-                          parts: [
-                            {
-                              text: hindiPrompt,
-                            },
-                          ],
-                        },
-                      ],
-                      generationConfig: {
-                        temperature: 0.7,
-                        topK: 40,
-                        topP: 0.95,
-                        maxOutputTokens: 2048,
-                      },
-                    },
-                    {
-                      headers: { "Content-Type": "application/json" },
-                      timeout: 30000,
-                    },
-                  )
-
-                  if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
-                    const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
-                    const hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
-                    evaluation.hindiEvaluation = hindiEvaluation
-                    console.log("[v0] Hindi evaluation generated successfully for error fallback (subjective)")
+                  const hindiEvaluation = await translateEvaluationToHindi(evaluation, question)
+                  if (hindiEvaluation) evaluation.hindiEvaluation = hindiEvaluation
+                  else {
+                    const includeImageAnnotations = question.evaluationMode !== "manual"
+                    const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, { includeImageAnnotations })
+                    const hindiResponse = await axios.post(
+                      `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
+                      { contents: [ { parts: [ { text: hindiPrompt } ] } ], generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 2048 } },
+                      { headers: { "Content-Type": "application/json" }, timeout: 30000 },
+                    )
+                    if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
+                      const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text
+                      evaluation.hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                    }
                   }
                 } catch (hindiError) {
                   console.error("[v0] Hindi evaluation failed for error fallback (subjective):", hindiError.message)
