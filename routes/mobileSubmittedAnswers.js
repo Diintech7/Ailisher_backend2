@@ -602,6 +602,14 @@ router.get('/:answerId', async (req, res) => {
             feedback: []
           }
         } : null,
+
+        hindiEvaluation: userAnswer.hindiEvaluation ? {
+          relevancy: userAnswer.hindiEvaluation.relevancy,
+          score: userAnswer.hindiEvaluation.score,
+          remark: userAnswer.hindiEvaluation.remark,
+          comments: userAnswer.hindiEvaluation.comments || [],
+          analysis: userAnswer.hindiEvaluation.analysis || []
+        } : null,
         
         // Manual Review Feedback (if available)
         feedback: userAnswer.feedback ? {
