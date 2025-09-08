@@ -39,10 +39,10 @@ const toFilterPath = (absolutePath) => {
 };
 
 // Controller: overlay text on a single image (base64 or URL) using in-memory streams
-// Request body: { imageBase64?: string, imageUrl?: string, text: string, fontsize?: number, color?: string, bgColor?: string, bgOpacity?: number }
+// Request body: { imageBase64?: string, imageUrl?: string, text: string, fontsize?: number, color?: string, align?: 'left'|'center'|'right', numbered?: boolean, withTicks?: boolean, tickColor?: string, xPadding?: number, sidebar?: boolean, sidebarWidth?: number, sidebarColor?: string }
 const overlayTextOnImage = async (req, res) => {
   try {
-    const { imageBase64, imageUrl, text, fontsize, color, bgColor, bgOpacity } = req.body;
+    const { imageBase64, imageUrl, text, fontsize, color, align, numbered, withTicks, tickColor, xPadding, sidebar, sidebarWidth, sidebarColor } = req.body;
     if (!imageBase64 && !imageUrl) {
       return res.status(400).json({ error: 'Provide imageBase64 or imageUrl' });
     }
@@ -109,8 +109,16 @@ const overlayTextOnImage = async (req, res) => {
       return wrappedLines.length > 0 ? wrappedLines : ['No text available'];
     };
 
-    const textLines = processTextForWrapping(text, 50, 10);
-    if (textLines.length === 0) {
+    // Split input into comments (blank line or '|||') and wrap each comment separately
+    const rawComments = String(text || '')
+      .split(/\n\n|\|\|\|/)
+      .map(s => s.trim())
+      .filter(Boolean)
+      .slice(0, 10); // hard safety cap
+
+    const wrappedComments = rawComments.map(c => processTextForWrapping(c, 50, 10));
+    const totalWrappedLines = wrappedComments.flat();
+    if (totalWrappedLines.length === 0) {
       return res.status(400).json({ error: 'Text is empty after processing' });
     }
 
@@ -125,11 +133,8 @@ const overlayTextOnImage = async (req, res) => {
       return trimmed.toLowerCase();
     };
     const fontColor = normalizeColor(color);
-    const boxBaseColor = normalizeColor(bgColor || '#000000');
-    let boxAlpha = 0.8;
-    if (typeof bgOpacity === 'number' && bgOpacity >= 0 && bgOpacity <= 1) {
-      boxAlpha = bgOpacity;
-    }
+    const tickFontColor = normalizeColor(tickColor); // green-500 by default
+    const panelColor = normalizeColor(sidebarColor || '#FFFFFF');
 
     // English-only: choose a Latin font
     const latinCandidates = process.platform === 'win32'
@@ -152,19 +157,67 @@ const overlayTextOnImage = async (req, res) => {
     const size = Number.isFinite(Number(fontsize)) ? Number(fontsize) : 16;
     const lineHeight = size * 1.4; // Line height for spacing
     const startY = 50;
+    const paddingX = Number.isFinite(Number(xPadding)) ? Math.max(0, Number(xPadding)) : 40;
+    const requestedAlign = typeof align === 'string' ? align.toLowerCase() : 'center';
+    const addSidebar = Boolean(sidebar);
+    const panelWidth = Number.isFinite(Number(sidebarWidth)) ? Math.max(60, Math.floor(Number(sidebarWidth))) : 320;
 
-    // Create multiple drawtext filters for each line
-    const drawtextFilters = textLines.map((line, index) => {
-      const cleanLine = cleanTextForDrawtext(line);
-      const yPos = startY + (index * lineHeight);
-      const boxOptions = boxAlpha > 0
-        ? `:box=1:boxcolor=${boxBaseColor}@${boxAlpha}:boxborderw=8`
-        : '';
-      
-      return latinFont
-        ? `drawtext=text='${cleanLine}':fontfile='${toFilterPath(latinFont)}':fontcolor=${fontColor}:fontsize=${size}${boxOptions}:x=(w-text_w)/2:y=${yPos}`
-        : `drawtext=text='${cleanLine}':fontcolor=${fontColor}:fontsize=${size}${boxOptions}:x=(w-text_w)/2:y=${yPos}`;
+    // Build layers per comment: number on first line only; one tick per comment
+    let currentY = startY;
+    const layers = [];
+    wrappedComments.forEach((lines, commentIndex) => {
+      const linesForThis = Array.isArray(lines) && lines.length > 0 ? lines : [''];
+      linesForThis.forEach((line, lineIndex) => {
+        const isFirstLineOfComment = lineIndex === 0;
+        const alreadyNumbered = /^\s*(?:\d+[\.)]|\(\d+\))\s+/.test(line);
+        const displayText = numbered && isFirstLineOfComment && !alreadyNumbered
+          ? `${commentIndex + 1}. ${line}`
+          : line;
+        const cleanLine = cleanTextForDrawtext(displayText);
+        const yPos = currentY;
+
+        // Compute x based on alignment or sidebar
+        let xExpr = '(w-text_w)/2';
+        if (addSidebar) {
+          // Sidebar is a right panel of width panelWidth; start text inside it
+          xExpr = `w-${panelWidth}+${paddingX}`;
+        } else if (requestedAlign === 'left') {
+          xExpr = `${paddingX}`;
+        } else if (requestedAlign === 'right') {
+          xExpr = `w-text_w-${paddingX}`;
+        }
+
+        const textLayer = latinFont
+          ? `drawtext=text='${cleanLine}':fontfile='${toFilterPath(latinFont)}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`
+          : `drawtext=text='${cleanLine}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`;
+        layers.push(textLayer);
+
+        // One tick per comment at its first line
+        if (!addSidebar && withTicks && isFirstLineOfComment) {
+          const tickChar = cleanTextForDrawtext('✓');
+          let tickXExpr;
+          if (requestedAlign === 'right') {
+            tickXExpr = `w-${Math.max(8, paddingX)}`;
+          } else if (requestedAlign === 'left') {
+            tickXExpr = `${Math.max(8, paddingX - Math.round(size * 1.2))}`;
+          } else {
+            tickXExpr = `w-${Math.max(8, paddingX)}`; // default near right edge
+          }
+          const tickLayer = latinFont
+            ? `drawtext=text='${tickChar}':fontfile='${toFilterPath(latinFont)}':fontcolor=${tickFontColor}:fontsize=${Math.round(size * 1.2)}:x=${tickXExpr}:y=${yPos}`
+            : `drawtext=text='${tickChar}':fontcolor=${tickFontColor}:fontsize=${Math.round(size * 1.2)}:x=${tickXExpr}:y=${yPos}`;
+          layers.push(tickLayer);
+        }
+
+        currentY += lineHeight;
+      });
+      // Extra spacing between comments
+      currentY += Math.round(lineHeight * 0.5);
     });
+
+    // Optional right white sidebar using pad filter
+    const prefixFilters = addSidebar ? [`pad=iw+${panelWidth}:ih:0:0:${panelColor}`] : [];
+    const drawtextFilters = [...prefixFilters, ...layers];
 
     // Combine all drawtext filters
     const combinedFilter = drawtextFilters.join(',');

@@ -911,6 +911,12 @@ const parseEvaluationResponse = (evaluationText, question) => {
     if (evaluation.comments.length === 0) {
       evaluation.comments = ['No comments provided by AI.'];
     }
+    // Enforce max 4 unique, trimmed comments
+    evaluation.comments = (evaluation.comments || [])
+      .map(c => String(c).trim())
+      .filter(Boolean)
+      .filter((c, i, arr) => arr.indexOf(c) === i)
+      .slice(0, 4);
     if (!evaluation.remark || evaluation.remark.length === 0) {
       evaluation.remark = 'No remark provided by AI.';
     }

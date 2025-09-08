@@ -565,11 +565,7 @@ router.post(
                       let perImage = parseImageAnnotations(evaluationText, answerImages.length)
                       const needsFallback = !perImage || perImage.every((arr) => arr.length === 0)
                       if (needsFallback) {
-                        const candidates = [
-                          ...(evaluation.comments || []),
-                          ...(evaluation.analysis?.strengths || []).map((s) => `✓ ${s}`),
-                          ...(evaluation.analysis?.weaknesses || []).map((w) => `⚠ ${w}`),
-                        ]
+                        const candidates = (evaluation.comments || []).slice(0, 4)
                         perImage = mapCommentsToImages(candidates, extractedTexts, 2)
                         console.log("[Annot] Fallback mapping used (gemini)")
                       }
@@ -659,11 +655,7 @@ router.post(
                       let perImage = parseImageAnnotations(evaluationText, answerImages.length)
                       const needsFallback = !perImage || perImage.every((arr) => arr.length === 0)
                       if (needsFallback) {
-                        const candidates = [
-                          ...(evaluation.comments || []),
-                          ...(evaluation.analysis?.strengths || []).map((s) => `✓ ${s}`),
-                          ...(evaluation.analysis?.weaknesses || []).map((w) => `⚠ ${w}`),
-                        ]
+                        const candidates = (evaluation.comments || []).slice(0, 4)
                         perImage = mapCommentsToImages(candidates, extractedTexts, 2)
                         console.log("[Annot] Fallback mapping used (openai)")
                       }
@@ -949,64 +941,29 @@ router.post(
               const annotations = []
               for (let i = 0; i < answerImages.length; i++) {
                 const img = answerImages[i];
-                const comments = Array.isArray(evaluation.perImageComments?.[i]) && evaluation.perImageComments[i].length > 0
-                  ? evaluation.perImageComments[i]
-                  : (evaluation.comments || []).slice(0, 8);
+                // Use at most 4 evaluation comments overall
+                const evalComments = (evaluation.comments || []).slice(0, 4)
+                let comments;
+                if (answerImages.length === 1) {
+                  // Single image: show all 4 comments regardless of perImageComments
+                  comments = evalComments;
+                } else {
+                  // Multiple images: prefer per-image mapping, else 2 per image
+                  comments = Array.isArray(evaluation.perImageComments?.[i]) && evaluation.perImageComments[i].length > 0
+                    ? evaluation.perImageComments[i]
+                    : evalComments.slice(0, 2);
+                }
                 if (!img.cloudinaryPublicId) continue;
                 // Professional text wrapping for better readability and proper line breaks
-                const formatCommentsForDisplay = (comments, maxCharsPerLine = 50, maxLines = 15) => {
-                  if (!Array.isArray(comments) || comments.length === 0) {
-                    return '';
-                  }
-                  
-                  const lines = [];
-                  let currentLine = '';
-                  
-                  for (const comment of comments) {
-                    if (lines.length >= maxLines) break;
-                    
-                    const cleanComment = String(comment).trim();
-                    if (!cleanComment) continue;
-                    
-                    // Split comment into words
-                    const words = cleanComment.split(/\s+/);
-                    
-                    for (const word of words) {
-                      if (lines.length >= maxLines) break;
-                      
-                      const testLine = currentLine ? `${currentLine} ${word}` : word;
-                      
-                      // If adding this word would exceed the line limit
-                      if (testLine.length > maxCharsPerLine) {
-                        // Save current line if it has content
-                        if (currentLine) {
-                          lines.push(currentLine);
-                          currentLine = word;
-                        } else {
-                          // If single word is too long, truncate it
-                          lines.push(word.substring(0, maxCharsPerLine - 3) + '...');
-                          currentLine = '';
-                        }
-                      } else {
-                        currentLine = testLine;
-                      }
-                    }
-                  }
-                  
-                  // Add the last line if it has content
-                  if (currentLine && lines.length < maxLines) {
-                    lines.push(currentLine);
-                  }
-                  
-                  // Ensure we have at least one line
-                  if (lines.length === 0) {
-                    lines.push('No comments available');
-                  }
-                  
-                  return lines.join('\n');
+                const formatCommentsForDisplay = (comments) => {
+                  if (!Array.isArray(comments) || comments.length === 0) return '';
+                  return comments
+                    .map(c => String(c).trim())
+                    .filter(Boolean)
+                    .join('\n\n'); // blank line separates comments for per-comment numbering/tick
                 };
                 
-                const text = formatCommentsForDisplay(comments, 50, 15);
+                const text = formatCommentsForDisplay(comments);
                 if (!text) continue;
                 
                 // Generate S3 key for annotated image (following your pattern)
@@ -1023,6 +980,13 @@ router.post(
                       fontFamily: 'Arial',
                       fontWeight: 'bold',
                       color: '#FF0000', // bright red text
+                      align: 'left',
+                      numbered: true,
+                      withTicks: false,
+                      xPadding: 24,
+                      sidebar: true,
+                      sidebarWidth: 480,
+                      sidebarColor: "#FFFFFF",
                       padding: 10,
                       borderRadius: 6,
                       textShadow: '2px 2px 6px rgba(0,0,0,0.9)', // extra shadow to make red pop
