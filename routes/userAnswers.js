@@ -249,7 +249,8 @@ router.post(
           if (lang === 'hindi' && evaluation && !evaluation.hindiEvaluation) {
             const hindiEval = await translateEvaluationToHindi(evaluation, question)
             if (hindiEval) {
-              evaluation.hindiEvaluation = hindiEval
+              // Enrich the Hindi evaluation with missing comments from English
+              evaluation.hindiEvaluation = await enrichHindiEvaluationFromEnglish(evaluation, hindiEval)
             }
           }
         } catch (e) {
@@ -623,8 +624,10 @@ router.post(
                     console.log("[v0] Generating Hindi evaluation for detected Hindi text")
                     try {
                       const hindiEvaluation = await translateEvaluationToHindi(evaluation, question)
-                      if (hindiEvaluation) evaluation.hindiEvaluation = hindiEvaluation
-                      else {
+                      if (hindiEvaluation) {
+                        // Enrich the Hindi evaluation with missing comments from English
+                        evaluation.hindiEvaluation = await enrichHindiEvaluationFromEnglish(evaluation, hindiEvaluation)
+                      } else {
                         const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts, { includeImageAnnotations })
                         const hindiResponse = await axios.post(
                           evaluationService.apiUrl,
@@ -633,7 +636,9 @@ router.post(
                         )
                         if (hindiResponse.data?.choices?.[0]?.message?.content) {
                           const hindiEvaluationText = hindiResponse.data.choices[0].message.content
-                          evaluation.hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                          const parsedHindiEval = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                          // Enrich the parsed Hindi evaluation with missing comments from English
+                          evaluation.hindiEvaluation = await enrichHindiEvaluationFromEnglish(evaluation, parsedHindiEval)
                         }
                       }
                     } catch (hindiError) {
@@ -1446,8 +1451,10 @@ router.post(
                     console.log("[v0] Generating Hindi evaluation for detected Hindi text")
                     try {
                       const hindiEvaluation = await translateEvaluationToHindi(evaluation, question)
-                      if (hindiEvaluation) evaluation.hindiEvaluation = hindiEvaluation
-                      else {
+                      if (hindiEvaluation) {
+                        // Enrich the Hindi evaluation with missing comments from English
+                        evaluation.hindiEvaluation = await enrichHindiEvaluationFromEnglish(evaluation, hindiEvaluation)
+                      } else {
                         const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts)
                         const hindiResponse = await axios.post(
                           evaluationService.apiUrl,
@@ -1456,7 +1463,9 @@ router.post(
                         )
                         if (hindiResponse.data?.choices?.[0]?.message?.content) {
                           const hindiEvaluationText = hindiResponse.data.choices[0].message.content
-                          evaluation.hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                          const parsedHindiEval = parseHindiEvaluationResponse(hindiEvaluationText, question)
+                          // Enrich the parsed Hindi evaluation with missing comments from English
+                          evaluation.hindiEvaluation = await enrichHindiEvaluationFromEnglish(evaluation, parsedHindiEval)
                         }
                       }
                     } catch (hindiError) {
