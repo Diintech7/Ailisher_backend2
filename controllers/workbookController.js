@@ -218,11 +218,11 @@ exports.getWorkbooks = async (req, res) => {
     if (subcategory) filter.subCategory = subcategory;
     if (trending === 'true') {
       filter.isTrending = true;
-      filter.trendingStartDate = { $lte: new Date() };
-      filter.$or = [
-        { trendingEndDate: { $gte: new Date() } },
-        { trendingEndDate: null }
-      ];
+      // filter.trendingStartDate = { $lte: new Date() };
+      // filter.$or = [
+      //   { trendingEndDate: { $gte: new Date() } },
+      //   { trendingEndDate: null }
+      // ];
     }
     if (highlighted === 'true') filter.isHighlighted = true;
     if (search) {

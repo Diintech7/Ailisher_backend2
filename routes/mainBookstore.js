@@ -50,8 +50,6 @@ router.get("/", authenticateMobileUser, async (req, res) => {
     const trendingBooks = await Book.find({
       ...filter,
       isTrending: true,
-      trendingStartDate: { $lte: now },
-      $or: [{ trendingEndDate: { $gte: now } }, { trendingEndDate: null }],
     })
       .populate("user", "name email userId")
       .populate("trendingBy", "name email userId")
