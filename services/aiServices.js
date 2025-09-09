@@ -1499,13 +1499,26 @@ async function enrichHindiEvaluationFromEnglish(englishEval, hindiEval) {
         }
       }
     }
-    if (!Array.isArray(target.comments) || target.comments.length === 0 || target.comments[0] === 'AI द्वारा कोई टिप्पणी प्रदान नहीं की गई।') {
-      const engComments = ensureArray(englishEval?.comments);
-      if (engComments.length > 0) {
-        const translated = await translateTextToHindi(engComments.join('\n'));
-        if (translated) target.comments = translated.split('\n').map(x => x.trim()).filter(Boolean);
+    
+    // Enhanced comments handling - check if we have significantly fewer comments than English
+    const engComments = ensureArray(englishEval?.comments);
+    const hindiComments = ensureArray(target.comments);
+    const isCommentsIncomplete = hindiComments.length === 0 || 
+      hindiComments[0] === 'AI द्वारा कोई टिप्पणी प्रदान नहीं की गई।' ||
+      (engComments.length > 0 && hindiComments.length < Math.ceil(engComments.length * 0.5)); // If Hindi has less than 50% of English comments
+    
+    if (isCommentsIncomplete && engComments.length > 0) {
+      console.log(`[Hindi Enrich] Enriching comments: English=${engComments.length}, Hindi=${hindiComments.length}`);
+      const translated = await translateTextToHindi(engComments.join('\n'));
+      if (translated) {
+        const newComments = translated.split('\n').map(x => x.trim()).filter(Boolean);
+        // Merge with existing comments, avoiding duplicates
+        const existingComments = hindiComments.filter(c => c !== 'AI द्वारा कोई टिप्पणी प्रदान नहीं की गई।');
+        target.comments = [...existingComments, ...newComments].filter((item, index, arr) => arr.indexOf(item) === index);
+        console.log(`[Hindi Enrich] Final comments count: ${target.comments.length}`);
       }
     }
+    
     if (!target.remark || target.remark === 'AI द्वारा कोई टिप्पणी प्रदान नहीं की गई।') {
       const engRemark = englishEval?.remark || '';
       if (engRemark) {
