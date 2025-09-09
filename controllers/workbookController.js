@@ -476,11 +476,11 @@ exports.getWorkbooksformobile = async (req, res) => {
     if (subcategory) filter.subCategory = subcategory;
     if (trending === 'true') {
       filter.isTrending = true;
-      filter.trendingStartDate = { $lte: new Date() };
-      filter.$or = [
-        { trendingEndDate: { $gte: new Date() } },
-        { trendingEndDate: null }
-      ];
+      // filter.trendingStartDate = { $lte: new Date() };
+      // filter.$or = [
+      //   { trendingEndDate: { $gte: new Date() } },
+      //   { trendingEndDate: null }
+      // ];
     }
     if (highlighted === 'true') filter.isHighlighted = true;
     if (search) {
@@ -521,11 +521,11 @@ exports.getWorkbooksformobile = async (req, res) => {
     const trendingBooks = await Workbook.find({
       ...filter,
       isTrending: true,
-      trendingStartDate: { $lte: now },
-      $or: [
-        { trendingEndDate: { $gte: now } },
-        { trendingEndDate: null }
-      ]
+          // trendingStartDate: { $lte: now },
+          // $or: [
+          //   { trendingEndDate: { $gte: now } },
+          //   { trendingEndDate: null }
+          // ]
     })
     .populate('user', 'name email userId')
     .populate('trendingBy', 'name email userId')
