@@ -11,6 +11,11 @@ const DataStoreItemSchema = new mongoose.Schema({
     required: [true, "Please add a file URL"],
     trim: true,
   },
+  s3Key: {
+    type: String,
+    trim: true,
+    default: null,
+  },
   fileType: {
     type: String,
     default: "application/octet-stream",

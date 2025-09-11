@@ -6,6 +6,104 @@ const Topic = require('../models/Topic');
 const Chapter = require('../models/Chapter');
 const SubTopic = require('../models/SubTopic');
 const { verifyToken } = require('../middleware/auth');
+const { generatePresignedUrl, generateGetPresignedUrl, uploadFileToS3, deleteObject } = require('../utils/s3');
+
+// S3 Upload endpoint for datastore files
+router.post('/upload-s3', verifyToken, async (req, res) => {
+  try {
+    const { fileName, contentType, fileSize } = req.body;
+
+    if (!fileName || !contentType) {
+      return res.status(400).json({
+        success: false,
+        message: 'File name and content type are required'
+      });
+    }
+
+    // Generate unique key for S3
+    const timestamp = Date.now();
+    const randomSuffix = Math.round(Math.random() * 1e9);
+    const fileExtension = fileName.split('.').pop();
+    const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const key = `datastore/${req.user.id}/${timestamp}-${randomSuffix}-${safeFileName}`;
+
+    // Generate presigned URL for upload
+    const uploadUrl = await generatePresignedUrl(key, contentType);
+    
+    // Generate presigned URL for download (for immediate use)
+    const downloadUrl = await generateGetPresignedUrl(key, 604800); // 7 days
+
+    res.json({
+      success: true,
+      uploadUrl,
+      downloadUrl,
+      key,
+      message: 'Upload URLs generated successfully'
+    });
+  } catch (error) {
+    console.error('Error generating S3 upload URL:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate upload URL',
+      error: error.message
+    });
+  }
+});
+
+// Refresh S3 URLs for datastore items
+router.post('/refresh-s3-urls', verifyToken, async (req, res) => {
+  try {
+    const { itemIds } = req.body;
+
+    if (!itemIds || !Array.isArray(itemIds)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Item IDs array is required'
+      });
+    }
+
+    const updatedItems = [];
+
+    for (const itemId of itemIds) {
+      const item = await DataStoreItem.findById(itemId);
+      
+      if (!item || item.user.toString() !== req.user.id) {
+        continue; // Skip items that don't exist or don't belong to user
+      }
+
+      if (item.s3Key) {
+        try {
+          // Generate new presigned URL
+          const newUrl = await generateGetPresignedUrl(item.s3Key, 604800);
+          
+          // Update the item with new URL
+          item.url = newUrl;
+          await item.save();
+          
+          updatedItems.push({
+            id: item._id,
+            newUrl: newUrl
+          });
+        } catch (error) {
+          console.error(`Error refreshing URL for item ${itemId}:`, error);
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Refreshed ${updatedItems.length} URLs`,
+      updatedItems
+    });
+  } catch (error) {
+    console.error('Error refreshing S3 URLs:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to refresh URLs',
+      error: error.message
+    });
+  }
+});
 
 router.patch("/update-embedding-status/:itemId", async (req, res) => {
   try {
@@ -181,6 +279,7 @@ router.post('/book/:bookId', verifyToken, async (req, res) => {
       const newItem = new DataStoreItem({
         name: item.name,
         url: item.url,
+        s3Key: item.s3Key || null,
         description: item.description || '',
         fileType: item.fileType || 'application/octet-stream',
         itemType: item.itemType || 'file',
@@ -255,6 +354,7 @@ router.post('/chapter/:chapterId', verifyToken, async (req, res) => {
       const newItem = new DataStoreItem({
         name: item.name,
         url: item.url,
+        s3Key: item.s3Key || null,
         description: item.description || '',
         fileType: item.fileType || 'application/octet-stream',
         itemType: item.itemType || 'file',
@@ -318,6 +418,26 @@ router.delete('/book/:bookId/:itemId', verifyToken, async (req, res) => {
       });
     }
 
+    // Delete from S3 if it has an S3 key
+    if (item.s3Key) {
+      try {
+        await deleteObject(item.s3Key);
+      } catch (s3Error) {
+        console.error('Error deleting file from S3:', s3Error);
+        // Continue with database deletion even if S3 deletion fails
+      }
+    }
+
+    // Delete from S3 if it has an S3 key
+    if (item.s3Key) {
+      try {
+        await deleteObject(item.s3Key);
+      } catch (s3Error) {
+        console.error('Error deleting file from S3:', s3Error);
+        // Continue with database deletion even if S3 deletion fails
+      }
+    }
+
     await DataStoreItem.deleteOne({ _id: itemId });
     return res.json({ 
       success: true, 
@@ -376,6 +496,26 @@ router.delete('/chapter/:chapterId/:itemId', verifyToken, async (req, res) => {
         success: false, 
         message: 'Unauthorized' 
       });
+    }
+
+    // Delete from S3 if it has an S3 key
+    if (item.s3Key) {
+      try {
+        await deleteObject(item.s3Key);
+      } catch (s3Error) {
+        console.error('Error deleting file from S3:', s3Error);
+        // Continue with database deletion even if S3 deletion fails
+      }
+    }
+
+    // Delete from S3 if it has an S3 key
+    if (item.s3Key) {
+      try {
+        await deleteObject(item.s3Key);
+      } catch (s3Error) {
+        console.error('Error deleting file from S3:', s3Error);
+        // Continue with database deletion even if S3 deletion fails
+      }
     }
 
     await DataStoreItem.deleteOne({ _id: itemId });
@@ -488,6 +628,7 @@ router.post('/topic/:topicId', verifyToken, async (req, res) => {
       const newItem = new DataStoreItem({
         name: item.name,
         url: item.url,
+        s3Key: item.s3Key || null,
         description: item.description || '',
         fileType: item.fileType || 'application/octet-stream',
         itemType: item.itemType || 'file',
@@ -558,6 +699,16 @@ router.delete('/topic/:topicId/:itemId', verifyToken, async (req, res) => {
         success: false, 
         message: 'Unauthorized' 
       });
+    }
+
+    // Delete from S3 if it has an S3 key
+    if (item.s3Key) {
+      try {
+        await deleteObject(item.s3Key);
+      } catch (s3Error) {
+        console.error('Error deleting file from S3:', s3Error);
+        // Continue with database deletion even if S3 deletion fails
+      }
     }
 
     await DataStoreItem.deleteOne({ _id: itemId });
@@ -672,6 +823,7 @@ router.post('/subtopic/:subtopicId', verifyToken, async (req, res) => {
       const newItem = new DataStoreItem({
         name: item.name,
         url: item.url,
+        s3Key: item.s3Key || null,
         description: item.description || '',
         fileType: item.fileType || 'application/octet-stream',
         itemType: item.itemType || 'file',
@@ -745,6 +897,16 @@ router.delete('/subtopic/:subtopicId/:itemId', verifyToken, async (req, res) => 
       });
     }
 
+    // Delete from S3 if it has an S3 key
+    if (item.s3Key) {
+      try {
+        await deleteObject(item.s3Key);
+      } catch (s3Error) {
+        console.error('Error deleting file from S3:', s3Error);
+        // Continue with database deletion even if S3 deletion fails
+      }
+    }
+
     await DataStoreItem.deleteOne({ _id: itemId });
     return res.json({ 
       success: true, 
@@ -807,6 +969,7 @@ router.post('/workbook/:workbookId', verifyToken, async (req, res) => {
       const newItem = new DataStoreItem({
         name: item.name,
         url: item.url,
+        s3Key: item.s3Key || null,
         fileType: item.fileType || 'application/octet-stream',
         workbook: workbookId,
         user: req.user.id
@@ -916,6 +1079,7 @@ router.post('/workbook-chapter/:chapterId', verifyToken, async (req, res) => {
       const newItem = new DataStoreItem({
         name: item.name,
         url: item.url,
+        s3Key: item.s3Key || null,
         fileType: item.fileType || 'application/octet-stream',
         workbookChapter: chapterId,
         workbook: chapter.workbook,
@@ -1048,6 +1212,7 @@ router.post('/workbook-topic/:topicId', verifyToken, async (req, res) => {
       const newItem = new DataStoreItem({
         name: item.name,
         url: item.url,
+        s3Key: item.s3Key || null,
         fileType: item.fileType || 'application/octet-stream',
         workbookTopic: topicId,
         workbookChapter: topic.chapter,
@@ -1196,6 +1361,7 @@ router.post('/workbook-subtopic/:subtopicId', verifyToken, async (req, res) => {
       const newItem = new DataStoreItem({
         name: item.name,
         url: item.url,
+        s3Key: item.s3Key || null,
         fileType: item.fileType || 'application/octet-stream',
         workbookSubtopic: subtopicId,
         workbookTopic: subtopic.topic,

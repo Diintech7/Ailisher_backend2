@@ -31,7 +31,8 @@ router.post('/:bookId/save-split-pdfs', auth.verifyToken, async (req, res) => {
             parentType: 'book' // Add parentType field
           },
           topics: [],
-          url: split.url
+          url: split.url,
+          s3Key: split.s3Key || null
         };
       } else {
         const chapterTitle = split.parentChapter;
@@ -40,6 +41,7 @@ router.post('/:bookId/save-split-pdfs', auth.verifyToken, async (req, res) => {
             title: split.title.replace(`${chapterTitle} - `, ''),
             description: `Topic covering pages ${split.startPage}-${split.endPage}`,
             url: split.url,
+            s3Key: split.s3Key || null,
             pageRange: `${split.startPage}-${split.endPage}`
           });
         }
@@ -57,6 +59,7 @@ router.post('/:bookId/save-split-pdfs', auth.verifyToken, async (req, res) => {
       const chapterDatastoreItem = new DataStore({
         name: `${chapterData.chapter.title}.pdf`,
         url: chapterData.url,
+        s3Key: chapterData.s3Key || null,
         fileType: 'application/pdf',
         book: bookId,
         chapter: newChapter._id,
@@ -81,6 +84,7 @@ router.post('/:bookId/save-split-pdfs', auth.verifyToken, async (req, res) => {
         const topicDatastoreItem = new DataStore({
           name: `${topicData.title}.pdf`,
           url: topicData.url,
+          s3Key: topicData.s3Key || null,
           fileType: 'application/pdf',
           book: bookId,
           chapter: newChapter._id,
