@@ -1,5 +1,6 @@
 // controllers/clientController.js - Updated Client controller with enhanced user ID handling
 const CreditRechargePlan = require('../models/CreditRechargePlan');
+const PlanItem = require('../models/PlanItem');
 const User = require('../models/User');
 const UserProfile = require('../models/UserProfile');
 
@@ -351,28 +352,42 @@ exports.createCreditRechargePlan = async (req, res) => {
     const {
       name,
       description,
+      duration,
       credits,
       MRP,
       offerPrice,
-      status
+      category,
+      imageKey,
+      videoKey,
+      status,
+      items = [] // [{ name, description, itemType, itemKey, referenceId, quantity, expiresWithPlan }]
     } = req.body;
 
-    const plan = new CreditRechargePlan({
+    const createdItems = items.length
+      ? await PlanItem.insertMany(items.map(it => ({ ...it, clientId })))
+      : [];
+
+    const plan = await CreditRechargePlan.create({
       name,
       description,
       clientId,
+      duration,
       credits,
       MRP,
       offerPrice,
-      status
+      category,
+      imageKey,
+      videoKey,
+      status,
+      items: createdItems.map(i => i._id)
     });
 
-    await plan.save();
+    const populated = await plan.populate('items');
 
     res.json({
       success: true,
       message: 'Credit recharge plan created successfully',
-      data: plan
+      data: populated
     });
   } catch (error) {
     res.status(500).json({
@@ -385,7 +400,7 @@ exports.createCreditRechargePlan = async (req, res) => {
 exports.getCreditRechargePlans = async (req,res) => {
   try {
     const clientId = req.user.userId
-    const plans = await CreditRechargePlan.find({clientId:clientId});
+    const plans = await CreditRechargePlan.find({clientId:clientId}).populate('items');
 
     res.json({
       success : true,
@@ -400,20 +415,147 @@ exports.getCreditRechargePlans = async (req,res) => {
   }
 }
 
-exports.deleteCreditRechargePlans = async (req,res) => {
+exports.getCreditRechargePlanById = async (req, res) => {
   try {
-    const clientId = req.clientId;
-  } 
-  catch (error) {
-    
+    const clientId = req.user.userId;
+    const plan = await CreditRechargePlan.findOne({ _id: req.params.id, clientId }).populate('items');
+    if (!plan) {
+      return res.status(404).json({ success: false, message: 'Plan not found' });
+    }
+    res.json({ success: true, data: plan });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-}
+};
 
-exports.updateCreditRechargePlans = async (req,res) => {
+exports.updateCreditRechargePlan = async (req, res) => {
   try {
-    
-  } 
-  catch (error) {
-    
+    const clientId = req.user.userId;
+    const planId = req.params.id;
+
+    const updateFields = {
+      name: req.body.name,
+      description: req.body.description,
+      duration: req.body.duration,
+      credits: req.body.credits,
+      MRP: req.body.MRP ?? req.body.mrp,
+      offerPrice: req.body.offerPrice ?? req.body.offerprice,
+      category: req.body.category,
+      imageKey: req.body.imageKey,
+      videoKey: req.body.videoKey,
+      status: req.body.status
+    };
+
+    // Remove undefined fields so they are not overwritten
+    Object.keys(updateFields).forEach((k) => updateFields[k] === undefined && delete updateFields[k]);
+
+    const itemsPayload = Array.isArray(req.body.items) ? req.body.items : null;
+
+    const plan = await CreditRechargePlan.findOne({ _id: planId, clientId });
+    if (!plan) {
+      return res.status(404).json({ success: false, message: 'Plan not found' });
+    }
+
+    // If items provided, replace the set: delete old, create new
+    if (itemsPayload) {
+      if (plan.items && plan.items.length) {
+        await PlanItem.deleteMany({ _id: { $in: plan.items } });
+      }
+      const newItems = itemsPayload.length
+        ? await PlanItem.insertMany(itemsPayload.map(it => ({ ...it, clientId })))
+        : [];
+      updateFields.items = newItems.map(i => i._id);
+    }
+
+    const updated = await CreditRechargePlan.findOneAndUpdate(
+      { _id: planId, clientId },
+      { $set: { ...updateFields, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    ).populate('items');
+
+    res.json({ success: true, message: 'Plan updated successfully', data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-}
+};
+
+exports.deleteCreditRechargePlan = async (req, res) => {
+  try {
+    const clientId = req.user.userId;
+    const plan = await CreditRechargePlan.findOne({ _id: req.params.id, clientId });
+    if (!plan) {
+      return res.status(404).json({ success: false, message: 'Plan not found' });
+    }
+
+    // Clean up items
+    if (plan.items && plan.items.length) {
+      await PlanItem.deleteMany({ _id: { $in: plan.items } });
+    }
+
+    await CreditRechargePlan.deleteOne({ _id: plan._id });
+
+    res.json({ success: true, message: 'Plan deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteCreditRechargePlanItem = async (req, res) => {
+  try {
+    const clientId = req.user.userId;
+    const { planId, itemId } = req.params;
+
+    const plan = await CreditRechargePlan.findOne({ _id: planId, clientId });
+    if (!plan) {
+      return res.status(404).json({ success: false, message: 'Plan not found' });
+    }
+
+    const itemExistsInPlan = plan.items.some((id) => id.toString() === itemId);
+    if (!itemExistsInPlan) {
+      return res.status(404).json({ success: false, message: 'Item not part of this plan' });
+    }
+
+    await PlanItem.deleteOne({ _id: itemId });
+    plan.items = plan.items.filter((id) => id.toString() !== itemId);
+    plan.updatedAt = new Date();
+    await plan.save();
+
+    const populated = await plan.populate('items');
+    res.json({ success: true, message: 'Item removed from plan', data: populated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.addCreditRechargePlanItem = async (req, res) => {
+  try {
+    const clientId = req.user.userId;
+    const { planId } = req.params;
+    const { name, description, itemType, itemKey, referenceId, quantity = 1, expiresWithPlan = true } = req.body;
+    console.log(req.body)
+    const plan = await CreditRechargePlan.findOne({ _id: planId, clientId });
+    if (!plan) {
+      return res.status(404).json({ success: false, message: 'Plan not found' });
+    }
+
+    const item = await PlanItem.create({
+      name,
+      description,
+      itemType,
+      itemKey,
+      referenceId,
+      quantity,
+      expiresWithPlan,
+      clientId
+    });
+    console.log(item)
+    plan.items.push(item._id);
+    plan.updatedAt = new Date();
+    await plan.save();
+    console.log(plan)
+    const populated = await plan.populate('items');
+    res.json({ success: true, message: 'Item added to plan', data: populated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
