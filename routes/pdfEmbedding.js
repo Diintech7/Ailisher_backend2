@@ -77,104 +77,114 @@ if (item.book) {
   })
 }
 
-// Check for existing embeddings
-const existingEmbeddings = await processor.checkExistingEmbeddings(item.name, userId, bookId)
+// Build payload to call external embedding API
+const payload = {
+  url: item.url,
+  book_name: (item.book?._id || bookId || "").toString(),
+  chapter_name: (item._id || "").toString(),
+  client_id: (item.book?.clientId || "").toString() || "",
+}
 
-if (existingEmbeddings.exists && !forceReEmbed) {
-  return res.json({
-    success: true,
-    alreadyExists: true,
-    message: "Embeddings already exist for this PDF in this book",
-    embeddingCount: existingEmbeddings.count,
-    fileName: item.name,
-    bookId: bookId,
-    collectionName: existingEmbeddings.collectionName,
-    timing: {
-      total: Date.now() - startTime,
-    },
+// Validate required payload fields
+const missing = []
+if (!payload.url) missing.push("url")
+if (!payload.book_name) missing.push("book_name (bookId)")
+if (!payload.chapter_name) missing.push("chapter_name (datastore item id)")
+if (!payload.client_id) missing.push("client_id")
+
+if (missing.length > 0) {
+  console.error("[Embedding] Missing required fields:", missing)
+  return res.status(400).json({
+    success: false,
+    message: `Missing required fields: ${missing.join(", ")}`,
+    payload,
   })
 }
 
-// If re-embedding, delete existing embeddings first
-if (forceReEmbed && existingEmbeddings.exists) {
-  await processor.deleteExistingEmbeddings(item.name, userId, bookId)
-}
-
-// Get file size for metrics
-let fileSizeMB = "N/A"
-const totalPages = 0
-
+// Quick preflight: check URL reachability
 try {
-  const pdfResponse = await axios.head(item.url)
-  const fileSize = pdfResponse.headers["content-length"]
-  fileSizeMB = (fileSize / (1024 * 1024)).toFixed(2)
-} catch (error) {
-  // Continue without file size info
+  await axios.head(payload.url, { timeout: 15000 })
+} catch (headErr) {
+  console.warn("[Embedding] Warning: PDF URL not reachable via HEAD:", headErr.message)
 }
 
-const result = await processor.processPDFFromURL(item.url, item.name, userId, {
-  isPublic: !userId,
-  accessLevel: userId ? "private" : "public",
-  itemId: item._id,
-  originalFileType: item.fileType,
-  bookId: bookId,
-  fileSizeMB: fileSizeMB,
-})
+console.log("[Embedding] About to call external API with payload:", payload)
+console.time("[Embedding] External API duration")
+let waitStart = Date.now()
+let heartbeatCount = 0
+const heartbeat = setInterval(() => {
+  heartbeatCount += 1
+  const elapsed = Math.round((Date.now() - waitStart) / 1000)
+  console.log(`[Embedding] Waiting for external API response... ${elapsed}s elapsed (beat ${heartbeatCount})`)
+}, 15000)
+const externalRes = await axios.post(
+  "https://vectrizebackend.onrender.com/api/v1/rag/process-document",
+  payload,
+  { timeout: 300000, validateStatus: () => true }
+)
 
-// Update book embedding status
+const extData = externalRes.data || {}
+console.log("[Embedding] Request Payload:", payload)
+console.log("[Embedding] External API Status:", externalRes.status)
+console.log("[Embedding] External API Response:", JSON.stringify(extData))
+console.timeEnd("[Embedding] External API duration")
+clearInterval(heartbeat)
+if (!extData.success || !extData.data?.success) {
+  throw new Error(extData.data?.message || extData.message || "External embedding failed")
+}
+
+const processedChunks = Number(extData.data.processed_chunks || 0)
+
+// Update DataStore item flags
+item.isEmbedded = true
+item.embeddingCount = processedChunks
+item.embeddedAt = new Date()
+await item.save()
+
+// Update Book flags
 try {
   const book = await Book.findById(bookId)
   if (book) {
-    const embeddingStats = {
-      totalFiles: 1, // This PDF file
-      totalChunks: result.summary.chunks_inserted,
-      totalTokens: result.tokensUsed || 0,
-      collectionName: result.collectionName
-    }
-    
-    await book.markAsEmbedded(userId || null, userId ? 'User' : 'MobileUser', embeddingStats)
-    console.log(`✅ Book ${bookId} marked as embedded with ${result.summary.chunks_inserted} chunks`)
+    book.embedded = true
+    book.embeddedAt = new Date()
+    await book.save()
   }
 } catch (bookUpdateError) {
   console.error("Warning: Failed to update book embedding status:", bookUpdateError.message)
-  // Continue with the response even if book update fails
 }
 
 const totalTime = Date.now() - startTime
-
 res.json({
   success: true,
-  message: forceReEmbed ? "Embeddings re-created successfully" : "Embeddings created successfully",
+  embeddingCount: processedChunks,
   result: {
-    fileName: item.name,
-    bookId: bookId,
-    collectionName: result.collectionName,
-    taskId: result.taskId,
-    embeddingCount: result.summary.chunks_inserted,
-    summary: result.summary,
-
-    // Enhanced metrics
-    modelUsed: result.modelUsed,
-    tokensUsed: result.tokensUsed,
-    embeddingTime: result.timing.embedding + "ms",
-    totalTime: totalTime + "ms",
-    vectorSize: result.vectorSize,
-    fileSizeMB: result.fileSizeMB,
-    totalPages: result.totalPages,
-
-    // Detailed timing breakdown
+    message: extData.data.message,
+    total_batches: extData.data.total_batches,
+    processed_chunks: processedChunks,
+    total_latency: extData.data.total_latency,
+    chunking_latency: extData.data.chunking_latency,
+    embedding_latency: extData.data.embedding_latency,
+    embeddingCount: processedChunks,
     timing: {
-      textExtraction: result.timing.textExtraction + "ms",
-      chunking: result.timing.chunking + "ms",
-      embedding: result.timing.embedding + "ms",
-      dbInsert: result.timing.dbInsert + "ms",
-      processing: result.timing.total + "ms",
-      total: totalTime + "ms",
+      processing: extData.data.total_latency,
+      embedding: extData.data.embedding_latency,
+      chunking: extData.data.chunking_latency,
+      total: extData.data.total_latency,
     },
   },
+  timing: { total: totalTime + "ms" },
 })
 } catch (error) {
   const totalTime = Date.now() - startTime
+  try { clearInterval(heartbeat) } catch (_) {}
+  if (error.response) {
+    console.error("[Embedding] External API Error Status:", error.response.status)
+    console.error("[Embedding] External API Error Data:", JSON.stringify(error.response.data))
+  } else {
+    console.error("[Embedding] Error message:", error.message)
+    if (error.code) console.error("[Embedding] Error code:", error.code)
+    if (error.stack) console.error("[Embedding] Stack:\n", error.stack)
+  }
   res.status(500).json({
   success: false,
   message: error.message || "Failed to create embeddings",
@@ -307,9 +317,7 @@ if (item.book) {
   })
 }
 
-const embeddingStatus = await processor.checkExistingEmbeddings(item.name, userId, bookId)
-
-// Get book embedding status
+// Use stored flags only
 let bookEmbeddingStatus = null
 try {
   const book = await Book.findById(bookId)
@@ -317,24 +325,19 @@ try {
     bookEmbeddingStatus = {
       embedded: book.embedded,
       embeddedAt: book.embeddedAt,
-      embeddedBy: book.embeddedBy,
-      embeddedByType: book.embeddedByType,
-      embeddingStats: book.embeddingStats
     }
   }
 } catch (bookError) {
-  console.error("Warning: Failed to get book embedding status:", bookError.message)
+  // ignore
 }
 
 res.json({
   success: true,
-  hasEmbeddings: embeddingStatus.exists,
-  embeddingCount: embeddingStatus.count,
+  hasEmbeddings: !!item.isEmbedded,
+  embeddingCount: item.embeddingCount || 0,
   fileName: item.name,
   bookId: bookId,
-  collectionName: embeddingStatus.collectionName,
-  allFiles: embeddingStatus.files,
-  bookEmbeddingStatus: bookEmbeddingStatus
+  bookEmbeddingStatus: bookEmbeddingStatus,
 })
 } catch (error) {
   res.status(500).json({
