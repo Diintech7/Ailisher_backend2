@@ -23,6 +23,19 @@ router.get('/credit-recharge-plans', clientController.getCreditRechargePlans);
 //create credit recharge plan
 router.post('/credit-recharge-plans', clientController.createCreditRechargePlan);
 
+// get one credit recharge plan
+router.get('/credit-recharge-plans/:id', clientController.getCreditRechargePlanById);
+
+// update credit recharge plan
+router.put('/credit-recharge-plans/:id', clientController.updateCreditRechargePlan);
+
+// delete credit recharge plan
+router.delete('/credit-recharge-plans/:id', clientController.deleteCreditRechargePlan);
+
+// add/delete single plan item
+router.post('/credit-recharge-plans/:planId/items', clientController.addCreditRechargePlanItem);
+router.delete('/credit-recharge-plans/:planId/items/:itemId', clientController.deleteCreditRechargePlanItem);
+
 
 // Additional routes would go here
 // Such as routes for managing AI books, workbooks, agents, users, etc.

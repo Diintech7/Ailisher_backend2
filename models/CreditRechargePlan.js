@@ -14,6 +14,12 @@ const CreditRechargePlanSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  // Duration in days (or your preferred unit)
+  duration: {
+    type: Number,
+    required: true,
+    min: 1
+  },
   credits: {
     type: Number,
     required: true,
@@ -22,13 +28,32 @@ const CreditRechargePlanSchema = new mongoose.Schema({
   MRP: {
     type: Number,
     required: true,
-    min: 0
+    min: 0,
+    alias: 'mrp'
   },
   offerPrice: {
     type: Number,
     required: true,
-    min: 0
+    min: 0,
+    alias: 'offerprice'
   },
+  category: {
+    type: String,
+    enum: ['Basic', 'Premium', 'Enterprise'],
+    default: 'Basic'
+  },
+  imageKey: {
+    type: String
+  },
+  videoKey: {
+    type: String
+  },
+  items: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PlanItem'
+    }
+  ],
   status: {
     type: String,
     enum: ['active', 'inactive'],
