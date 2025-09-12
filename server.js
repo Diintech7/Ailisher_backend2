@@ -124,6 +124,7 @@ app.use("/api/enhanced-pdf-chat", require("./routes/pdfChat"))
 
 // Public mobile chat endpoints (no token) — bookId only
 app.use("/api/mobile/public-chat", require("./routes/mobilePublicChat"))
+app.use("/api/mobile/public-chat", require("./routes/mobilePDFChat"))
 
 
 // Global Evaluation routes (accessible without client-specific middleware)
