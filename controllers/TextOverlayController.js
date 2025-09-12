@@ -42,13 +42,11 @@ const toFilterPath = (absolutePath) => {
 // Request body: { imageBase64?: string, imageUrl?: string, text: string, fontsize?: number, color?: string, align?: 'left'|'center'|'right', numbered?: boolean, withTicks?: boolean, tickColor?: string, xPadding?: number, sidebar?: boolean, sidebarWidth?: number, sidebarColor?: string }
 const overlayTextOnImage = async (req, res) => {
   try {
-    const { imageBase64, imageUrl, text, fontsize, color, align, numbered, withTicks, tickColor, xPadding, sidebar, sidebarWidth, sidebarColor } = req.body;
+    const { imageBase64, imageUrl, text, fontsize, color, align, numbered, withTicks, tickColor, xPadding, sidebar, sidebarWidth, sidebarColor, ticks } = req.body;
     if (!imageBase64 && !imageUrl) {
       return res.status(400).json({ error: 'Provide imageBase64 or imageUrl' });
     }
-    if (!text || typeof text !== 'string') {
-      return res.status(400).json({ error: 'Provide overlay text' });
-    }
+    // Allow ticks-only requests; text is optional now
 
     // Build input buffer from base64 or fetched URL
     let inputBuffer;
@@ -110,17 +108,16 @@ const overlayTextOnImage = async (req, res) => {
     };
 
     // Split input into comments (blank line or '|||') and wrap each comment separately
-    const rawComments = String(text || '')
-      .split(/\n\n|\|\|\|/)
-      .map(s => s.trim())
-      .filter(Boolean)
-      .slice(0, 10); // hard safety cap
+    const rawComments = text && typeof text === 'string'
+      ? String(text)
+          .split(/\n\n|\|\|\|/)
+          .map(s => s.trim())
+          .filter(Boolean)
+          .slice(0, 10)
+      : [];
 
     const wrappedComments = rawComments.map(c => processTextForWrapping(c, 50, 10));
     const totalWrappedLines = wrappedComments.flat();
-    if (totalWrappedLines.length === 0) {
-      return res.status(400).json({ error: 'Text is empty after processing' });
-    }
 
     // Normalize color: accept CSS hex like #RRGGBB or simple names; default to white
     const normalizeColor = (c) => {
@@ -154,70 +151,123 @@ const overlayTextOnImage = async (req, res) => {
         ];
 
     const latinFont = latinCandidates.find(p => fs.existsSync(p)) || null;
+    // Try to pick a symbol-capable font for the tick glyph ✓ (U+2713)
+    const symbolFontCandidates = process.platform === 'win32'
+      ? [
+          'C:/Windows/Fonts/seguisym.ttf',
+          'C:/Windows/Fonts/seguiemj.ttf',
+          'C:/Windows/Fonts/arial.ttf'
+        ]
+      : process.platform === 'darwin'
+      ? [
+          '/System/Library/Fonts/Supplemental/Symbol.ttf',
+          '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
+          '/Library/Fonts/Arial Unicode.ttf',
+          '/Library/Fonts/Arial.ttf'
+        ]
+      : [
+          '/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf',
+          '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+          '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf'
+        ];
+    const tickFont = symbolFontCandidates.find(p => fs.existsSync(p)) || latinFont;
     const size = Number.isFinite(Number(fontsize)) ? Number(fontsize) : 16;
     const lineHeight = size * 1.4; // Line height for spacing
     const startY = 50;
     const paddingX = Number.isFinite(Number(xPadding)) ? Math.max(0, Number(xPadding)) : 40;
     const requestedAlign = typeof align === 'string' ? align.toLowerCase() : 'center';
     const addSidebar = Boolean(sidebar);
-    const panelWidth = Number.isFinite(Number(sidebarWidth)) ? Math.max(60, Math.floor(Number(sidebarWidth))) : 320;
+    const panelWidth = Number.isFinite(Number(sidebarWidth)) ? Math.max(60, Math.floor(Number(sidebarWidth))) : 480;
 
     // Build layers per comment: number on first line only; one tick per comment
     let currentY = startY;
     const layers = [];
-    wrappedComments.forEach((lines, commentIndex) => {
-      const linesForThis = Array.isArray(lines) && lines.length > 0 ? lines : [''];
-      linesForThis.forEach((line, lineIndex) => {
-        const isFirstLineOfComment = lineIndex === 0;
-        const alreadyNumbered = /^\s*(?:\d+[\.)]|\(\d+\))\s+/.test(line);
-        const displayText = numbered && isFirstLineOfComment && !alreadyNumbered
-          ? `${commentIndex + 1}. ${line}`
-          : line;
-        const cleanLine = cleanTextForDrawtext(displayText);
-        const yPos = currentY;
+    if (totalWrappedLines.length > 0) {
+      wrappedComments.forEach((lines, commentIndex) => {
+        const linesForThis = Array.isArray(lines) && lines.length > 0 ? lines : [''];
+        linesForThis.forEach((line, lineIndex) => {
+          const isFirstLineOfComment = lineIndex === 0;
+          const alreadyNumbered = /^\s*(?:\d+[\.)]|\(\d+\))\s+/.test(line);
+          const displayText = numbered && isFirstLineOfComment && !alreadyNumbered
+            ? `${commentIndex + 1}. ${line}`
+            : line;
+          const cleanLine = cleanTextForDrawtext(displayText);
+          const yPos = currentY;
 
-        // Compute x based on alignment or sidebar
-        let xExpr = '(w-text_w)/2';
-        if (addSidebar) {
-          // Sidebar is a right panel of width panelWidth; start text inside it
-          xExpr = `w-${panelWidth}+${paddingX}`;
-        } else if (requestedAlign === 'left') {
-          xExpr = `${paddingX}`;
-        } else if (requestedAlign === 'right') {
-          xExpr = `w-text_w-${paddingX}`;
-        }
-
-        const textLayer = latinFont
-          ? `drawtext=text='${cleanLine}':fontfile='${toFilterPath(latinFont)}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`
-          : `drawtext=text='${cleanLine}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`;
-        layers.push(textLayer);
-
-        // One tick per comment at its first line
-        if (!addSidebar && withTicks && isFirstLineOfComment) {
-          const tickChar = cleanTextForDrawtext('✓');
-          let tickXExpr;
-          if (requestedAlign === 'right') {
-            tickXExpr = `w-${Math.max(8, paddingX)}`;
+          // Compute x based on alignment or sidebar
+          let xExpr = '(w-text_w)/2';
+          if (addSidebar) {
+            // Sidebar is a right panel of width panelWidth; start text inside it
+            xExpr = `w-${panelWidth}+${paddingX}`;
           } else if (requestedAlign === 'left') {
-            tickXExpr = `${Math.max(8, paddingX - Math.round(size * 1.2))}`;
-          } else {
-            tickXExpr = `w-${Math.max(8, paddingX)}`; // default near right edge
+            xExpr = `${paddingX}`;
+          } else if (requestedAlign === 'right') {
+            xExpr = `w-text_w-${paddingX}`;
           }
-          const tickLayer = latinFont
-            ? `drawtext=text='${tickChar}':fontfile='${toFilterPath(latinFont)}':fontcolor=${tickFontColor}:fontsize=${Math.round(size * 1.2)}:x=${tickXExpr}:y=${yPos}`
-            : `drawtext=text='${tickChar}':fontcolor=${tickFontColor}:fontsize=${Math.round(size * 1.2)}:x=${tickXExpr}:y=${yPos}`;
-          layers.push(tickLayer);
-        }
 
-        currentY += lineHeight;
+          const textLayer = latinFont
+            ? `drawtext=text='${cleanLine}':fontfile='${toFilterPath(latinFont)}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`
+            : `drawtext=text='${cleanLine}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`;
+          layers.push(textLayer);
+
+          // One tick per comment at its first line (auto position)
+          if (!addSidebar && withTicks && isFirstLineOfComment) {
+            const tickChar = cleanTextForDrawtext('✓');
+            let tickXExpr;
+            if (requestedAlign === 'right') {
+              tickXExpr = `w-${Math.max(8, paddingX)}`;
+            } else if (requestedAlign === 'left') {
+              tickXExpr = `${Math.max(8, paddingX - Math.round(size / 2))}`;
+            } else {
+              tickXExpr = `w-${Math.max(8, paddingX)}`; // default near right edge
+            }
+            const tickLayer = tickFont
+              ? `drawtext=text='${tickChar}':fontfile='${toFilterPath(tickFont)}':fontcolor=${tickFontColor}:fontsize=${Math.round(size / 3)}:x=${tickXExpr}:y=${yPos}`
+              : `drawtext=text='${tickChar}':fontcolor=${tickFontColor}:fontsize=${Math.round(size / 3)}:x=${tickXExpr}:y=${yPos}`;
+            layers.push(tickLayer);
+          }
+
+          currentY += lineHeight;
+        });
+        // Extra spacing between comments
+        currentY += Math.round(lineHeight * 0.5);
       });
-      // Extra spacing between comments
-      currentY += Math.round(lineHeight * 0.5);
-    });
+    }
 
     // Optional right white sidebar using pad filter
     const prefixFilters = addSidebar ? [`pad=iw+${panelWidth}:ih:0:0:${panelColor}`] : [];
-    const drawtextFilters = [...prefixFilters, ...layers];
+    // Optional explicit tick marks overlay (custom positions)
+    // ticks: [{ x: number (px or 0-1 fraction), y: number (px or 0-1 fraction), size: number (px), color: string }]
+    const tickLayers = [];
+    if (Array.isArray(ticks)) {
+      const toExpr = (val, axis) => {
+        if (typeof val === 'number') {
+          if (val >= 0 && val <= 1) {
+            return axis === 'x' ? `(w*${val})` : `(h*${val})`;
+          }
+          return `${Math.round(val)}`;
+        }
+        // fallback center
+        return axis === 'x' ? '(w-text_w)/2' : '(h-text_h)/2';
+      };
+      ticks.forEach((t) => {
+        const tSize = Number.isFinite(Number(t?.size)) ? Math.max(8, Math.round(Number(t.size))) : 35;
+        const tColor = normalizeColor(t?.color || tickColor || '#16A34A'); // default green
+        const tx = toExpr(t?.x, 'x');
+        const ty = toExpr(t?.y, 'y');
+        const tickChar = cleanTextForDrawtext('✓');
+        const layer = tickFont
+          ? `drawtext=text='${tickChar}':fontfile='${toFilterPath(tickFont)}':fontcolor=${tColor}:fontsize=${tSize}:x=${tx}:y=${ty}`
+          : `drawtext=text='${tickChar}':fontcolor=${tColor}:fontsize=${tSize}:x=${tx}:y=${ty}`;
+        tickLayers.push(layer);
+      });
+    }
+
+    const drawtextFilters = [...prefixFilters, ...layers, ...tickLayers];
+
+    if (drawtextFilters.length === 0) {
+      return res.status(400).json({ error: 'Nothing to draw: provide text or ticks' });
+    }
 
     // Combine all drawtext filters
     const combinedFilter = drawtextFilters.join(',');

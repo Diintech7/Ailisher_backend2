@@ -22,8 +22,7 @@ const CreditRechargePlanSchema = new mongoose.Schema({
   },
   credits: {
     type: Number,
-    required: true,
-    min: 1
+    min: 0
   },
   MRP: {
     type: Number,
