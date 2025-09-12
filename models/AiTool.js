@@ -1,5 +1,4 @@
 const mongoose = require("mongoose")
-
 const aiToolSchema = new mongoose.Schema({
   name: {
     type: String,

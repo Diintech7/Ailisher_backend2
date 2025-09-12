@@ -3,6 +3,7 @@ const router = express.Router()
 const EnhancedPDFProcessor = require("../services/PDFProcessor")
 const DataStore = require("../models/DatastoreItems")
 const Book = require("../models/Book")
+const axios = require("axios")
 
 const optionalAuth = (req, res, next) => {
   const token = req.headers.authorization?.replace("Bearer ", "")
@@ -20,20 +21,7 @@ const optionalAuth = (req, res, next) => {
   next()
 }
 
-const processor = new EnhancedPDFProcessor({
-  chunkrApiKey: process.env.CHUNKR_API_KEY,
-  geminiApiKey: process.env.GEMINI_API_KEY, // Changed from openaiApiKey
-  astraToken: process.env.ASTRA_TOKEN,
-  astraApiEndpoint: process.env.ASTRA_API_ENDPOINT,
-  keyspace: process.env.ASTRA_KEYSPACE,
-  collectionName: process.env.ASTRA_COLLECTION,
-  embeddingModel: process.env.EMBEDDING_MODEL, // Gemini embedding model
-  chatModel: process.env.CHAT_MODEL, // Gemini chat model
-  vectorDimensions: process.env.VECTOR_DIMENSIONS,
-  chunkSize: process.env.CHUNK_SIZE,
-  chunkOverlap: process.env.CHUNK_OVERLAP,
-  maxContextChunks: process.env.MAX_CONTEXT_CHUNKS,
-})
+// NOTE: Internal processor is no longer used for chat. Queries are delegated to external service.
 
 router.get("/chat-health/:itemId", optionalAuth, async (req, res) => {
   try {
@@ -73,16 +61,14 @@ router.get("/chat-health/:itemId", optionalAuth, async (req, res) => {
       })
     }
 
-    const embeddingStatus = await processor.checkExistingEmbeddings(item.name, userId, bookId)
-
+    // Use stored flags (from DataStore) to approximate chat availability
     res.json({
       success: true,
       status: {
-        chatAvailable: embeddingStatus.exists,
-        embeddingCount: embeddingStatus.count,
+        chatAvailable: !!item.isEmbedded,
+        embeddingCount: item.embeddingCount || 0,
         fileName: item.name,
         bookId: bookId,
-        collectionName: embeddingStatus.collectionName,
       },
     })
   } catch (error) {
@@ -101,7 +87,7 @@ router.post("/chat/:itemId", optionalAuth, async (req, res) => {
 
   try {
     const { itemId } = req.params
-    const { question } = req.body
+    const { question, history = [], query_id = `query_${Date.now()}`, session_id = `session_${Date.now()}`, top_k = 5, llm = "openai", tts = false } = req.body
     const userId = req.user?.id
 
     if (!question || question.trim().length === 0) {
@@ -144,42 +130,36 @@ router.post("/chat/:itemId", optionalAuth, async (req, res) => {
       })
     }
 
-    const embeddingStatus = await processor.checkExistingEmbeddings(item.name, userId, bookId)
-
-    if (!embeddingStatus.exists) {
-      return res.status(400).json({
-        success: false,
-        message: "No embeddings found for this PDF. Please create embeddings first.",
-        needsEmbedding: true,
-        bookId: bookId,
-      })
+    // Build external query payload
+    const payload = {
+      query_id,
+      session_id,
+      history,
+      query: question,
+      book_name: bookId,
+      chapter_name: itemId,
+      client_id: (item.book?.clientId || "").toString() || "",
+      llm,
+      top_k,
+      tts,
     }
 
-    const result = await processor.answerQuestion(question, item.name, userId, false, bookId)
-
+    console.log("[Chat] Calling external query API with payload:", JSON.stringify(payload))
+    const extRes = await axios.post(
+      "https://vectrizebackend.onrender.com/api/v1/rag/query",
+      payload,
+      { timeout: 180000 }
+    )
+    const extData = extRes.data || {}
+    console.log("[Chat] External API Status:", extRes.status)
+    console.log("[Chat] External API Response:", JSON.stringify(extData))
     const totalTime = Date.now() - startTime
 
-    res.json({
-      success: true,
-      answer: result.answer,
-      confidence: result.confidence,
-      sources: result.sources,
-      method: result.method,
-      bookId: result.bookId,
-      fileName: item.name,
+    if (!extData.success) {
+      return res.status(502).json({ success: false, message: extData.message || "External query failed" })
+    }
 
-      // Enhanced response metrics
-      modelUsed: result.modelUsed,
-      tokensUsed: result.tokensUsed,
-
-      timing: {
-        retrieval: result.timing.retrieval + "ms",
-        processing: result.timing.processing + "ms",
-        generation: result.timing.generation + "ms",
-        aiProcessing: result.timing.total + "ms",
-        totalResponse: totalTime + "ms",
-      },
-    })
+    return res.json({ success: true, data: extData.data, timing: { totalResponse: totalTime + "ms" } })
   } catch (error) {
     const totalTime = Date.now() - startTime
     res.status(500).json({
@@ -197,7 +177,7 @@ router.post("/chat-book-knowledge-base/:bookId", optionalAuth, async (req, res) 
 
   try {
     const { bookId } = req.params
-    const { question } = req.body
+    const { question, history = [], query_id = `query_${Date.now()}`, session_id = `session_${Date.now()}`, top_k = 5, llm = "openai", tts = false } = req.body
     const userId = req.user?.id
 
     if (!question || question.trim().length === 0) {
@@ -221,40 +201,34 @@ router.post("/chat-book-knowledge-base/:bookId", optionalAuth, async (req, res) 
       })
     }
 
-    const embeddingStatus = await processor.checkExistingEmbeddings(null, userId, bookId)
-
-    if (!embeddingStatus.exists) {
-      return res.status(400).json({
-        success: false,
-        message: "No content found in this book's knowledge base.",
-        bookId: bookId,
-      })
+    // Build external query payload (knowledge base: omit chapter_name)
+    const payload = {
+      query_id,
+      session_id,
+      history,
+      query: question,
+      book_name: bookId,
+      client_id: (book.clientId || "").toString() || "",
+      llm,
+      top_k,
+      tts,
     }
-
-    const result = await processor.answerQuestion(question, null, userId, false, bookId)
+    console.log("[Chat-KB] Calling external query API with payload:", JSON.stringify(payload))
+    const extRes = await axios.post(
+      "https://vectrizebackend.onrender.com/api/v1/rag/query",
+      payload,
+      { timeout: 180000 }
+    )
+    const extData = extRes.data || {}
+    console.log("[Chat-KB] External API Status:", extRes.status)
+    console.log("[Chat-KB] External API Response:", JSON.stringify(extData))
     const totalTime = Date.now() - startTime
 
-res.json({
-  success: true,
-  answer: result.answer,
-  confidence: result.confidence,
-  sources: result.sources,
-  method: result.method,
-  bookId: result.bookId,
-  bookTitle: book.title,
+    if (!extData.success) {
+      return res.status(502).json({ success: false, message: extData.message || "External query failed" })
+    }
 
-  // Enhanced response metrics
-  modelUsed: result.modelUsed,
-  tokensUsed: result.tokensUsed,
-
-  timing: {
-    retrieval: result.timing.retrieval + "ms",
-    processing: result.timing.processing + "ms",
-    generation: result.timing.generation + "ms",
-    aiProcessing: result.timing.total + "ms",
-    totalResponse: totalTime + "ms",
-  },
-})
+    return res.json({ success: true, data: extData.data, timing: { totalResponse: totalTime + "ms" } })
 } catch (error) {
   const totalTime = Date.now() - startTime
   res.status(500).json({
