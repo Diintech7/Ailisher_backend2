@@ -142,6 +142,7 @@ router.post("/ask/:bookId", async (req, res) => {
     console.log(`[Public Chat] External API Status:`, extRes.status)
     console.log(`[Public Chat] External API Response:`, JSON.stringify(extData))
 
+    
     const processingTime = Date.now() - startTime
 
     if (!extData.success) {
