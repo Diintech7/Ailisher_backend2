@@ -335,6 +335,16 @@ app.use(
   reviewRequestsRoutes,
 )
 
+app.use(
+  "/api/clients/:clientId/paytm",
+  checkClientAccess(),
+  (req, res, next) => {
+    req.clientId = req.params.clientId
+    next()
+  },
+  paytmRoutes,
+)
+
 // Mount subtopics routes
 app.use("/api/books/:bookId/chapters/:chapterId/topics/:topicId/subtopics", subtopicsRoutes)
 app.use("/api/workbooks/:workbookId/chapters/:chapterId/topics/:topicId/subtopics", subtopicsRoutes)

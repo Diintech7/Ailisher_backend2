@@ -87,7 +87,6 @@ const authenticateMobileUser = async (req, res, next) => {
         }
       });
     }
-
     // Set user information in request
     req.user = {
       id: user._id,

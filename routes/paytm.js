@@ -8,20 +8,24 @@ const CreditTransaction = require('../models/CreditTransaction');
 const CreditRechargePlan = require('../models/CreditRechargePlan');
 const UserPlan = require('../models/UserPlan');
 const PaytmConfig = require('../config/paytm');
-const { sendSuccessResponse, sendErrorResponse, sendValidationError } = require('../utils/response');
+const { authenticateMobileUser } = require('../middleware/mobileAuth');
 
 const router = express.Router();
 
 // 1. Initialize Payment
-router.post('/initiate', async (req, res) => {
+router.post('/initiate',authenticateMobileUser, async (req, res) => {
   try {
-    const { amount, customerEmail, customerPhone, customerName, projectId, userId, planId, credits } = req.body;
-    
+    const { planId, customerEmail, customerName } = req.body;
+    const userId = req.user.id;
+    const customerPhone = req.user.mobile;
+    const plan = await CreditRechargePlan.findById(planId);
+    const amount = plan.offerPrice;
+    const credits = plan.credits;
     // Validate required fields
-    if (!amount || !customerEmail || !customerPhone || !customerName || !planId) {
+    if (!planId || !customerEmail || !customerName) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: amount, customerEmail, customerPhone, customerName'
+        message: 'Missing required fields: planId, customerEmail, customerName'
       });
     }
 
@@ -32,13 +36,13 @@ router.post('/initiate', async (req, res) => {
     const payment = new Payment({
       orderId,
       amount: parseFloat(amount),
-      userId: userId || null,
+      userId: userId,
       planId: planId || null,
-      creditsPurchased: credits || null,
+      creditsPurchased: credits,
       customerEmail,
       customerPhone,
       customerName,
-      projectId: projectId || 'default',
+      projectId: 'AILISHER',
       status: 'PENDING'
     });
 
