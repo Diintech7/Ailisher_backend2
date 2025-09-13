@@ -2,6 +2,7 @@ const express = require("express")
 const router = express.Router()
 const Book = require("../models/Book")
 const DataStore = require("../models/DatastoreItems")
+const Chat = require("../models/Chat")
 const axios = require("axios")
 
 // Helper function to log external API data
@@ -14,6 +15,108 @@ function logExternalAPIData(question, payload, response, method) {
   console.log(`📥 Response Status: ${response?.status || 'N/A'}`)
   console.log(`📥 Response Data:`, JSON.stringify(response?.data, null, 2))
   console.log("=".repeat(80) + "\n")
+}
+
+// Helper function to generate chat title from first question
+function generateChatTitle(question) {
+  // Clean and truncate the question to create a meaningful title
+  let title = question.trim()
+  
+  // Remove common question words and clean up
+  title = title.replace(/^(what|how|when|where|why|can|could|would|should|is|are|do|does|did|will|tell|explain|give|show|help|please)\s+/i, '')
+  
+  // Capitalize first letter
+  title = title.charAt(0).toUpperCase() + title.slice(1)
+  
+  // Truncate to reasonable length (max 50 characters)
+  if (title.length > 50) {
+    title = title.substring(0, 47) + '...'
+  }
+  
+  // If title is too short or empty, use a default
+  if (title.length < 3) {
+    title = 'New Chat'
+  }
+  
+  return title
+}
+
+// Helper function to save chat messages
+async function saveChatMessage(chatId, clientId, userId, bookId, userMessage, aiResponse, metadata = {}) {
+  try {
+    // Find or create chat
+    const chat = await Chat.findOrCreateChat(chatId, clientId, userId, bookId)
+    
+    // If this is a new chat (no messages yet), generate title from first question
+    if (chat.messages.length === 0 && !chat.title) {
+      chat.title = generateChatTitle(userMessage)
+    }
+    
+    // Add user message
+    chat.messages.push({
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date()
+    })
+    
+    // Extract the actual response content based on the response format
+    let responseContent = 'No response generated'
+    let responseMetadata = {}
+    
+    // Handle external API response format (data.llm_response)
+    if (aiResponse.data && aiResponse.data.llm_response) {
+      responseContent = aiResponse.data.llm_response
+      responseMetadata = {
+        modelUsed: 'openai', // Default for external API
+        tokensUsed: 0, // Not available in external API response
+        confidence: 1.0, // Assume high confidence for external API
+        sources: aiResponse.data.results ? aiResponse.data.results.length : 0,
+        method: 'external-api',
+        filesUsed: [],
+        timing: {
+          totalResponse: aiResponse.data.latency || '0ms',
+          ragLatency: aiResponse.data.rag_latency || '0ms',
+          llmLatency: aiResponse.data.llm_latency || '0ms'
+        },
+        queryId: aiResponse.data.query_id,
+        sessionId: aiResponse.data.session_id,
+        clientId: aiResponse.data.client_id
+      }
+    }
+    // Handle internal API response format (direct properties)
+    else if (aiResponse.answer || aiResponse.message) {
+      responseContent = aiResponse.answer || aiResponse.message
+      responseMetadata = {
+        modelUsed: aiResponse.modelUsed || 'unknown',
+        tokensUsed: aiResponse.tokensUsed || 0,
+        confidence: aiResponse.confidence || 0,
+        sources: aiResponse.sources || 0,
+        method: aiResponse.method || 'unknown',
+        filesUsed: aiResponse.filesUsed || [],
+        timing: aiResponse.timing || {}
+      }
+    }
+    
+    // Add AI response
+    chat.messages.push({
+      role: 'assistant',
+      content: responseContent,
+      timestamp: new Date(),
+      metadata: responseMetadata
+    })
+    
+    // Update total tokens used
+    chat.totalTokensUsed += (responseMetadata.tokensUsed || 0)
+    
+    // Save chat
+    await chat.save()
+    
+    console.log(`💬 Chat saved: ${chat.chatId} (${chat.messages.length} messages) - Title: "${chat.title}"`)
+    return chat.chatId
+  } catch (error) {
+    console.error('Error saving chat message:', error.message)
+    return null
+  }
 }
 
 // Health/status of a book's knowledge base (no auth)
@@ -58,7 +161,7 @@ router.post("/ask/:bookId", async (req, res) => {
   const startTime = Date.now()
   try {
     const { bookId } = req.params
-    const { question, history = [], client_id } = req.body || {}
+    const { question, history = [], client_id, user_id, chat_id } = req.body || {}
 
     if (!bookId) {
       return res.status(400).json({ success: false, message: "bookId is required" })
@@ -70,6 +173,11 @@ router.post("/ask/:bookId", async (req, res) => {
     // Validate client_id
     if (!client_id || typeof client_id !== "string" || client_id.trim().length === 0) {
       return res.status(400).json({ success: false, message: "client_id is required in body" })
+    }
+
+    // Validate user_id for chat saving
+    if (!user_id || typeof user_id !== "string" || user_id.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "user_id is required in body for chat saving" })
     }
 
     // Check if book has PDF embeddings in MongoDB first
@@ -91,7 +199,7 @@ router.post("/ask/:bookId", async (req, res) => {
     })
 
     if (pdfItems.length === 0) {
-      return res.json({
+      const noEmbeddingResponse = {
         success: true,
         answer: "This book does not have PDF embeddings available. Please upload and embed PDF files first.",
         confidence: 0,
@@ -112,7 +220,13 @@ router.post("/ask/:bookId", async (req, res) => {
           generation: "0ms",
           totalResponse: Date.now() - startTime + "ms",
         },
-      })
+      }
+
+      // Save chat message even for no embedding response
+      const savedChatId = await saveChatMessage(chat_id, client_id, user_id, bookId, question, noEmbeddingResponse)
+      noEmbeddingResponse.chat_id = savedChatId
+
+      return res.json(noEmbeddingResponse)
     }
 
     console.log(`🤖 Calling external knowledge base chat API...`)
@@ -156,8 +270,15 @@ router.post("/ask/:bookId", async (req, res) => {
     // Log external API data
     logExternalAPIData(question, payload, extRes, "public-knowledge-base")
 
-    // Return only the new external API format
-    return res.json({ success: true, data: extData.data })
+    // Prepare response with chat saving
+    const responseData = { success: true, data: extData.data }
+    
+    // Save chat message - pass the full extData structure so saveChatMessage can extract llm_response
+    const savedChatId = await saveChatMessage(chat_id, client_id, user_id, bookId, question, extData)
+    responseData.chat_id = savedChatId
+
+    // Return response with chat_id
+    return res.json(responseData)
   } catch (error) {
     const totalTime = Date.now() - startTime
     console.error("Error in /ask/:bookId endpoint:", error)
@@ -295,13 +416,21 @@ router.post("/ask-enhanced/:bookId", async (req, res) => {
   const startTime = Date.now()
   try {
     const { bookId } = req.params
-    const { question, options = {} } = req.body || {}
+    const { question, options = {}, client_id, user_id, chat_id } = req.body || {}
 
     if (!bookId) {
       return res.status(400).json({ success: false, message: "bookId is required" })
     }
     if (!question || typeof question !== "string" || question.trim().length === 0) {
       return res.status(400).json({ success: false, message: "question is required" })
+    }
+
+    // Validate client_id and user_id for chat saving
+    if (!client_id || typeof client_id !== "string" || client_id.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "client_id is required in body for chat saving" })
+    }
+    if (!user_id || typeof user_id !== "string" || user_id.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "user_id is required in body for chat saving" })
     }
 
     // Use enhanced book-level processing
@@ -322,7 +451,7 @@ router.post("/ask-enhanced/:bookId", async (req, res) => {
     }
     
     if (!book.embedded) {
-      return res.json({
+      const noEmbeddingResponse = {
         success: true,
         answer: "This book does not have PDF embeddings available. Please upload and embed PDF files first.",
         confidence: 0,
@@ -343,7 +472,13 @@ router.post("/ask-enhanced/:bookId", async (req, res) => {
           generation: "0ms",
           totalResponse: Date.now() - startTime + "ms",
         },
-      })
+      }
+
+      // Save chat message even for no embedding response
+      const savedChatId = await saveChatMessage(chat_id, client_id, user_id, bookId, question, noEmbeddingResponse)
+      noEmbeddingResponse.chat_id = savedChatId
+
+      return res.json(noEmbeddingResponse)
     }
     
     // Initialize the processor for this book first
@@ -380,7 +515,7 @@ router.post("/ask-enhanced/:bookId", async (req, res) => {
     const result = await processor.answerBookLevelQuestion(question, bookId, null, mergedOptions)
     const totalTime = Date.now() - startTime
 
-    return res.json({
+    const responseData = {
       success: true,
       answer: result.answer,
       confidence: result.confidence,
@@ -401,7 +536,13 @@ router.post("/ask-enhanced/:bookId", async (req, res) => {
         generation: result.timing.generation + "ms",
         totalResponse: totalTime + "ms",
       },
-    })
+    }
+
+    // Save chat message
+    const savedChatId = await saveChatMessage(chat_id, client_id, user_id, bookId, question, responseData)
+    responseData.chat_id = savedChatId
+
+    return res.json(responseData)
   } catch (error) {
     const totalTime = Date.now() - startTime
     console.error("Error in /ask-enhanced/:bookId endpoint:", error)
@@ -418,13 +559,21 @@ router.post("/ask-fast/:bookId", async (req, res) => {
   const startTime = Date.now()
   try {
     const { bookId } = req.params
-    const { question, options = {} } = req.body || {}
+    const { question, options = {}, client_id, user_id, chat_id } = req.body || {}
 
     if (!bookId) {
       return res.status(400).json({ success: false, message: "bookId is required" })
     }
     if (!question || typeof question !== "string" || question.trim().length === 0) {
       return res.status(400).json({ success: false, message: "question is required" })
+    }
+
+    // Validate client_id and user_id for chat saving
+    if (!client_id || typeof client_id !== "string" || client_id.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "client_id is required in body for chat saving" })
+    }
+    if (!user_id || typeof user_id !== "string" || user_id.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "user_id is required in body for chat saving" })
     }
 
     // Use fast book-level processing
@@ -445,7 +594,7 @@ router.post("/ask-fast/:bookId", async (req, res) => {
     }
     
     if (!book.embedded) {
-      return res.json({
+      const noEmbeddingResponse = {
         success: true,
         answer: "This book does not have PDF embeddings available. Please upload and embed PDF files first.",
         confidence: 0,
@@ -466,7 +615,13 @@ router.post("/ask-fast/:bookId", async (req, res) => {
           generation: "0ms",
           totalResponse: Date.now() - startTime + "ms",
         },
-      })
+      }
+
+      // Save chat message even for no embedding response
+      const savedChatId = await saveChatMessage(chat_id, client_id, user_id, bookId, question, noEmbeddingResponse)
+      noEmbeddingResponse.chat_id = savedChatId
+
+      return res.json(noEmbeddingResponse)
     }
     
     // Initialize the processor for this book first
@@ -521,7 +676,7 @@ router.post("/ask-fast/:bookId", async (req, res) => {
       statusMessage = "RAG processed but question may not be highly relevant to available content"
     }
 
-    return res.json({
+    const responseData = {
       success: true,
       statusCode: statusCode,
       statusMessage: statusMessage,
@@ -537,7 +692,7 @@ router.post("/ask-fast/:bookId", async (req, res) => {
       fastMode: true,
       isQuestionRelated: result.isQuestionRelated || false,
       noInformationFound: result.noInformationFound || false,
-             ragUsed: statusCode === 1001,
+      ragUsed: statusCode === 1001,
       timing: {
         init: (result.timing.init || 0) + "ms",
         retrieval: result.timing.retrieval + "ms",
@@ -545,7 +700,13 @@ router.post("/ask-fast/:bookId", async (req, res) => {
         generation: result.timing.generation + "ms",
         totalResponse: totalTime + "ms",
       },
-    })
+    }
+
+    // Save chat message
+    const savedChatId = await saveChatMessage(chat_id, client_id, user_id, bookId, question, responseData)
+    responseData.chat_id = savedChatId
+
+    return res.json(responseData)
   } catch (error) {
     const totalTime = Date.now() - startTime
     console.error("Error in /ask-fast/:bookId endpoint:", error)
@@ -1196,6 +1357,295 @@ router.get("/test-init/:bookId", async (req, res) => {
       success: false,
       message: error.message || "Test failed",
       error: true
+    })
+  }
+})
+
+// Get chat history for a specific chat
+router.post("/chat", async (req, res) => {
+  try {
+    const { chatId, client_id, user_id } = req.body
+
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "chatId is required in body" })
+    }
+    if (!client_id) {
+      return res.status(400).json({ success: false, message: "client_id is required in body" })
+    }
+    if (!user_id) {
+      return res.status(400).json({ success: false, message: "user_id is required in body" })
+    }
+
+    const chat = await Chat.findOne({ 
+      chatId, 
+      clientId: client_id, 
+      userId: user_id 
+    }).populate('bookId', 'title author')
+
+    if (!chat) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Chat not found" 
+      })
+    }
+
+    return res.json({
+      success: true,
+      chat: {
+        chatId: chat.chatId,
+        bookId: chat.bookId,
+        bookTitle: chat.bookId?.title,
+        bookAuthor: chat.bookId?.author,
+        title: chat.title || 'Untitled Chat',
+        messages: chat.messages,
+        messageCount: chat.messageCount,
+        totalTokensUsed: chat.totalTokensUsed,
+        lastMessageAt: chat.lastMessageAt,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt
+      }
+    })
+  } catch (error) {
+    console.error("Error getting chat:", error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get chat"
+    })
+  }
+})
+
+// Get all chats for a user
+router.post("/chats", async (req, res) => {
+  try {
+    const { user_id, client_id } = req.body
+
+    if (!user_id) {
+      return res.status(400).json({ success: false, message: "user_id is required in body" })
+    }
+    if (!client_id) {
+      return res.status(400).json({ success: false, message: "client_id is required in body" })
+    }
+    const chats = await Chat.find({ 
+      userId: user_id, 
+      clientId: client_id 
+    })
+    .populate('bookId', 'title author')
+    .sort({ lastMessageAt: -1 })
+
+    return res.json({
+      success: true,
+      chats: chats.map(chat => ({
+        chatId: chat.chatId,
+        title: chat.title || 'Untitled Chat',
+        messageCount: chat.messageCount,
+      })),
+      totalChats: chats.length
+    })
+  } catch (error) {
+    console.error("Error getting chats:", error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get chats"
+    })
+  }
+})
+
+// Get chat history by book ID and user ID
+router.post("/history", async (req, res) => {
+  try {
+    const { bookId, user_id, client_id } = req.body
+
+    if (!bookId) {
+      return res.status(400).json({ success: false, message: "bookId is required in body" })
+    }
+    if (!user_id) {
+      return res.status(400).json({ success: false, message: "user_id is required in body" })
+    }
+    if (!client_id) {
+      return res.status(400).json({ success: false, message: "client_id is required in body" })
+    }
+
+    // Verify book exists
+    const book = await Book.findById(bookId)
+    if (!book) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Book not found" 
+      })
+    }
+
+    const chats = await Chat.find({ 
+      bookId, 
+      userId: user_id, 
+      clientId: client_id 
+    })
+    .populate('bookId', 'title author')
+    .sort({ lastMessageAt: -1 })
+
+    return res.json({
+      success: true,
+      bookId: bookId,
+      bookTitle: book.title,
+      bookAuthor: book.author,
+      userId: user_id,
+      chats: chats.map(chat => ({
+        chatId: chat.chatId,
+        title: chat.title || 'Untitled Chat',
+        messageCount: chat.messageCount,
+     })),
+      totalChats: chats.length
+    })
+  } catch (error) {
+    console.error("Error getting chat history:", error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get chat history"
+    })
+  }
+})
+
+// Get specific chat history by chat ID
+router.post("/chat-history", async (req, res) => {
+  try {
+    const { chatId, client_id, user_id } = req.body
+
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "chatId is required in body" })
+    }
+    if (!client_id) {
+      return res.status(400).json({ success: false, message: "client_id is required in body" })
+    }
+    if (!user_id) {
+      return res.status(400).json({ success: false, message: "user_id is required in body" })
+    }
+
+    const chat = await Chat.findOne({ 
+      chatId, 
+      clientId: client_id, 
+      userId: user_id 
+    }).populate('bookId', 'title author')
+
+    if (!chat) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Chat not found" 
+      })
+    }
+
+    return res.json({
+      success: true,
+      chat: {
+        chatId: chat.chatId,
+        title: chat.title || 'Untitled Chat',
+        bookId: chat.bookId,
+        bookTitle: chat.bookId?.title,
+        bookAuthor: chat.bookId?.author,
+        messages: chat.messages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          metadata: msg.metadata
+        })),
+        messageCount: chat.messageCount,
+        totalTokensUsed: chat.totalTokensUsed,
+        lastMessageAt: chat.lastMessageAt,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt
+      }
+    })
+  } catch (error) {
+    console.error("Error getting specific chat history:", error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get chat history"
+    })
+  }
+})
+
+// Delete a chat
+router.post("/chat/delete", async (req, res) => {
+  try {
+    const { chatId, client_id, user_id } = req.body
+
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "chatId is required in body" })
+    }
+    if (!client_id) {
+      return res.status(400).json({ success: false, message: "client_id is required in body" })
+    }
+    if (!user_id) {
+      return res.status(400).json({ success: false, message: "user_id is required in body" })
+    }
+
+    const chat = await Chat.findOneAndDelete({ 
+      chatId, 
+      clientId: client_id, 
+      userId: user_id 
+    })
+
+    if (!chat) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Chat not found" 
+      })
+    }
+
+    return res.json({
+      success: true,
+      message: "Chat deleted successfully",
+      chatId: chat.chatId
+    })
+  } catch (error) {
+    console.error("Error deleting chat:", error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete chat"
+    })
+  }
+})
+
+// Update chat title
+router.post("/chat/title", async (req, res) => {
+  try {
+    const { chatId, client_id, user_id, title } = req.body
+
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: "chatId is required in body" })
+    }
+    if (!client_id) {
+      return res.status(400).json({ success: false, message: "client_id is required in body" })
+    }
+    if (!user_id) {
+      return res.status(400).json({ success: false, message: "user_id is required in body" })
+    }
+    if (!title || typeof title !== "string" || title.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "title is required in body" })
+    }
+
+    const chat = await Chat.findOneAndUpdate(
+      { chatId, clientId: client_id, userId: user_id },
+      { title: title.trim() },
+      { new: true }
+    )
+
+    if (!chat) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Chat not found" 
+      })
+    }
+
+    return res.json({
+      success: true,
+      message: "Chat title updated successfully",
+      chatId: chat.chatId,
+      title: chat.title
+    })
+  } catch (error) {
+    console.error("Error updating chat title:", error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update chat title"
     })
   }
 })
