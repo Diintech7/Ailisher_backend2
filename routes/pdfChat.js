@@ -146,7 +146,7 @@ router.post("/chat/:itemId", optionalAuth, async (req, res) => {
 
     console.log("[Chat] Calling external query API with payload:", JSON.stringify(payload))
     const extRes = await axios.post(
-      "https://vectrizebackend.onrender.com/api/v1/rag/query",
+      "https://vectrize.ailisher.com/api/v1/rag/query",
       payload,
       { timeout: 180000 }
     )
@@ -215,7 +215,7 @@ router.post("/chat-book-knowledge-base/:bookId", optionalAuth, async (req, res) 
     }
     console.log("[Chat-KB] Calling external query API with payload:", JSON.stringify(payload))
     const extRes = await axios.post(
-      "https://vectrizebackend.onrender.com/api/v1/rag/query",
+      "https://vectrize.ailisher.com/api/v1/rag/query",
       payload,
       { timeout: 180000 }
     )

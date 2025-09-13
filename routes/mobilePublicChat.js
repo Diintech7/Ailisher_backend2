@@ -134,7 +134,7 @@ router.post("/ask/:bookId", async (req, res) => {
 
     console.log(`[Public Chat] Calling external query API with payload:`, payload)
     const extRes = await axios.post(
-      "https://vectrizebackend.onrender.com/api/v1/rag/query",
+      "https://vectrize.ailisher.com/api/v1/rag/query",
       payload,
       { timeout: 180000 }
     )
@@ -235,7 +235,7 @@ router.get("/raw-data/:bookId", async (req, res) => {
     try {
       console.log(`[Raw Data] Testing external API with payload:`, testPayload)
       const extRes = await axios.post(
-        "https://vectrizebackend.onrender.com/api/v1/rag/query",
+        "https://vectrize.ailisher.com/api/v1/rag/query",
         testPayload,
         { timeout: 30000 }
       )
@@ -272,7 +272,7 @@ router.get("/raw-data/:bookId", async (req, res) => {
       })),
       testPayload: testPayload,
       externalAPI: {
-        url: "https://vectrizebackend.onrender.com/api/v1/rag/query",
+        url: "https://vectrize.ailisher.com/api/v1/rag/query",
         response: externalResponse,
         error: externalError,
         success: !externalError,
