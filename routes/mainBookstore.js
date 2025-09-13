@@ -644,23 +644,5 @@ async function getAvailableCategories(clientId) {
   }
 }
 
-router.get('/plans',authenticateMobileUser,async (req,res) => {
-  try {
-    const clientId = req.user.clientId
-    const plans = await CreditRechargePlan.find({clientId:clientId}).populate('items');
-
-    res.json({
-      success : true,
-      data : plans
-    })
-  } 
-  catch (error) {
-    res.status(500).json({
-      success : false,
-      message : error.message
-    })
-  }
-})
-
 // Export router
 module.exports = router;

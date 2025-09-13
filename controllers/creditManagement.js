@@ -257,9 +257,8 @@ exports.useCreditsForService = async (req, res) => {
 
 exports.getCreditRechargePlans = async (req,res) => {
   try {
-    const clientId = req.clientId
-    console.log(clientId)
-    const plans = await CreditRechargePlan.find({clientId:clientId});
+    const clientId = req.user.clientId
+    const plans = await CreditRechargePlan.find({clientId:clientId}).populate('items');
 
     res.json({
       success : true,
