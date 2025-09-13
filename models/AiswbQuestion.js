@@ -98,7 +98,7 @@ const questionSchema = new mongoose.Schema({
     required: function() {
       return this.evaluationMode === 'manual';
     },
-    default:'without annotation'
+    default: 'without annotation'
   },
   evaluationGuideline: {
     type: String,

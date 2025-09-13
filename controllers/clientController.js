@@ -5,8 +5,12 @@ const User = require('../models/User');
 const UserProfile = require('../models/UserProfile');
 const Book = require('../models/Book');
 const Workbook = require('../models/Workbook');
+const Asset = require('../models/Asset');
+const DatastoreItem = require('../models/DatastoreItem');
 const SubjectiveTest = require('../models/SubjectiveTest');
 const ObjectiveTest = require('../models/ObjectiveTest');
+const { generateGetPresignedUrl } = require('../utils/s3');
+const { default: mongoose } = require('mongoose');
 
 // Get client dashboard data
 exports.getDashboard = async (req, res) => {
@@ -437,10 +441,101 @@ exports.getCreditRechargePlans = async (req,res) => {
   try {
     const clientId = req.user.userId
     const plans = await CreditRechargePlan.find({clientId:clientId}).populate('items');
+    
+    // Process each plan and its items
+    for(const plan of plans) {
+      if(plan.items && plan.items.length > 0) {
+        for(const item of plan.items) {
+          // Fetch referenced item details based on itemType and referenceId
+          if(item.referenceId && item.itemType) {
+            try {
+              let referencedItem = null;
+              item.referenceId = new mongoose.Types.ObjectId(item.referenceId)
+              switch(item.itemType.toLowerCase()) {
+                case 'book':
+                  referencedItem = await Book.findById(item.referenceId);
+                  break;
+                case 'workbook':
+                  referencedItem = await Workbook.findById(item.referenceId);
+                  break;
+                case 'objective test':
+                case 'objective-test':
+                  referencedItem = await ObjectiveTest.findById(item.referenceId);
+                  break;
+                case 'subjective test':
+                case 'subjective-test':
+                  referencedItem = await SubjectiveTest.findById(item.referenceId);
+                  break;
+                default:
+                  console.log(`Unknown item type: ${item.itemType}`);
+              }
+              
+                if(referencedItem) {
+                  console.log('Referenced item found:', {
+                    name: referencedItem.name || referencedItem.title,
+                    hasImageKey: !!referencedItem.imageKey,
+                    hasCoverImageKey: !!referencedItem.coverImageKey,
+                    hasImageUrl: !!referencedItem.imageUrl
+                  });
+                  
+                  // Generate image URL for referenced item
+                  if(referencedItem.coverImageKey) {
+                    try {
+                      referencedItem.coverImageUrl = await generateGetPresignedUrl(referencedItem.coverImageKey);
+                      console.log('Generated cover image URL:', referencedItem.coverImageUrl);
+                    } catch (imgError) {
+                      console.error(`Error generating cover image URL:`, imgError);
+                    }
+                  } else if(referencedItem.imageKey) {
+                    try {
+                      referencedItem.imageUrl = await generateGetPresignedUrl(referencedItem.imageKey);
+                      console.log('Generated image URL:', referencedItem.imageUrl);
+                    } catch (imgError) {
+                      console.error(`Error generating image URL:`, imgError);
+                    }
+                  } else if(referencedItem.imageUrl) {
+                    console.log('Using existing image URL:', referencedItem.imageUrl);
+                  } else {
+                    console.log('No image key or URL found for item');
+                  }
+                  
+                  // Store the referenced item with image URLs
+                  item.referencedItem = {
+                    _id: referencedItem._id,
+                    title: referencedItem.title || referencedItem.name,
+                    description: referencedItem.description || referencedItem.summary,
+                    coverImageUrl: referencedItem.coverImageUrl,
+                    imageUrl: referencedItem.imageUrl
+                  };
+                }
+            } catch(refError) {
+              console.error(`Error fetching referenced item ${item.referenceId}:`, refError);
+            }
+          }
+          
+          // Also handle direct image keys on the plan item itself
+          if(item.imageKey) {
+          item.imageUrl = await generateGetPresignedUrl(item.imageKey);
+          } else if(item.coverImageKey) {
+          item.coverImageUrl = await generateGetPresignedUrl(item.coverImageKey);
+          }
+        }
+      }
+    }
+    
+    // Add image URLs to the response for easy access
+    const responseData = plans.map(plan => ({
+      ...plan.toObject(),
+      items: plan.items.map(item => ({
+        ...item.toObject(),
+        imageUrl: item.imageUrl || item.coverImageUrl || null,
+        referencedItemImageUrl: item.referencedItem?.coverImageUrl || item.referencedItem?.imageUrl || null
+      }))
+    }));
 
     res.json({
       success : true,
-      data : plans
+      data : responseData
     })
   } 
   catch (error) {
@@ -458,7 +553,108 @@ exports.getCreditRechargePlanById = async (req, res) => {
     if (!plan) {
       return res.status(404).json({ success: false, message: 'Plan not found' });
     }
-    res.json({ success: true, data: plan });
+    
+    // Process plan items and fetch referenced item details
+    if(plan.items && plan.items.length > 0) {
+      for(const item of plan.items) {
+        // Fetch referenced item details based on itemType and referenceId
+        if(item.referenceId && item.itemType) {
+          try {
+            let referencedItem = null;
+            
+            // Convert referenceId to ObjectId
+            item.referenceId = new mongoose.Types.ObjectId(item.referenceId);
+            
+            switch(item.itemType.toLowerCase()) {
+              case 'book':
+                referencedItem = await Book.findById(item.referenceId);
+                break;
+              case 'workbook':
+                referencedItem = await Workbook.findById(item.referenceId);
+                break;
+              case 'objective test':
+              case 'objective-test':
+                referencedItem = await ObjectiveTest.findById(item.referenceId);
+                break;
+              case 'subjective test':
+              case 'subjective-test':
+                referencedItem = await SubjectiveTest.findById(item.referenceId);
+                break;
+              case 'asset':
+                referencedItem = await Asset.findById(item.referenceId);
+                break;
+              case 'datastore':
+              case 'datastoreitem':
+                referencedItem = await DatastoreItem.findById(item.referenceId);
+                break;
+              default:
+                console.log(`Unknown item type: ${item.itemType}`);
+            }
+            
+            if(referencedItem) {
+              console.log('Referenced item found:', {
+                name: referencedItem.name || referencedItem.title,
+                hasImageKey: !!referencedItem.imageKey,
+                hasCoverImageKey: !!referencedItem.coverImageKey,
+                hasImageUrl: !!referencedItem.imageUrl
+              });
+              
+              // Generate image URL for referenced item
+              if(referencedItem.coverImageKey) {
+                try {
+                  referencedItem.coverImageUrl = await generateGetPresignedUrl(referencedItem.coverImageKey);
+                  console.log('Generated cover image URL:', referencedItem.coverImageUrl);
+                } catch (imgError) {
+                  console.error(`Error generating cover image URL:`, imgError);
+                }
+              } else if(referencedItem.imageKey) {
+                try {
+                  referencedItem.imageUrl = await generateGetPresignedUrl(referencedItem.imageKey);
+                  console.log('Generated image URL:', referencedItem.imageUrl);
+                } catch (imgError) {
+                  console.error(`Error generating image URL:`, imgError);
+                }
+              } else if(referencedItem.imageUrl) {
+                console.log('Using existing image URL:', referencedItem.imageUrl);
+              } else {
+                console.log('No image key or URL found for item');
+              }
+              
+              // Store the referenced item with image URLs
+              item.referencedItem = {
+                _id: referencedItem._id,
+                title: referencedItem.title || referencedItem.name,
+                description: referencedItem.description || referencedItem.summary,
+                coverImageUrl: referencedItem.coverImageUrl,
+                imageUrl: referencedItem.imageUrl
+              };
+            }
+          } catch(refError) {
+            console.error(`Error fetching referenced item ${item.referenceId}:`, refError);
+            // Continue processing other items even if one fails
+          }
+        }
+        
+        // Also handle direct image keys on the plan item itself
+        if(item.imageKey) {
+          item.imageUrl = await generateGetPresignedUrl(item.imageKey);
+        } else if(item.coverImageKey) {
+          item.coverImageUrl = await generateGetPresignedUrl(item.coverImageKey);
+        }
+      }
+    }
+    
+    // Add image URLs to the response for easy access
+    const responseData = {
+      ...plan.toObject(),
+      items: plan.items.map(item => ({
+        ...item.toObject(),
+        imageUrl: item.imageUrl || item.coverImageUrl || null,
+        referencedItemImageUrl: item.referencedItem?.coverImageUrl || item.referencedItem?.imageUrl || null
+      }))
+    };
+
+    res.json({ success: true, data: responseData });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -575,10 +771,18 @@ exports.addCreditRechargePlanItem = async (req, res) => {
     const clientId = req.user.userId;
     const { planId } = req.params;
     const { name, description, itemType, itemKey, referenceId, quantity = 1, expiresWithPlan = true } = req.body;
-    console.log(req.body)
+    
     const plan = await CreditRechargePlan.findOne({ _id: planId, clientId });
     if (!plan) {
       return res.status(404).json({ success: false, message: 'Plan not found' });
+    }
+
+    // Validate required fields
+    if (!name || !itemType) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Name and itemType are required' 
+      });
     }
 
     const item = await PlanItem.create({
@@ -591,16 +795,15 @@ exports.addCreditRechargePlanItem = async (req, res) => {
       expiresWithPlan,
       clientId
     });
-    // // Mark referenced content as paid for the added item
-    // await setReferencedItemPaid({ itemType, referenceId, clientId, isPaid: true });
-    console.log(item)
+    
     plan.items.push(item._id);
     plan.updatedAt = new Date();
     await plan.save();
-    console.log(plan)
+    
     const populated = await plan.populate('items');
     res.json({ success: true, message: 'Item added to plan', data: populated });
   } catch (error) {
+    console.error('Error adding item to plan:', error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 };
