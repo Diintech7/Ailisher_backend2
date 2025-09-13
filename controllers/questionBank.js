@@ -290,6 +290,7 @@ exports.createQuestion = async (req, res) => {
       solution,
       subject,
       topic,
+      tags,
     } = req.body;
     const questionBankId = req.params.id;
     console.log(req.body);
@@ -357,6 +358,7 @@ exports.createQuestion = async (req, res) => {
       negativeMarks: negativeMarks || 0.33,
       subject: subject || "",
       topic: topic || "",
+      tags: tags || [],
       questionBank: questionBankId,
       createdBy: req.user.id,
     };
@@ -507,6 +509,7 @@ exports.updateQuestion = async (req, res) => {
       solution,
       subject,
       topic,
+      tags,
     } = req.body;
 
     // Find the question
@@ -551,7 +554,7 @@ exports.updateQuestion = async (req, res) => {
     if (negativeMarks !== undefined) updateData.negativeMarks = negativeMarks;
     if (subject !== undefined) updateData.subject = subject.trim();
     if (topic !== undefined) updateData.topic = topic.trim();
-
+    if (tags !== undefined) updateData.tags = tags;
     // Handle solution update
     if (solution) {
       updateData.solution = {

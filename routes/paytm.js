@@ -5,6 +5,8 @@ const PaytmChecksum = require('paytmchecksum');
 const Payment = require('../models/Payment');
 const CreditAccount = require('../models/CreditAccount');
 const CreditTransaction = require('../models/CreditTransaction');
+const CreditRechargePlan = require('../models/CreditRechargePlan');
+const UserPlan = require('../models/UserPlan');
 const PaytmConfig = require('../config/paytm');
 const { sendSuccessResponse, sendErrorResponse, sendValidationError } = require('../utils/response');
 
@@ -16,7 +18,7 @@ router.post('/initiate', async (req, res) => {
     const { amount, customerEmail, customerPhone, customerName, projectId, userId, planId, credits } = req.body;
     
     // Validate required fields
-    if (!amount || !customerEmail || !customerPhone || !customerName) {
+    if (!amount || !customerEmail || !customerPhone || !customerName || !planId) {
       return res.status(400).json({
         success: false,
         message: 'Missing required fields: amount, customerEmail, customerPhone, customerName'
@@ -168,7 +170,7 @@ router.post('/callback', async (req, res) => {
       checksumValid: isValidChecksum
     });
 
-    // Idempotent crediting on successful payment
+    // Idempotent crediting on successful payment and plan activation
     try {
       // Fetch current payment after update
       const paymentDoc = await Payment.findOne({ orderId });
@@ -186,6 +188,7 @@ router.post('/callback', async (req, res) => {
             const creditsToAdd = Number(paymentDoc.creditsPurchased) || 0;
             const balanceBefore = creditAccount.balance || 0;
             const balanceAfter = balanceBefore + creditsToAdd;
+            const planId = paymentDoc.planId || null;
 
             // Create credit transaction
             const tx = new CreditTransaction({
@@ -197,7 +200,7 @@ router.post('/callback', async (req, res) => {
               category: 'purchase',
               description: 'Credits purchased via Paytm',
               referenceId: orderId,
-              planId: paymentDoc.planId || null,
+              planId: planId,
               paymentAmount: paymentDoc.amount,
               paymentCurrency: paymentDoc.currency || 'INR',
               metadata: {
@@ -213,7 +216,40 @@ router.post('/callback', async (req, res) => {
             creditAccount.balance = balanceAfter;
             creditAccount.totalEarned = (creditAccount.totalEarned || 0) + creditsToAdd;
             creditAccount.lastTransactionDate = new Date();
+            // Attach purchased plan to user's active plans list (if any)
+            if (planId) {
+              const alreadyHasPlan = Array.isArray(creditAccount.planId) && creditAccount.planId.some(p => String(p) === String(planId));
+              if (!alreadyHasPlan) {
+                if (!Array.isArray(creditAccount.planId)) creditAccount.planId = [];
+                creditAccount.planId.push(planId);
+              }
+            }
             await creditAccount.save();
+
+            // Create/ensure UserPlan document to track expiry
+            if (planId) {
+              const existingUserPlan = await UserPlan.findOne({ orderId });
+              if (!existingUserPlan) {
+                const plan = await CreditRechargePlan.findById(planId);
+                if (plan) {
+                  const startDate = new Date();
+                  const endDate = new Date(startDate.getTime() + (plan.duration || 0) * 24 * 60 * 60 * 1000);
+                  const userPlan = new UserPlan({
+                    userId: creditAccount.userId,
+                    planId: plan._id,
+                    clientId: plan.clientId || null,
+                    orderId,
+                    creditsGranted: creditsToAdd,
+                    startDate,
+                    endDate,
+                    status: 'active'
+                  });
+                  await userPlan.save();
+                } else {
+                  console.warn('Plan not found when creating UserPlan', { planId: String(planId), orderId });
+                }
+              }
+            }
 
             console.log('Credited account from Paytm payment:', {
               userId: String(creditAccount.userId),

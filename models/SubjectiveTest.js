@@ -57,7 +57,11 @@ const subjectiveTestSchema =  new mongoose.Schema({
     questions:{
         type:Array,
         default:[]
-    }
+    },
+    isPaid:{
+        type:Boolean,
+        default:false
+      },
 },
 {timestamps:true});
 

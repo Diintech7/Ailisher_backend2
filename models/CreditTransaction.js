@@ -40,7 +40,7 @@ const CreditTransactionSchema = new mongoose.Schema({
   // Add plan information for purchases
   planId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'CreditPlan',
+    ref: 'CreditRechargePlan',
     default: null
   },
   paymentAmount: {

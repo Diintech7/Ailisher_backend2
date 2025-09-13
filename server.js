@@ -50,6 +50,9 @@ const subjectiveTestQuestionRoutes = require('./routes/subjectivetestquestion');
 const testResultsRoutes = require('./routes/testResults');
 const creditManagementRoutes = require('./routes/creditManagement');
 const paytmRoutes = require('./routes/paytm')
+const UserPlan = require('./models/UserPlan')
+const CreditAccount = require('./models/CreditAccount')
+const CreditRechargePlan = require('./models/CreditRechargePlan')
 
 app.use(cors())
 app.use(express.json({ limit: "50mb" }))
@@ -124,6 +127,8 @@ app.use("/api/enhanced-pdf-chat", require("./routes/pdfChat"))
 
 // Public mobile chat endpoints (no token) — bookId only
 app.use("/api/mobile/public-chat", require("./routes/mobilePublicChat"))
+app.use("/api/mobile/public-chat", require("./routes/mobilePDFChat"))
+
 
 
 // Global Evaluation routes (accessible without client-specific middleware)
@@ -347,4 +352,31 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`)
+  // Simple daily expiry job (runs every day to be safe)
+  setInterval(async () => {
+    try {
+      const now = new Date()
+      // Find active plans that have expired
+      const expiring = await UserPlan.find({ status: 'active', endDate: { $lte: now } })
+      if (!expiring.length) return
+      for (const up of expiring) {
+        up.status = 'expired'
+        up.updatedAt = now
+        await up.save()
+
+        // Remove plan from CreditAccount.planId array
+        if (up.userId && up.planId) {
+          await CreditAccount.updateOne(
+            { userId: up.userId },
+            { $pull: { planId: up.planId } }
+          )
+        }
+      }
+      if (expiring.length) {
+        console.log(`Expired ${expiring.length} user plans at ${now.toISOString()}`)
+      }
+    } catch (e) {
+      console.error('Error expiring user plans', e)
+    }
+  }, 60 * 60 * 24 * 1000)
 })

@@ -14,7 +14,11 @@ const objectiveTestSchema = new mongoose.Schema({
     isActive: { type: Boolean, default: true },
     isEnabled: { type: Boolean, default: true },
     instructions: { type: String, default: "" },
-    questions: { type: Array, default: [] }
+    questions: { type: Array, default: [] },
+    isPaid:{
+        type:Boolean,
+        default:false
+      },
 }, { timestamps: true });
 
 module.exports = mongoose.model('ObjectiveTest', objectiveTestSchema); 
