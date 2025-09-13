@@ -118,7 +118,7 @@ const heartbeat = setInterval(() => {
   console.log(`[Embedding] Waiting for external API response... ${elapsed}s elapsed (beat ${heartbeatCount})`)
 }, 15000)
 const externalRes = await axios.post(
-  "https://vectrizebackend.onrender.com/api/v1/rag/process-document",
+  "https://vectrize.ailisher.com/api/v1/rag/process-document",
   payload,
   { timeout: 300000, validateStatus: () => true }
 )

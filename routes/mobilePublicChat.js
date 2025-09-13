@@ -1,89 +1,22 @@
 const express = require("express")
 const router = express.Router()
-const EnhancedPDFProcessor = require("../services/PDFProcessor")
 const Book = require("../models/Book")
+const DataStore = require("../models/DatastoreItems")
+const axios = require("axios")
 
-// Single shared processor instance (kept warm for low latency)
-const processor = new EnhancedPDFProcessor({
-  chunkrApiKey: process.env.CHUNKR_API_KEY,
-  geminiApiKey: process.env.GEMINI_API_KEY,
-  astraToken: process.env.ASTRA_TOKEN,
-  astraApiEndpoint: process.env.ASTRA_API_ENDPOINT,
-  keyspace: process.env.ASTRA_KEYSPACE,
-  collectionName: process.env.ASTRA_COLLECTION,
-  embeddingModel: process.env.EMBEDDING_MODEL,
-  chatModel: process.env.CHAT_MODEL,
-  vectorDimensions: process.env.VECTOR_DIMENSIONS,
-  chunkSize: process.env.CHUNK_SIZE,
-  chunkOverlap: process.env.CHUNK_OVERLAP,
-  maxContextChunks: process.env.MAX_CONTEXT_CHUNKS,
-})
-
-// Debug Astra DB configuration
-console.log("Astra DB Configuration:")
-console.log("ASTRA_TOKEN:", process.env.ASTRA_TOKEN ? "SET" : "NOT SET")
-console.log("ASTRA_API_ENDPOINT:", process.env.ASTRA_API_ENDPOINT || "NOT SET")
-console.log("ASTRA_KEYSPACE:", process.env.ASTRA_KEYSPACE || "NOT SET")
-console.log("ASTRA_COLLECTION:", process.env.ASTRA_COLLECTION || "NOT SET")
-
-// Helper function to log Astra DB data being sent to AI
-function logAstraDBData(question, relevantResults, method) {
+// Helper function to log external API data
+function logExternalAPIData(question, payload, response, method) {
   console.log("\n" + "=".repeat(80))
-  console.log(`📊 DATA SENT TO AI MODEL (${method})`)
+  console.log(`📊 EXTERNAL API CALL (${method})`)
   console.log("=".repeat(80))
   console.log(`❓ Question: ${question}`)
-  console.log(`📚 Total chunks retrieved: ${relevantResults.length}`)
-  console.log(`🔍 Search method: ${method}`)
-  
-  if (relevantResults.length > 0) {
-    console.log("\n📖 CHUNK DETAILS:")
-    console.log("-".repeat(60))
-    
-    relevantResults.forEach((chunk, index) => {
-      const similarity = Math.round((chunk.$similarity || 0) * 100)
-      const textPreview = chunk.text_content ? chunk.text_content.substring(0, 150) + "..." : "No text content"
-      const wordCount = chunk.word_count || "Unknown"
-      const charCount = chunk.char_count || "Unknown"
-      
-      console.log(`\n${index + 1}. 📄 File: ${chunk.file_name || 'Unknown'}`)
-      console.log(`   📍 Chunk Index: ${chunk.chunk_index || 'Unknown'}`)
-      console.log(`   🎯 Similarity: ${similarity}%`)
-      console.log(`   📝 Word Count: ${wordCount}`)
-      console.log(`   🔤 Char Count: ${charCount}`)
-      console.log(`   📋 Text Preview: ${textPreview}`)
-      
-      if (chunk.$vector) {
-        console.log(`   🧮 Vector Dimensions: ${chunk.$vector.length}`)
-        console.log(`   🧮 Vector Sample: [${chunk.$vector.slice(0, 5).join(', ')}...]`)
-      }
-    })
-    
-    // Summary statistics
-    const avgSimilarity = relevantResults.reduce((sum, r) => sum + (r.$similarity || 0), 0) / relevantResults.length
-    const uniqueFiles = [...new Set(relevantResults.map(r => r.file_name))]
-    const totalWords = relevantResults.reduce((sum, r) => sum + (r.word_count || 0), 0)
-    
-    console.log("\n📊 SUMMARY STATISTICS:")
-    console.log("-".repeat(60))
-    console.log(`📁 Unique files: ${uniqueFiles.length}`)
-    console.log(`📊 Average similarity: ${Math.round(avgSimilarity * 100)}%`)
-    console.log(`📝 Total words: ${totalWords}`)
-    console.log(`🔤 Total characters: ${relevantResults.reduce((sum, r) => sum + (r.char_count || 0), 0)}`)
-    
-    console.log("\n📁 FILES USED:")
-    uniqueFiles.forEach((fileName, index) => {
-      const fileChunks = relevantResults.filter(r => r.file_name === fileName)
-      const fileAvgSimilarity = fileChunks.reduce((sum, r) => sum + (r.$similarity || 0), 0) / fileChunks.length
-      console.log(`   ${index + 1}. ${fileName} (${fileChunks.length} chunks, ${Math.round(fileAvgSimilarity * 100)}% avg similarity)`)
-    })
-  } else {
-    console.log("\n❌ No relevant results found in Astra DB")
-  }
-  
+  console.log(`📤 Request Payload:`, JSON.stringify(payload, null, 2))
+  console.log(`📥 Response Status: ${response?.status || 'N/A'}`)
+  console.log(`📥 Response Data:`, JSON.stringify(response?.data, null, 2))
   console.log("=".repeat(80) + "\n")
 }
 
- // Health/status of a book's knowledge base (no auth)
+// Health/status of a book's knowledge base (no auth)
 router.get("/health/:bookId", async (req, res) => {
   try {
     const { bookId } = req.params
@@ -91,7 +24,29 @@ router.get("/health/:bookId", async (req, res) => {
       return res.status(400).json({ success: false, message: "bookId is required" })
     }
 
-    const status = await processor.getBookKnowledgeBaseStatus(bookId)
+    // Check book in MongoDB
+    const book = await Book.findById(bookId)
+    if (!book) {
+      return res.status(404).json({ success: false, message: "Book not found" })
+    }
+
+    // Check if any PDFs in the book have embeddings
+    const pdfItems = await DataStore.find({
+      book: bookId,
+      $or: [{ fileType: "application/pdf" }, { itemType: "pdf" }],
+      isEmbedded: true,
+      embeddingCount: { $gt: 0 },
+    })
+
+    const status = {
+      hasEmbeddings: pdfItems.length > 0,
+      chatAvailable: pdfItems.length > 0,
+      totalFiles: pdfItems.length,
+      totalEmbeddings: pdfItems.reduce((sum, item) => sum + (item.embeddingCount || 0), 0),
+      availableFiles: pdfItems.map(item => item.name),
+      collectionName: "external_api",
+    }
+
     return res.json({ success: true, status })
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || "Failed", error: true })
@@ -103,7 +58,7 @@ router.post("/ask/:bookId", async (req, res) => {
   const startTime = Date.now()
   try {
     const { bookId } = req.params
-    const { question, fileName = null, options = {} } = req.body || {}
+    const { question, history = [], client_id } = req.body || {}
 
     if (!bookId) {
       return res.status(400).json({ success: false, message: "bookId is required" })
@@ -112,12 +67,11 @@ router.post("/ask/:bookId", async (req, res) => {
       return res.status(400).json({ success: false, message: "question is required" })
     }
 
-    // Use the new book-level question method for comprehensive answers
-    const mergedOptions = { 
-      includePrivateWhenUnauthenticated: true, 
-      ...options 
+    // Validate client_id
+    if (!client_id || typeof client_id !== "string" || client_id.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "client_id is required in body" })
     }
-    
+
     // Check if book has PDF embeddings in MongoDB first
     const book = await Book.findById(bookId)
     if (!book) {
@@ -128,7 +82,15 @@ router.post("/ask/:bookId", async (req, res) => {
       })
     }
     
-    if (!book.embedded) {
+    // Check if any PDFs in the book have embeddings
+    const pdfItems = await DataStore.find({
+      book: bookId,
+      $or: [{ fileType: "application/pdf" }, { itemType: "pdf" }],
+      isEmbedded: true,
+      embeddingCount: { $gt: 0 },
+    })
+
+    if (pdfItems.length === 0) {
       return res.json({
         success: true,
         answer: "This book does not have PDF embeddings available. Please upload and embed PDF files first.",
@@ -152,69 +114,178 @@ router.post("/ask/:bookId", async (req, res) => {
         },
       })
     }
+
+    console.log(`🤖 Calling external knowledge base chat API...`)
+    console.log(`[Public Chat] Using client_id from body: ${client_id}`)
     
-    // Initialize the processor for this book first
-    try {
-      await processor.initializeBookDB(bookId)
-    } catch (initError) {
-      console.error("Failed to initialize book database:", initError.message)
-      return res.status(500).json({
+    // Call external chat API for knowledge base (no chapter_name)
+    const payload = {
+      query_id: `public_${Date.now()}`,
+      session_id: `public_session_${bookId}`,
+      history: history,
+      query: question.trim(),
+      book_name: bookId,
+      chapter_name: "", // Empty for knowledge base
+      client_id: client_id,
+      llm: "openai",
+      top_k: 5,
+      tts: false,
+    }
+
+    console.log(`[Public Chat] Calling external query API with payload:`, payload)
+    const extRes = await axios.post(
+      "https://vectrize.ailisher.com/api/v1/rag/query",
+      payload,
+      { timeout: 180000 }
+    )
+    const extData = extRes.data || {}
+    console.log(`[Public Chat] External API Status:`, extRes.status)
+    console.log(`[Public Chat] External API Response:`, JSON.stringify(extData))
+
+    
+    const processingTime = Date.now() - startTime
+
+    if (!extData.success) {
+      return res.status(502).json({
         success: false,
-        message: `Failed to initialize book database: ${initError.message}`,
-        timing: { totalResponse: Date.now() - startTime + "ms" },
+        message: extData.message || "External query failed",
+        timing: { totalResponse: processingTime + "ms" },
       })
     }
-    
-    // Get the raw results after proper initialization
-    let rawResults = []
-    try {
-      rawResults = await processor.dbVectorSearch(question, { book_id: bookId }, 1000)
-    } catch (searchError) {
-      console.error("Vector search failed:", searchError.message)
-      // Fallback to basic search if vector search fails
-      try {
-        const basicResults = await processor.collection.find({ book_id: bookId }).limit(100).toArray()
-        rawResults = basicResults.map(doc => ({ ...doc, $similarity: 0.5 }))
-      } catch (fallbackError) {
-        console.error("Fallback search also failed:", fallbackError.message)
-        rawResults = []
-      }
-    }
-    
-    // Log the Astra DB data being sent to AI
-    logAstraDBData(question, rawResults, "standard-book-level")
-    
-    const result = await processor.answerBookLevelQuestion(question, bookId, null, mergedOptions)
-    const totalTime = Date.now() - startTime
 
-    return res.json({
-      success: true,
-      answer: result.answer,
-      confidence: result.confidence,
-      sources: result.sources,
-      modelUsed: result.modelUsed,
-      tokensUsed: result.tokensUsed,
-      bookId: result.bookId,
-      method: result.method,
-      filesUsed: result.filesUsed || [],
-      totalFilesAvailable: result.totalFilesAvailable || 0,
-      noInformationFound: result.noInformationFound || false,
-      isQuestionRelated: result.isQuestionRelated || false,
-      timing: {
-        init: (result.timing.init || 0) + "ms",
-        retrieval: result.timing.retrieval + "ms",
-        processing: result.timing.processing + "ms",
-        generation: result.timing.generation + "ms",
-        totalResponse: totalTime + "ms",
-      },
-    })
+    // Log external API data
+    logExternalAPIData(question, payload, extRes, "public-knowledge-base")
+
+    // Return only the new external API format
+    return res.json({ success: true, data: extData.data })
   } catch (error) {
     const totalTime = Date.now() - startTime
     console.error("Error in /ask/:bookId endpoint:", error)
+    if (error.response) {
+      console.error("[Public Chat] External API Error Status:", error.response.status)
+      console.error("[Public Chat] External API Error Data:", JSON.stringify(error.response.data))
+    } else {
+      console.error("[Public Chat] Error:", error.message)
+    }
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to process request",
       timing: { totalResponse: totalTime + "ms" },
+    })
+  }
+})
+
+// Get raw data for knowledge base testing
+router.get("/raw-data/:bookId", async (req, res) => {
+  try {
+    const { bookId } = req.params
+    const { question = "test question", limit = 10 } = req.query
+
+    console.log(`🔍 Getting raw data for bookId: ${bookId}`)
+
+    // Check book in MongoDB
+    const book = await Book.findById(bookId)
+    if (!book) {
+      return res.status(404).json({
+        success: false,
+        message: "Book not found",
+        bookId: bookId,
+      })
+    }
+
+    // Get PDF items with embeddings
+    const pdfItems = await DataStore.find({
+      book: bookId,
+      $or: [{ fileType: "application/pdf" }, { itemType: "pdf" }],
+      isEmbedded: true,
+      embeddingCount: { $gt: 0 },
+    }).select("_id name fileType itemType url isEmbedded embeddingCount embeddedAt")
+
+    if (pdfItems.length === 0) {
+      return res.json({
+        success: true,
+        bookId: bookId,
+        bookTitle: book.title,
+        clientId: book.clientId,
+        hasEmbeddings: false,
+        message: "No embedded PDFs found in this book",
+        pdfItems: [],
+        totalEmbeddings: 0,
+        testPayload: null,
+      })
+    }
+
+    // Create test payload for external API
+    const testPayload = {
+      query_id: `test_${Date.now()}`,
+      session_id: `test_session_${bookId}`,
+      history: [],
+      query: question,
+      book_name: bookId,
+      chapter_name: "", // Empty for knowledge base
+      client_id: book.clientId || "test_user",
+      llm: "openai",
+      top_k: parseInt(limit),
+      tts: false,
+    }
+
+    // Test external API call
+    let externalResponse = null
+    let externalError = null
+    
+    try {
+      console.log(`[Raw Data] Testing external API with payload:`, testPayload)
+      const extRes = await axios.post(
+        "https://vectrize.ailisher.com/api/v1/rag/query",
+        testPayload,
+        { timeout: 30000 }
+      )
+      externalResponse = {
+        status: extRes.status,
+        data: extRes.data,
+      }
+      console.log(`[Raw Data] External API Response:`, externalResponse)
+    } catch (error) {
+      externalError = {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      }
+      console.error(`[Raw Data] External API Error:`, externalError)
+    }
+
+    return res.json({
+      success: true,
+      bookId: bookId,
+      bookTitle: book.title,
+      clientId: book.clientId,
+      hasEmbeddings: true,
+      totalEmbeddings: pdfItems.reduce((sum, item) => sum + (item.embeddingCount || 0), 0),
+      pdfItems: pdfItems.map(item => ({
+        id: item._id,
+        name: item.name,
+        fileType: item.fileType,
+        itemType: item.itemType,
+        url: item.url,
+        isEmbedded: item.isEmbedded,
+        embeddingCount: item.embeddingCount,
+        embeddedAt: item.embeddedAt,
+      })),
+      testPayload: testPayload,
+      externalAPI: {
+        url: "https://vectrize.ailisher.com/api/v1/rag/query",
+        response: externalResponse,
+        error: externalError,
+        success: !externalError,
+      },
+      message: `Found ${pdfItems.length} embedded PDFs with ${pdfItems.reduce((sum, item) => sum + (item.embeddingCount || 0), 0)} total embeddings`,
+    })
+  } catch (error) {
+    console.error("Error getting raw data:", error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get raw data",
+      bookId: req.params.bookId,
     })
   }
 })
@@ -1130,4 +1201,3 @@ router.get("/test-init/:bookId", async (req, res) => {
 })
 
 module.exports = router
-

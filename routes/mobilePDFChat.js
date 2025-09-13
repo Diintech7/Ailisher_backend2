@@ -1,25 +1,9 @@
 const express = require("express")
 const router = express.Router()
-const EnhancedPDFProcessor = require("../services/PDFProcessor")
 const DataStore = require("../models/DatastoreItems")
 const Book = require("../models/Book")
 const { authenticateMobileUser } = require("../middleware/mobileAuth")
-
-// Initialize enhanced processor
-const processor = new EnhancedPDFProcessor({
-  chunkrApiKey: process.env.CHUNKR_API_KEY,
-  openaiApiKey: process.env.OPENAI_API_KEY,
-  astraToken: process.env.ASTRA_TOKEN,
-  astraApiEndpoint: process.env.ASTRA_API_ENDPOINT,
-  keyspace: process.env.ASTRA_KEYSPACE,
-  collectionName: process.env.ASTRA_COLLECTION,
-  embeddingModel: process.env.EMBEDDING_MODEL || "text-embedding-3-small",
-  chatModel: process.env.CHAT_MODEL || "gpt-4o-mini",
-  vectorDimensions: process.env.VECTOR_DIMENSIONS || "1536",
-  chunkSize: process.env.CHUNK_SIZE || "400",
-  chunkOverlap: process.env.CHUNK_OVERLAP || "100",
-  maxContextChunks: process.env.MAX_CONTEXT_CHUNKS || "20",
-})
+const axios = require("axios")
 
 // Check if chat is available for a specific PDF in a book
 router.get("/check-availability/:bookId/:itemId", authenticateMobileUser, async (req, res) => {
@@ -84,13 +68,13 @@ router.get("/check-availability/:bookId/:itemId", authenticateMobileUser, async 
       })
     }
 
-    // Check if embeddings exist for this PDF in this book
+    // Check if embeddings exist for this PDF in this book using stored flags
     console.log(`🔍 Checking embeddings for: ${item.name} in book: ${bookId}`)
-    const embeddingStatus = await processor.checkExistingEmbeddings(item.name, userId, bookId)
+    const hasEmbeddings = item.isEmbedded && item.embeddingCount > 0
 
     const response = {
       success: true,
-      chatAvailable: embeddingStatus.exists,
+      chatAvailable: hasEmbeddings,
       bookInfo: {
         id: book._id,
         title: book.title,
@@ -109,16 +93,16 @@ router.get("/check-availability/:bookId/:itemId", authenticateMobileUser, async 
         embeddedAt: item.embeddedAt,
       },
       embeddingInfo: {
-        exists: embeddingStatus.exists,
-        count: embeddingStatus.count,
-        collectionName: embeddingStatus.collectionName,
-        clusters: embeddingStatus.clusters || [],
-        files: embeddingStatus.files || [],
+        exists: hasEmbeddings,
+        count: item.embeddingCount || 0,
+        collectionName: "external_api",
+        clusters: [],
+        files: hasEmbeddings ? [item.name] : [],
       },
       timestamp: new Date().toISOString(),
     }
 
-    if (!embeddingStatus.exists) {
+    if (!hasEmbeddings) {
       response.message = "Chat not available - PDF needs to be processed first"
       response.suggestion = "Please create embeddings for this PDF to enable chat functionality"
       response.nextStep = {
@@ -136,7 +120,7 @@ router.get("/check-availability/:bookId/:itemId", authenticateMobileUser, async 
       }
     }
 
-    console.log(`✅ Chat availability check completed: ${embeddingStatus.exists ? "Available" : "Not Available"}`)
+    console.log(`✅ Chat availability check completed: ${hasEmbeddings ? "Available" : "Not Available"}`)
     res.json(response)
   } catch (error) {
     console.error("❌ Error checking chat availability:", error)
@@ -157,7 +141,7 @@ router.get("/check-availability/:bookId/:itemId", authenticateMobileUser, async 
 router.post("/chat/:bookId/:itemId", authenticateMobileUser, async (req, res) => {
   try {
     const { bookId, itemId } = req.params
-    const { question } = req.body
+    const { question, history = [] } = req.body
     const userId = req.user.id
     const clientId = req.clientId || req.user.clientId
 
@@ -214,11 +198,11 @@ router.post("/chat/:bookId/:itemId", authenticateMobileUser, async (req, res) =>
       })
     }
 
-    // Check if embeddings exist
+    // Check if embeddings exist using stored flags
     console.log(`🔍 Checking embeddings before chat...`)
-    const embeddingStatus = await processor.checkExistingEmbeddings(item.name, userId, bookId)
+    const hasEmbeddings = item.isEmbedded && item.embeddingCount > 0
 
-    if (!embeddingStatus.exists) {
+    if (!hasEmbeddings) {
       return res.status(400).json({
         success: false,
         message: "Chat not available - No embeddings found for this PDF",
@@ -236,28 +220,51 @@ router.post("/chat/:bookId/:itemId", authenticateMobileUser, async (req, res) =>
       })
     }
 
-    console.log(`🤖 Processing question with AI...`)
+    console.log(`🤖 Calling external chat API...`)
     const startTime = Date.now()
 
-    // Process the question
-    const result = await processor.answerQuestion(
-      question,
-      item.name,
-      userId,
-      false, // Don't require strict auth for mobile
-      bookId,
+    // Call external chat API
+    const payload = {
+      query_id: `mobile_${Date.now()}`,
+      session_id: `mobile_session_${userId}_${bookId}`,
+      history: history,
+      query: question.trim(),
+      book_name: bookId,
+      chapter_name: itemId,
+      client_id: clientId || "mobile_user",
+      llm: "openai",
+      top_k: 5,
+      tts: false,
+    }
+
+    console.log(`[Mobile Chat] Calling external query API with payload:`, payload)
+    const extRes = await axios.post(
+      "https://vectrize.ailisher.com/api/v1/rag/query",
+      payload,
+      { timeout: 180000 }
     )
+    const extData = extRes.data || {}
+    console.log(`[Mobile Chat] External API Status:`, extRes.status)
+    console.log(`[Mobile Chat] External API Response:`, JSON.stringify(extData))
 
     const processingTime = Date.now() - startTime
+
+    if (!extData.success) {
+      return res.status(502).json({
+        success: false,
+        message: extData.message || "External query failed",
+        chatAvailable: false,
+      })
+    }
 
     // Prepare response
     const response = {
       success: true,
       chatAvailable: true,
       question: question.trim(),
-      answer: result.answer,
-      confidence: result.confidence,
-      sources: result.sources,
+      answer: extData.data?.llm_response || extData.data?.rag_response || "No response received",
+      confidence: 0.95, // Default confidence for external API
+      sources: extData.data?.results || [],
       bookInfo: {
         id: book._id,
         title: book.title,
@@ -271,45 +278,199 @@ router.post("/chat/:bookId/:itemId", authenticateMobileUser, async (req, res) =>
         fileType: item.fileType,
       },
       metadata: {
-        method: result.method,
-        clustersUsed: result.clusters_used || [],
-        collectionName: result.collectionName,
-        aiModel: process.env.CHAT_MODEL || "gpt-4o-mini",
+        method: "external_api",
+        clustersUsed: [],
+        collectionName: "external_api",
+        aiModel: "openai",
         processingTimeMs: processingTime,
         processingTime: `${(processingTime / 1000).toFixed(2)}s`,
+        externalLatency: extData.data?.latency || "N/A",
+        queryId: extData.data?.query_id,
+        sessionId: extData.data?.session_id,
         timestamp: new Date().toISOString(),
       },
       embeddingInfo: {
-        exists: embeddingStatus.exists,
-        count: embeddingStatus.count,
-        clusters: embeddingStatus.clusters || [],
+        exists: hasEmbeddings,
+        count: item.embeddingCount || 0,
+        clusters: [],
       },
     }
 
-    // Add source details if available
-    if (result.sourceDetails && result.sourceDetails.length > 0) {
-      response.sourceDetails = result.sourceDetails.slice(0, 3).map((source, index) => ({
-        index: index + 1,
-        similarity: source.similarity,
-        preview: source.preview,
-        cluster: source.cluster,
-        contentType: source.contentType,
-        fileName: source.fileName,
-      }))
-    }
-
-    // Add analysis if available
-    if (result.analysis) {
-      response.analysis = result.analysis
-    }
-
-    console.log(`✅ Chat response generated successfully in ${(processingTime / 1000).toFixed(2)}s`)
+    console.log(`✅ Mobile chat response generated successfully in ${(processingTime / 1000).toFixed(2)}s`)
     res.json(response)
   } catch (error) {
     console.error("❌ Error in mobile PDF chat:", error)
+    if (error.response) {
+      console.error("[Mobile Chat] External API Error Status:", error.response.status)
+      console.error("[Mobile Chat] External API Error Data:", JSON.stringify(error.response.data))
+    } else {
+      console.error("[Mobile Chat] Error:", error.message)
+    }
     res.status(500).json({
       success: false,
       message: "Failed to process chat request",
+      error: {
+        message: error.message,
+        stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+      },
+      chatAvailable: false,
+      timestamp: new Date().toISOString(),
+    })
+  }
+})
+
+// Chat with book knowledge base (all PDFs in the book)
+router.post("/chat-book-knowledge-base/:bookId", authenticateMobileUser, async (req, res) => {
+  try {
+    const { bookId } = req.params
+    const { question, history = [] } = req.body
+    const userId = req.user.id
+    const clientId = req.clientId || req.user.clientId
+
+    console.log(`📱 Mobile book knowledge base chat request`)
+    console.log(`📚 Book: ${bookId}`)
+    console.log(`👤 User: ${userId}, 🏢 Client: ${clientId}`)
+    console.log(`❓ Question: "${question}"`)
+
+    // Validate question
+    if (!question || typeof question !== "string" || question.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Question is required and cannot be empty",
+        chatAvailable: false,
+      })
+    }
+
+    if (question.length > 1000) {
+      return res.status(400).json({
+        success: false,
+        message: "Question is too long. Please limit to 1000 characters.",
+        chatAvailable: false,
+        currentLength: question.length,
+        maxLength: 1000,
+      })
+    }
+
+    // Find the book and verify access
+    const book = await Book.findOne({
+      _id: bookId,
+      $or: [{ user: userId, userType: "MobileUser" }, { clientId: clientId }, { isPublic: true }],
+    })
+
+    if (!book) {
+      return res.status(404).json({
+        success: false,
+        message: "Book not found or access denied",
+        chatAvailable: false,
+      })
+    }
+
+    // Check if any PDFs in the book have embeddings
+    const pdfItems = await DataStore.find({
+      book: bookId,
+      $or: [{ fileType: "application/pdf" }, { itemType: "pdf" }],
+      isEmbedded: true,
+      embeddingCount: { $gt: 0 },
+    })
+
+    if (pdfItems.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Chat not available - No processed PDFs found in this book",
+        chatAvailable: false,
+        suggestion: "Please create embeddings for PDFs in this book first to enable chat functionality",
+        nextStep: {
+          action: "create_embeddings",
+          description: "Process PDFs in this book to enable chat",
+        },
+      })
+    }
+
+    console.log(`🤖 Calling external knowledge base chat API...`)
+    const startTime = Date.now()
+
+    // Call external chat API for knowledge base (no chapter_name)
+    const payload = {
+      query_id: `mobile_kb_${Date.now()}`,
+      session_id: `mobile_kb_session_${userId}_${bookId}`,
+      history: history,
+      query: question.trim(),
+      book_name: bookId,
+      chapter_name: "", // Empty for knowledge base
+      client_id: clientId || "mobile_user",
+      llm: "openai",
+      top_k: 5,
+      tts: false,
+    }
+
+    console.log(`[Mobile Chat-KB] Calling external query API with payload:`, payload)
+    const extRes = await axios.post(
+      "https://vectrize.ailisher.com/api/v1/rag/query",
+      payload,
+      { timeout: 180000 }
+    )
+    const extData = extRes.data || {}
+    console.log(`[Mobile Chat-KB] External API Status:`, extRes.status)
+    console.log(`[Mobile Chat-KB] External API Response:`, JSON.stringify(extData))
+
+    const processingTime = Date.now() - startTime
+
+    if (!extData.success) {
+      return res.status(502).json({
+        success: false,
+        message: extData.message || "External query failed",
+        chatAvailable: false,
+      })
+    }
+
+    // Prepare response
+    const response = {
+      success: true,
+      chatAvailable: true,
+      question: question.trim(),
+      answer: extData.data?.llm_response || extData.data?.rag_response || "No response received",
+      confidence: 0.95, // Default confidence for external API
+      sources: extData.data?.results || [],
+      bookInfo: {
+        id: book._id,
+        title: book.title,
+        author: book.author,
+        mainCategory: book.mainCategory,
+        subCategory: book.subCategory,
+      },
+      metadata: {
+        method: "external_api_knowledge_base",
+        clustersUsed: [],
+        collectionName: "external_api",
+        aiModel: "openai",
+        processingTimeMs: processingTime,
+        processingTime: `${(processingTime / 1000).toFixed(2)}s`,
+        externalLatency: extData.data?.latency || "N/A",
+        queryId: extData.data?.query_id,
+        sessionId: extData.data?.session_id,
+        timestamp: new Date().toISOString(),
+      },
+      embeddingInfo: {
+        exists: true,
+        count: pdfItems.reduce((sum, item) => sum + (item.embeddingCount || 0), 0),
+        clusters: [],
+        availableFiles: pdfItems.map(item => item.name),
+      },
+    }
+
+    console.log(`✅ Mobile knowledge base chat response generated successfully in ${(processingTime / 1000).toFixed(2)}s`)
+    res.json(response)
+  } catch (error) {
+    console.error("❌ Error in mobile knowledge base chat:", error)
+    if (error.response) {
+      console.error("[Mobile Chat-KB] External API Error Status:", error.response.status)
+      console.error("[Mobile Chat-KB] External API Error Data:", JSON.stringify(error.response.data))
+    } else {
+      console.error("[Mobile Chat-KB] Error:", error.message)
+    }
+    res.status(500).json({
+      success: false,
+      message: "Failed to process knowledge base chat request",
       error: {
         message: error.message,
         stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
@@ -342,12 +503,16 @@ router.get("/suggestions/:bookId", authenticateMobileUser, async (req, res) => {
       })
     }
 
-    // Check if book has any embeddings
-    const embeddingStatus = await processor.checkExistingEmbeddings(
-      null, // Check all files in book
-      userId,
-      bookId,
-    )
+    // Check if book has any embedded PDFs using stored flags
+    const embeddedPDFs = await DataStore.find({
+      book: bookId,
+      $or: [{ fileType: "application/pdf" }, { itemType: "pdf" }],
+      isEmbedded: true,
+      embeddingCount: { $gt: 0 },
+    })
+
+    const hasEmbeddings = embeddedPDFs.length > 0
+    const totalEmbeddings = embeddedPDFs.reduce((sum, item) => sum + (item.embeddingCount || 0), 0)
 
     let suggestions = []
     let categorySpecificSuggestions = []
@@ -399,7 +564,7 @@ router.get("/suggestions/:bookId", authenticateMobileUser, async (req, res) => {
       }
     }
 
-    if (!embeddingStatus.exists) {
+    if (!hasEmbeddings) {
       suggestions = [
         "Upload a PDF document to this book to get started",
         "Create embeddings for your documents to enable chat",
@@ -413,14 +578,6 @@ router.get("/suggestions/:bookId", authenticateMobileUser, async (req, res) => {
         `Explain the important points from "${book.title}"`,
         ...categorySpecificSuggestions,
       ]
-
-      // Add cluster-based suggestions if available
-      if (embeddingStatus.clusters && embeddingStatus.clusters.length > 0) {
-        embeddingStatus.clusters.slice(0, 3).forEach((cluster) => {
-          const readableCluster = cluster.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
-          suggestions.push(`Tell me about ${readableCluster}`)
-        })
-      }
 
       // Add subject-specific suggestions if available
       if (book.subject) {
@@ -446,18 +603,18 @@ router.get("/suggestions/:bookId", authenticateMobileUser, async (req, res) => {
         subject: book.subject,
         exam: book.exam,
       },
-      chatAvailable: embeddingStatus.exists,
+      chatAvailable: hasEmbeddings,
       suggestions: suggestions,
       embeddingInfo: {
-        exists: embeddingStatus.exists,
-        count: embeddingStatus.count,
-        files: embeddingStatus.files || [],
-        clusters: embeddingStatus.clusters || [],
-        collectionName: embeddingStatus.collectionName,
+        exists: hasEmbeddings,
+        count: totalEmbeddings,
+        files: embeddedPDFs.map(item => item.name),
+        clusters: [],
+        collectionName: "external_api",
       },
       metadata: {
         totalSuggestions: suggestions.length,
-        hasClusterBasedSuggestions: embeddingStatus.clusters && embeddingStatus.clusters.length > 0,
+        hasClusterBasedSuggestions: false,
         hasCategorySpecificSuggestions: categorySpecificSuggestions.length > 0,
         timestamp: new Date().toISOString(),
       },
@@ -556,29 +713,25 @@ router.get("/book-status/:bookId", authenticateMobileUser, async (req, res) => {
       $or: [{ fileType: "application/pdf" }, { itemType: "pdf" }],
     }).select("_id name fileType itemType isEmbedded embeddingCount embeddedAt")
 
-    // Check book-level embedding status
-    const bookEmbeddingStatus = await processor.getBookKnowledgeBaseStatus(bookId, userId)
+    // Check book-level embedding status using stored flags
+    const embeddedPDFs = pdfItems.filter(item => item.isEmbedded && item.embeddingCount > 0)
+    const totalEmbeddings = embeddedPDFs.reduce((sum, item) => sum + (item.embeddingCount || 0), 0)
 
     // Get individual PDF statuses
-    const pdfStatuses = []
-    for (const item of pdfItems) {
-      const itemStatus = await processor.checkExistingEmbeddings(item.name, userId, bookId)
+    const pdfStatuses = pdfItems.map(item => ({
+      id: item._id,
+      name: item.name,
+      fileType: item.fileType,
+      itemType: item.itemType,
+      hasEmbeddings: item.isEmbedded && item.embeddingCount > 0,
+      embeddingCount: item.embeddingCount || 0,
+      isEmbedded: item.isEmbedded,
+      embeddedAt: item.embeddedAt,
+      chatAvailable: item.isEmbedded && item.embeddingCount > 0,
+    }))
 
-      pdfStatuses.push({
-        id: item._id,
-        name: item.name,
-        fileType: item.fileType,
-        itemType: item.itemType,
-        hasEmbeddings: itemStatus.exists,
-        embeddingCount: itemStatus.count,
-        isEmbedded: item.isEmbedded,
-        embeddedAt: item.embeddedAt,
-        chatAvailable: itemStatus.exists,
-      })
-    }
-
-    const embeddedCount = pdfStatuses.filter((p) => p.hasEmbeddings).length
-    const totalCount = pdfStatuses.length
+    const embeddedCount = embeddedPDFs.length
+    const totalCount = pdfItems.length
 
     res.json({
       success: true,
@@ -590,18 +743,18 @@ router.get("/book-status/:bookId", authenticateMobileUser, async (req, res) => {
         subCategory: book.subCategory,
       },
       chatStatus: {
-        bookChatAvailable: bookEmbeddingStatus.hasContent,
+        bookChatAvailable: embeddedCount > 0,
         totalPDFs: totalCount,
         embeddedPDFs: embeddedCount,
         pendingPDFs: totalCount - embeddedCount,
         completionPercentage: totalCount > 0 ? Math.round((embeddedCount / totalCount) * 100) : 0,
       },
       bookEmbeddingStatus: {
-        hasContent: bookEmbeddingStatus.hasContent,
-        totalEmbeddings: bookEmbeddingStatus.totalEmbeddings,
-        availableFiles: bookEmbeddingStatus.availableFiles || [],
-        availableClusters: bookEmbeddingStatus.availableClusters || [],
-        collectionName: bookEmbeddingStatus.collectionName,
+        hasContent: embeddedCount > 0,
+        totalEmbeddings: totalEmbeddings,
+        availableFiles: embeddedPDFs.map(item => item.name),
+        availableClusters: [],
+        collectionName: "external_api",
       },
       pdfItems: {
         total: totalCount,
@@ -685,9 +838,8 @@ router.get("/book-chat-availability/:bookId", authenticateMobileUser, async (req
     const embeddedPDFs = []
     const nonEmbeddedPDFs = []
 
-    // Check each PDF for embeddings
+    // Check each PDF for embeddings using stored flags
     for (const item of pdfItems) {
-      // First check the database flag
       if (item.isEmbedded && item.embeddingCount > 0) {
         hasEmbeddedDocuments = true
         totalEmbeddings += item.embeddingCount
@@ -698,40 +850,11 @@ router.get("/book-chat-availability/:bookId", authenticateMobileUser, async (req
           embeddedAt: item.embeddedAt,
         })
       } else {
-        // Double-check with vector database
-        try {
-          const embeddingStatus = await processor.checkExistingEmbeddings(item.name, userId, bookId)
-          if (embeddingStatus.exists && embeddingStatus.count > 0) {
-            hasEmbeddedDocuments = true
-            totalEmbeddings += embeddingStatus.count
-            embeddedPDFs.push({
-              id: item._id,
-              name: item.name,
-              embeddingCount: embeddingStatus.count,
-              embeddedAt: item.embeddedAt,
-            })
-
-            // Update the database record if it's out of sync
-            await DataStore.findByIdAndUpdate(item._id, {
-              isEmbedded: true,
-              embeddingCount: embeddingStatus.count,
-              embeddedAt: item.embeddedAt || new Date(),
-            })
-          } else {
-            nonEmbeddedPDFs.push({
-              id: item._id,
-              name: item.name,
-              url: item.url,
-            })
-          }
-        } catch (error) {
-          console.log(`⚠️ Could not check embeddings for ${item.name}:`, error.message)
-          nonEmbeddedPDFs.push({
-            id: item._id,
-            name: item.name,
-            url: item.url,
-          })
-        }
+        nonEmbeddedPDFs.push({
+          id: item._id,
+          name: item.name,
+          url: item.url,
+        })
       }
     }
 
