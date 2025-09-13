@@ -1492,12 +1492,7 @@ router.post("/history", async (req, res) => {
         chatId: chat.chatId,
         title: chat.title || 'Untitled Chat',
         messageCount: chat.messageCount,
-        totalTokensUsed: chat.totalTokensUsed,
-        lastMessageAt: chat.lastMessageAt,
-        createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt,
-        preview: chat.messages.length > 0 ? chat.messages[chat.messages.length - 1].content.substring(0, 100) + '...' : ''
-      })),
+     })),
       totalChats: chats.length
     })
   } catch (error) {
