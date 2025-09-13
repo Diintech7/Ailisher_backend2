@@ -1425,7 +1425,6 @@ router.post("/chats", async (req, res) => {
     if (!client_id) {
       return res.status(400).json({ success: false, message: "client_id is required in body" })
     }
-
     const chats = await Chat.find({ 
       userId: user_id, 
       clientId: client_id 
