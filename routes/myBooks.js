@@ -226,6 +226,49 @@ router.get('/list', async (req, res) => {
         }
       }
 
+      // Get plan details for the book
+      let planInfo = {
+        isPaid: myBook.bookId.isPaid || false,
+        planDetails: []
+      };
+
+      try {
+        const PlanItem = require('../models/PlanItem');
+        const CreditRechargePlan = require('../models/CreditRechargePlan');
+        
+        // Find plan items that reference this book
+        const planItems = await PlanItem.find({
+          itemType: { $in: ['book', 'books'] },
+          referenceId: myBook.bookId._id.toString(),
+          clientId: clientId
+        });
+    
+        if (planItems.length > 0) {
+          // Get all plans that contain these plan items
+          const plans = await CreditRechargePlan.find({
+            items: { $in: planItems.map(item => item._id) },
+            clientId: clientId,
+            status: 'active'
+          }).select('_id name description MRP offerPrice category duration status');
+    
+          planInfo = {
+            isPaid: true,
+            planDetails: plans.map(plan => ({
+              id: plan._id,
+              name: plan.name,
+              description: plan.description,
+              mrp: plan.MRP,
+              offerPrice: plan.offerPrice,
+              category: plan.category,
+              duration: plan.duration,
+              status: plan.status
+            }))
+          };
+        }
+      } catch (error) {
+        console.error('Error fetching plan details for book:', error);
+      }
+
       return {
         mybook_id: myBook._id,
         book_id: myBook.bookId._id,
@@ -250,7 +293,10 @@ router.get('/list', async (req, res) => {
         added_at: myBook.addedAt,
         last_accessed_at: myBook.lastAccessedAt,
         personal_note: myBook.personalNote || '',
-        priority: myBook.priority || 'normal'
+        priority: myBook.priority || 'normal',
+        // Plan information
+        isPaid: planInfo.isPaid,
+        planDetails: planInfo.planDetails
       };
     }));
 

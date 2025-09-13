@@ -127,17 +127,121 @@ router.get('/list', async (req, res) => {
     const userId = req.user.id;
     const clientId = req.user.clientId;
 
-    const myWorkbooks = await MyWorkbook.find({ userId: userId, clientId: clientId });
+    // Populate workbook details
+    const myWorkbooks = await MyWorkbook.find({ userId: userId, clientId: clientId })
+      .populate({
+        path: 'workbookId',
+        select: 'title author publisher description coverImage coverImageUrl rating ratingCount mainCategory subCategory exam paper subject tags viewCount createdAt isPaid',
+        populate: {
+          path: 'user',
+          select: 'name email userId'
+        }
+      });
 
-    if(myWorkbooks.coverImageKey){
-      myWorkbooks.coverImageUrl = await generateGetPresignedUrl(myWorkbooks.coverImageKey, 31536000);
-    }
+    // Format response with plan details
+    const formattedWorkbooks = await Promise.all(myWorkbooks.map(async myWorkbook => {
+      // Check if workbook exists
+      if (!myWorkbook.workbookId) {
+        console.warn(`Workbook not found for MyWorkbook entry ${myWorkbook._id}`);
+        return null;
+      }
 
-    console.log("myWorkbooks", myWorkbooks);
+      let coverImageUrl = myWorkbook.workbookId.coverImageUrl || null;
+      
+      // Generate new presigned URL if we have a cover image
+      if (myWorkbook.workbookId.coverImage) {
+        try {
+          coverImageUrl = await generateGetPresignedUrl(myWorkbook.workbookId.coverImage, 31536000); // 1 year expiry
+          
+          // Update the workbook with the new URL if it's different
+          if (myWorkbook.workbookId.coverImageUrl !== coverImageUrl) {
+            await Workbook.findByIdAndUpdate(myWorkbook.workbookId._id, { coverImageUrl });
+          }
+        } catch (error) {
+          console.error('Error generating presigned URL for cover image:', error);
+          coverImageUrl = null;
+        }
+      }
+
+      // Get plan details for the workbook
+      let planInfo = {
+        isPaid: myWorkbook.workbookId.isPaid || false,
+        planDetails: []
+      };
+
+      try {
+        const PlanItem = require('../models/PlanItem');
+        const CreditRechargePlan = require('../models/CreditRechargePlan');
+        
+        // Find plan items that reference this workbook
+        const planItems = await PlanItem.find({
+          itemType: { $in: ['workbook', 'workbooks'] },
+          referenceId: myWorkbook.workbookId._id.toString(),
+          clientId: clientId
+        });
+    
+        if (planItems.length > 0) {
+          // Get all plans that contain these plan items
+          const plans = await CreditRechargePlan.find({
+            items: { $in: planItems.map(item => item._id) },
+            clientId: clientId,
+            status: 'active'
+          }).select('_id name description MRP offerPrice category duration status');
+    
+          planInfo = {
+            isPaid: true,
+            planDetails: plans.map(plan => ({
+              id: plan._id,
+              name: plan.name,
+              description: plan.description,
+              mrp: plan.MRP,
+              offerPrice: plan.offerPrice,
+              category: plan.category,
+              duration: plan.duration,
+              status: plan.status
+            }))
+          };
+        }
+      } catch (error) {
+        console.error('Error fetching plan details for workbook:', error);
+      }
+
+      return {
+        myworkbook_id: myWorkbook._id,
+        workbook_id: myWorkbook.workbookId._id,
+        title: myWorkbook.workbookId.title || '',
+        author: myWorkbook.workbookId.author || '',
+        publisher: myWorkbook.workbookId.publisher || '',
+        description: myWorkbook.workbookId.description || '',
+        cover_image: myWorkbook.workbookId.coverImage || '',
+        cover_image_url: coverImageUrl || '',
+        rating: myWorkbook.workbookId.rating || 0,
+        rating_count: myWorkbook.workbookId.ratingCount || 0,
+        main_category: myWorkbook.workbookId.mainCategory || '',
+        sub_category: myWorkbook.workbookId.subCategory || '',
+        exam: myWorkbook.workbookId.exam || '',
+        paper: myWorkbook.workbookId.paper || '',
+        subject: myWorkbook.workbookId.subject || '',
+        tags: myWorkbook.workbookId.tags || [],
+        view_count: myWorkbook.workbookId.viewCount || 0,
+        added_at: myWorkbook.addedAt,
+        last_accessed_at: myWorkbook.lastAccessedAt,
+        personal_note: myWorkbook.personalNote || '',
+        priority: myWorkbook.priority || 0,
+        // Plan information
+        isPaid: planInfo.isPaid,
+        planDetails: planInfo.planDetails
+      };
+    }));
+
+    // Filter out any null entries (workbooks that weren't found)
+    const validWorkbooks = formattedWorkbooks.filter(workbook => workbook !== null);
+
+    console.log("myWorkbooks", validWorkbooks);
     res.status(200).json({
       success: true,
       message: 'My workbooks fetched successfully.',
-      data: myWorkbooks
+      data: validWorkbooks
     });
 
   } 

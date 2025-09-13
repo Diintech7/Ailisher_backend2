@@ -187,30 +187,30 @@ function generateTempPassword() {
   return password.split('').sort(() => Math.random() - 0.5).join('');
 }
 
-// Helper: Set isPaid flag on referenced content when added to a plan
-async function setReferencedItemPaid({ itemType, referenceId, clientId, isPaid = true }) {
-  if (!referenceId || !itemType) return;
-  const type = String(itemType).toLowerCase();
-  let Model = null;
+// // Helper: Set isPaid flag on referenced content when added to a plan
+// async function setReferencedItemPaid({ itemType, referenceId, clientId, isPaid = true }) {
+//   if (!referenceId || !itemType) return;
+//   const type = String(itemType).toLowerCase();
+//   let Model = null;
 
-  if (['book', 'books'].includes(type)) Model = Book;
-  else if (['workbook', 'workbooks'].includes(type)) Model = Workbook;
-  else if (['subjectivetest', 'subjective_test', 'subjective-test'].includes(type)) Model = SubjectiveTest;
-  else if (['objectivetest', 'objective_test', 'objective-test'].includes(type)) Model = ObjectiveTest;
+//   if (['book', 'books'].includes(type)) Model = Book;
+//   else if (['workbook', 'workbooks'].includes(type)) Model = Workbook;
+//   else if (['subjectivetest', 'subjective_test', 'subjective-test'].includes(type)) Model = SubjectiveTest;
+//   else if (['objectivetest', 'objective_test', 'objective-test'].includes(type)) Model = ObjectiveTest;
 
-  if (!Model) return;
+//   if (!Model) return;
 
-  try {
-    await Model.findOneAndUpdate(
-      { _id: referenceId, clientId },
-      { $set: { isPaid: !!isPaid } },
-      { new: false }
-    );
-  } catch (err) {
-    // Non-blocking: log and continue
-    console.error('Failed to update isPaid for plan item', { itemType, referenceId, clientId, err: err && err.message });
-  }
-}
+//   try {
+//     await Model.findOneAndUpdate(
+//       { _id: referenceId, clientId },
+//       { $set: { isPaid: !!isPaid } },
+//       { new: false }
+//     );
+//   } catch (err) {
+//     // Non-blocking: log and continue
+//     console.error('Failed to update isPaid for plan item', { itemType, referenceId, clientId, err: err && err.message });
+//   }
+// }
 
 // Get all clients
 exports.getAllClients = async (req, res) => {
@@ -396,12 +396,12 @@ exports.createCreditRechargePlan = async (req, res) => {
       ? await PlanItem.insertMany(items.map(it => ({ ...it, clientId })))
       : [];
 
-    // Mark referenced content as paid for each created item
-    if (createdItems.length) {
-      await Promise.all(
-        createdItems.map((it) => setReferencedItemPaid({ itemType: it.itemType, referenceId: it.referenceId, clientId, isPaid: true }))
-      );
-    }
+    // // Mark referenced content as paid for each created item
+    // if (createdItems.length) {
+    //   await Promise.all(
+    //     createdItems.map((it) => setReferencedItemPaid({ itemType: it.itemType, referenceId: it.referenceId, clientId, isPaid: true }))
+    //   );
+    // }
 
     const plan = await CreditRechargePlan.create({
       name,
@@ -502,12 +502,12 @@ exports.updateCreditRechargePlan = async (req, res) => {
         : [];
       updateFields.items = newItems.map(i => i._id);
 
-      // Mark referenced content as paid for each new item
-      if (newItems.length) {
-        await Promise.all(
-          newItems.map((it) => setReferencedItemPaid({ itemType: it.itemType, referenceId: it.referenceId, clientId, isPaid: true }))
-        );
-      }
+      // // Mark referenced content as paid for each new item
+      // if (newItems.length) {
+      //   await Promise.all(
+      //     newItems.map((it) => setReferencedItemPaid({ itemType: it.itemType, referenceId: it.referenceId, clientId, isPaid: true }))
+      //   );
+      // }
     }
 
     const updated = await CreditRechargePlan.findOneAndUpdate(
@@ -591,8 +591,8 @@ exports.addCreditRechargePlanItem = async (req, res) => {
       expiresWithPlan,
       clientId
     });
-    // Mark referenced content as paid for the added item
-    await setReferencedItemPaid({ itemType, referenceId, clientId, isPaid: true });
+    // // Mark referenced content as paid for the added item
+    // await setReferencedItemPaid({ itemType, referenceId, clientId, isPaid: true });
     console.log(item)
     plan.items.push(item._id);
     plan.updatedAt = new Date();

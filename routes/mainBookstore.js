@@ -9,6 +9,7 @@ const {
   checkClientAccess,
   authenticateMobileUser,
 } = require("../middleware/mobileAuth");
+const CreditRechargePlan = require("../models/CreditRechargePlan");
 
 // 1. HOME PAGE API
 // Endpoint: /api/clients/:clientId/homepage
@@ -83,7 +84,8 @@ router.get("/", authenticateMobileUser, async (req, res) => {
     });
 
     // Format response for homepage
-    const formatBookForHomepage = (book) => ({
+    const formatBookForHomepage = async (book) => {
+      const baseFormat = {
       book_id: book._id.toString(),
       title: book.title,
       category: book.mainCategory,
@@ -105,7 +107,57 @@ router.get("/", authenticateMobileUser, async (req, res) => {
       exam_name: book.exam || "",
       paper_name: book.paper || "",
       subject_name: book.subject || "",
+    }
+    // Check if book is in any plan and get plan details
+  try {
+    const PlanItem = require('../models/PlanItem');
+    const CreditRechargePlan = require('../models/CreditRechargePlan');
+    
+    // Find plan items that reference this workbook
+    const planItems = await PlanItem.find({
+      itemType: { $in: ['book', 'books'] },
+      referenceId: book._id.toString(),
+      clientId: clientId
     });
+
+    if (planItems.length > 0) {
+      // Get all plans that contain these plan items
+      const plans = await CreditRechargePlan.find({
+        items: { $in: planItems.map(item => item._id) },
+        clientId: clientId,
+        status: 'active'
+      }).select('_id name description MRP offerPrice category duration status');
+
+      return {
+        ...baseFormat,
+        isPaid: true,
+        planDetails: plans.map(plan => ({
+          id: plan._id,
+          name: plan.name,
+          description: plan.description,
+          mrp: plan.MRP,
+          offerPrice: plan.offerPrice,
+          category: plan.category,
+          duration: plan.duration,
+          status: plan.status
+        }))
+      };
+    } else {
+      return {
+        ...baseFormat,
+        isPaid: book.isPaid || false,
+        planDetails: []
+      };
+    }
+  } catch (error) {
+    console.error('Error fetching plan details for book:', error);
+    return {
+      ...baseFormat,
+      isPaid: book.isPaid || false,
+      planDetails: []
+    };
+  }
+}
 
     // Get categories with paginated books
     const categories = await getAvailableCategories(clientId);
@@ -134,10 +186,15 @@ router.get("/", authenticateMobileUser, async (req, res) => {
               .skip(skip)
               .limit(parseInt(limit));
 
+            // Format books with plan details
+            const formattedSubCategoryBooks = await Promise.all(
+              subCategoryBooks.map(book => formatBookForHomepage(book))
+            );
+
             return {
               name: sub.name,
               count: sub.count,
-              books: subCategoryBooks.map(formatBookForHomepage),
+              books: formattedSubCategoryBooks,
               pagination: {
                 current_page: parseInt(page),
                 total_pages: Math.ceil(sub.count / parseInt(limit)),
@@ -151,8 +208,14 @@ router.get("/", authenticateMobileUser, async (req, res) => {
           })
         );
 
+        // Format category books with plan details
+        const formattedCategoryBooks = await Promise.all(
+          categoryBooks.map(book => formatBookForHomepage(book))
+        );
+
         return {
           category: cat.category,
+          books: formattedCategoryBooks,
           sub_categories: subCategoriesWithBooks,
           total_books: cat.total_books,
           pagination: {
@@ -173,12 +236,23 @@ router.get("/", authenticateMobileUser, async (req, res) => {
     const hasNextPage = parseInt(page) < totalPages;
     const hasPrevPage = parseInt(page) > 1;
 
+    // Format all books with plan details
+    const formattedHighlightedBooks = await Promise.all(
+      highlightedBooks.map(book => formatBookForHomepage(book))
+    );
+    const formattedTrendingBooks = await Promise.all(
+      trendingBooks.map(book => formatBookForHomepage(book))
+    );
+    const formattedRecentBooks = await Promise.all(
+      recentBooks.map(book => formatBookForHomepage(book))
+    );
+
     const homepageContent = {
       success: true,
       data: {
-        highlighted: highlightedBooks.map(formatBookForHomepage),
-        trending: trendingBooks.map(formatBookForHomepage),
-        recent: recentBooks.map(formatBookForHomepage),
+        highlighted: formattedHighlightedBooks,
+        trending: formattedTrendingBooks,
+        recent: formattedRecentBooks,
         reels: reels.map(formatReel),
         categories: categoriesWithBooks,
         totalBooks: totalBooks,
@@ -401,6 +475,49 @@ router.get("/book/details", authenticateMobileUser, async (req, res) => {
       });
     }
 
+    // Get plan details for the book
+    let planInfo = {
+      isPaid: book.isPaid || false,
+      planDetails: []
+    };
+
+    try {
+      const PlanItem = require('../models/PlanItem');
+      const CreditRechargePlan = require('../models/CreditRechargePlan');
+      
+      // Find plan items that reference this book
+      const planItems = await PlanItem.find({
+        itemType: { $in: ['book', 'books'] },
+        referenceId: book._id.toString(),
+        clientId: clientId
+      });
+  
+      if (planItems.length > 0) {
+        // Get all plans that contain these plan items
+        const plans = await CreditRechargePlan.find({
+          items: { $in: planItems.map(item => item._id) },
+          clientId: clientId,
+          status: 'active'
+        }).select('_id name description MRP offerPrice category duration status');
+  
+        planInfo = {
+          isPaid: true,
+          planDetails: plans.map(plan => ({
+            id: plan._id,
+            name: plan.name,
+            description: plan.description,
+            mrp: plan.MRP,
+            offerPrice: plan.offerPrice,
+            category: plan.category,
+            duration: plan.duration,
+            status: plan.status
+          }))
+        };
+      }
+    } catch (error) {
+      console.error('Error fetching plan details for book:', error);
+    }
+
     // Increment view count
     await book.incrementView();
 
@@ -457,6 +574,9 @@ router.get("/book/details", authenticateMobileUser, async (req, res) => {
           canUseAI: book.embedded || false,
           requiresEmbedding: !book.embedded
         },
+        // Plan information
+        isPaid: planInfo.isPaid,
+        planDetails: planInfo.planDetails,
       },
       meta: {
         clientId,
@@ -523,6 +643,24 @@ async function getAvailableCategories(clientId) {
     return [];
   }
 }
+
+router.get('/plans',authenticateMobileUser,async (req,res) => {
+  try {
+    const clientId = req.user.clientId
+    const plans = await CreditRechargePlan.find({clientId:clientId}).populate('items');
+
+    res.json({
+      success : true,
+      data : plans
+    })
+  } 
+  catch (error) {
+    res.status(500).json({
+      success : false,
+      message : error.message
+    })
+  }
+})
 
 // Export router
 module.exports = router;

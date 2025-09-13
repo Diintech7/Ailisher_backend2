@@ -318,32 +318,88 @@ exports.getAllTestsForMobile = async (req, res) => {
       })
     );
 
-    // Format response for mobile
-    const formatTestForMobile = (test) => ({
-      test_id: test._id.toString(),
-      name: test.name,
-      description: test.description,
-      category: test.category || "",
-      subcategory: test.subcategory || "",
-      image: test.imageKey || "",
-      image_url: test.imageUrl || "",
-      estimated_time: test.Estimated_time,
-      instructions: test.instructions,
-      is_trending: test.isTrending,
-      is_highlighted: test.isHighlighted,
-      is_active: test.isActive,
-      isEnabled:test.isEnabled,
-      totalQuestions:test.totalQuestions,
-      testMaximumMarks:test.testMaximumMarks,
-      created_at: test.createdAt,
-      updated_at: test.updatedAt,
-      
-    });
+    // Format response for mobile with plan details
+    const formatTestForMobile = async (test) => {
+      const baseFormat = {
+        test_id: test._id.toString(),
+        name: test.name,
+        description: test.description,
+        category: test.category || "",
+        subcategory: test.subcategory || "",
+        image: test.imageKey || "",
+        image_url: test.imageUrl || "",
+        estimated_time: test.Estimated_time,
+        instructions: test.instructions,
+        is_trending: test.isTrending,
+        is_highlighted: test.isHighlighted,
+        is_active: test.isActive,
+        isEnabled: test.isEnabled,
+        totalQuestions: test.totalQuestions,
+        testMaximumMarks: test.testMaximumMarks,
+        created_at: test.createdAt,
+        updated_at: test.updatedAt,
+      };
+
+      // Check if test is in any plan and get plan details
+      try {
+        const PlanItem = require('../models/PlanItem');
+        const CreditRechargePlan = require('../models/CreditRechargePlan');
+        
+        // Find plan items that reference this test
+        const planItems = await PlanItem.find({
+          itemType: { $in: ['objective-test', 'objective-tests'] },
+          referenceId: test._id.toString(),
+          clientId: test.clientId
+        });
+
+        if (planItems.length > 0) {
+          // Get all plans that contain these plan items
+          const plans = await CreditRechargePlan.find({
+            items: { $in: planItems.map(item => item._id) },
+            clientId: clientId,
+            status: 'active'
+          }).select('_id name description MRP offerPrice category duration status');
+
+          return {
+            ...baseFormat,
+            isPaid: true,
+            planDetails: plans.map(plan => ({
+              id: plan._id,
+              name: plan.name,
+              description: plan.description,
+              mrp: plan.MRP,
+              offerPrice: plan.offerPrice,
+              category: plan.category,
+              duration: plan.duration,
+              status: plan.status
+            }))
+          };
+        } else {
+          return {
+            ...baseFormat,
+            isPaid: test.isPaid || false,
+            planDetails: []
+          };
+        }
+      } catch (error) {
+        console.error('Error fetching plan details for test:', error);
+        return {
+          ...baseFormat,
+          isPaid: test.isPaid || false,
+          planDetails: []
+        };
+      }
+    };
 
     // Group tests by category and subcategory
     const groupedTests = {};
 
-    testsWithUrls.forEach((test) => {
+    // Process all tests with plan details
+    const formattedTests = await Promise.all(
+      testsWithUrls.map(test => formatTestForMobile(test))
+    );
+
+    formattedTests.forEach((test) => {
       const category = test.category || "Uncategorized";
       const subcategory = test.subcategory || "General";
 
@@ -358,9 +414,7 @@ exports.getAllTestsForMobile = async (req, res) => {
         groupedTests[category].subcategories[subcategory] = [];
       }
 
-      groupedTests[category].subcategories[subcategory].push(
-        formatTestForMobile(test)
-      );
+      groupedTests[category].subcategories[subcategory].push(test);
     });
 
     // Convert to array format and apply pagination
@@ -384,7 +438,7 @@ exports.getAllTestsForMobile = async (req, res) => {
     });
 
     // Calculate pagination metadata
-    const totalTests = testsWithUrls.length;
+    const totalTests = formattedTests.length;
     const totalPages = Math.ceil(totalTests / parseInt(limit));
     const hasNextPage = parseInt(page) < totalPages;
     const hasPrevPage = parseInt(page) > 1;

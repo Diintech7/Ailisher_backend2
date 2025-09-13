@@ -43,6 +43,47 @@ const formatWorkbookWithUserInfo = async (workbook) => {
     } : null
   };
 
+  // Check if workbook is in any plan and get plan details
+  try {
+    const PlanItem = require('../models/PlanItem');
+    const CreditRechargePlan = require('../models/CreditRechargePlan');
+    
+    // Find plan items that reference this workbook
+    const planItems = await PlanItem.find({
+      itemType: { $in: ['workbook', 'workbooks'] },
+      referenceId: workbook._id.toString(),
+      clientId: workbook.clientId
+    });
+
+    if (planItems.length > 0) {
+      // Get all plans that contain these plan items
+      const planIds = await CreditRechargePlan.find({
+        items: { $in: planItems.map(item => item._id) },
+        clientId: workbook.clientId,
+        status: 'active'
+      }).select('_id name description MRP offerPrice category duration status');
+
+      formattedWorkbook.isPaid = true;
+      formattedWorkbook.planDetails = planIds.map(plan => ({
+        id: plan._id,
+        name: plan.name,
+        description: plan.description,
+        mrp: plan.MRP,
+        offerPrice: plan.offerPrice,
+        category: plan.category,
+        duration: plan.duration,
+        status: plan.status
+      }));
+    } else {
+      formattedWorkbook.isPaid = workbook.isPaid || false;
+      formattedWorkbook.planDetails = [];
+    }
+  } catch (error) {
+    console.error('Error fetching plan details for workbook:', error);
+    formattedWorkbook.isPaid = workbook.isPaid || false;
+    formattedWorkbook.planDetails = [];
+  }
+
   // Always try to generate a new presigned URL if we have a cover image
   if (workbook.coverImageKey) {
     try {
@@ -529,6 +570,9 @@ exports.getWorkbooksformobile = async (req, res) => {
 
     const workbooks = await query;
     const workbooksWithUserInfo = await Promise.all(workbooks.map(formatWorkbookWithUserInfo));
+    const highlightedBooksWithUserInfo = await Promise.all(highlightedBooks.map(formatWorkbookWithUserInfo));
+    const trendingBooksWithUserInfo = await Promise.all(trendingBooks.map(formatWorkbookWithUserInfo));
+    
     const categoryOrders = {};
     workbooks.forEach(workbook => {
       if (!categoryOrders[workbook.mainCategory] || workbook.categoryOrder > categoryOrders[workbook.mainCategory]) {
@@ -538,8 +582,8 @@ exports.getWorkbooksformobile = async (req, res) => {
     return res.status(200).json({
       success: true,
       count: workbooks.length,
-      highlighted: highlightedBooks || [],
-      trending: trendingBooks || [], 
+      highlighted: highlightedBooksWithUserInfo || [],
+      trending: trendingBooksWithUserInfo || [], 
       workbooks: workbooksWithUserInfo,
       categoryOrders,
      
