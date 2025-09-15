@@ -4,6 +4,7 @@ const { validationResult } = require('express-validator');
 const UserAnswer = require('../models/UserAnswer');
 const UserProfile = require('../models/UserProfile');
 const { getEvaluationFrameworkText } = require('../services/aiServices');
+const { generatePresignedUrl, generateGetPresignedUrl } = require('../utils/s3');
 
 // Question Controllers
 const addQuestion = async (req, res) => {
@@ -183,6 +184,7 @@ const deleteQuestion = async (req, res) => {
 
     await Question.findByIdAndDelete(questionId);
 
+    
     res.status(200).json({
       success: true,
       message: "Question deleted successfully"
@@ -217,6 +219,21 @@ const getQuestionDetails = async (req, res) => {
       });
     }
 
+    // Build presigned URLs for any modal answer PDFs
+    let modalAnswerPdfs = [];
+    if (Array.isArray(question.modalAnswerPdfKey) && question.modalAnswerPdfKey.length > 0) {
+      modalAnswerPdfs = await Promise.all(
+        question.modalAnswerPdfKey.map(async (key) => {
+          try {
+            const url = await generateGetPresignedUrl(key);
+            return { key, url, fileName: key.split('/').pop() };
+          } catch {
+            return { key, url: null, fileName: key.split('/').pop() };
+          }
+        })
+      );
+    }
+
     res.status(200).json({
       success: true,
       data: {
@@ -224,6 +241,7 @@ const getQuestionDetails = async (req, res) => {
         question: question.question,
         detailedAnswer: question.detailedAnswer,
         modalAnswer: question.modalAnswer,
+        modalAnswerPdfs,
         answerVideoUrls: question.answerVideoUrls || [], // Updated to handle array
         metadata: question.metadata,
         languageMode: question.languageMode,
@@ -459,7 +477,8 @@ const getQuestionsInSet = async (req, res) => {
       languageMode: question.languageMode,
       evaluationMode: question.evaluationMode,
       evaluationType: question.evaluationType,
-      evaluationGuideline: question.evaluationGuideline
+      evaluationGuideline: question.evaluationGuideline,
+      modalAnswerPdfKey: Array.isArray(question.modalAnswerPdfKey) ? question.modalAnswerPdfKey : []
     }));
 
     res.status(200).json({
@@ -847,6 +866,109 @@ Your conclusion is relevant but too long â€” it needs to be concise, within 20â€
   }
 };
 
+// Generate a presigned S3 URL for uploading a PDF for a question
+const generatePdfUploadUrl = async (req, res) => {
+  try {
+    console.log(req.user);
+    const { questionId } = req.params;
+    const { fileName, contentType } = req.body || {};
+
+    if (!fileName || typeof fileName !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'fileName is required',
+        error: { code: 'INVALID_INPUT', details: 'fileName must be a string' }
+      });
+    }
+
+    const finalContentType = contentType || 'application/pdf';
+    if (finalContentType !== 'application/pdf') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only application/pdf contentType is allowed',
+        error: { code: 'INVALID_CONTENT_TYPE' }
+      });
+    }
+
+    // Ensure question exists
+    const question = await Question.findById(questionId).select('_id');
+    if (!question) {
+      return res.status(404).json({
+        success: false,
+        message: 'Question not found',
+        error: { code: 'QUESTION_NOT_FOUND' }
+      });
+    }
+
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const timestamp = Date.now();
+    const key = `${req.user.businessName}/aiswb/questions/${questionId}/pdfs/${timestamp}-${sanitizedFileName}`;
+
+    const uploadUrl = await generatePresignedUrl(key, finalContentType);
+
+    return res.status(200).json({
+      success: true,
+      data: { uploadUrl, key, contentType: finalContentType }
+    });
+  } catch (error) {
+    console.error('Generate PDF upload URL error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: { code: 'SERVER_ERROR', details: error.message }
+    });
+  }
+};
+
+// Attach an uploaded PDF S3 key to the question.modalAnswerPdfKey array
+const attachPdfToQuestion = async (req, res) => {
+  try {
+    const { questionId } = req.params;
+    const { key } = req.body || {};
+
+    if (!key || typeof key !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'key is required',
+        error: { code: 'INVALID_INPUT', details: 'key must be a string' }
+      });
+    }
+
+    const question = await Question.findById(questionId);
+    if (!question) {
+      return res.status(404).json({
+        success: false,
+        message: 'Question not found',
+        error: { code: 'QUESTION_NOT_FOUND' }
+      });
+    }
+
+    if (!Array.isArray(question.modalAnswerPdfKey)) {
+      question.modalAnswerPdfKey = [];
+    }
+
+    // Prevent duplicates
+    if (!question.modalAnswerPdfKey.includes(key)) {
+      question.modalAnswerPdfKey.push(key);
+    }
+
+    await question.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'PDF key attached successfully',
+      data: { modalAnswerPdfKey: question.modalAnswerPdfKey }
+    });
+  } catch (error) {
+    console.error('Attach PDF to question error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: { code: 'SERVER_ERROR', details: error.message }
+    });
+  }
+};
+
 module.exports = {
   addQuestion,
   updateQuestion,
@@ -860,5 +982,7 @@ module.exports = {
   addQuestionToSet,
   deleteQuestionFromSet,
   getQuestionSubmissions,
-  getDefaultEvaluationFramework
+  getDefaultEvaluationFramework,
+  generatePdfUploadUrl,
+  attachPdfToQuestion
 };

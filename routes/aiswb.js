@@ -85,4 +85,13 @@ router.get('/default-evaluation-framework',
   aiswbController.getDefaultEvaluationFramework
 );
 
+// PDF upload helpers
+router.post('/questions/:questionId/pdf/presign', verifyToken,
+  aiswbController.generatePdfUploadUrl
+);
+
+router.post('/questions/:questionId/pdf/attach', verifyToken,
+  aiswbController.attachPdfToQuestion
+);
+
 module.exports = router;

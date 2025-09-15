@@ -459,6 +459,7 @@ exports.getAllTestsForMobile = async (req, res) => {
       try {
         const PlanItem = require('../models/PlanItem');
         const CreditRechargePlan = require('../models/CreditRechargePlan');
+        const UserPlan = require('../models/UserPlan');
         
         // Find plan items that reference this test
         const planItems = await PlanItem.find({
@@ -475,9 +476,27 @@ exports.getAllTestsForMobile = async (req, res) => {
             status: 'active'
           }).select('_id name description MRP offerPrice category duration status');
 
+          // Determine if current user is enrolled in any of these plans
+          let isEnrolled = false;
+          try {
+            const now = new Date();
+            const enrolled = await UserPlan.findOne({
+              userId: req.user?.id,
+              clientId: clientId,
+              planId: { $in: plans.map(plan => plan._id) },
+              status: 'active',
+              startDate: { $lte: now },
+              endDate: { $gte: now }
+            }).select('_id');
+            isEnrolled = Boolean(enrolled);
+          } catch (enrollErr) {
+            console.error('Error checking enrollment for subjective test:', enrollErr);
+          }
+
           return {
             ...baseFormat,
             isPaid: true,
+            isEnrolled,
             planDetails: plans.map(plan => ({
               id: plan._id,
               name: plan.name,
@@ -493,6 +512,7 @@ exports.getAllTestsForMobile = async (req, res) => {
           return {
             ...baseFormat,
             isPaid: test.isPaid || false,
+            isEnrolled: false,
             planDetails: []
           };
         }
@@ -501,6 +521,7 @@ exports.getAllTestsForMobile = async (req, res) => {
         return {
           ...baseFormat,
           isPaid: test.isPaid || false,
+          isEnrolled: false,
           planDetails: []
         };
       }

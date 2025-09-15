@@ -15,6 +15,11 @@ const questionSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  modalAnswerPdfKey:[
+    {
+      type: String,
+    }
+  ],
   answerVideoUrls: [{
     type: String,
     trim: true
