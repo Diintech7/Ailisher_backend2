@@ -1,7 +1,13 @@
+const { default: mongoose } = require("mongoose");
+const Book = require("../models/Book");
 const CreditAccount = require("../models/CreditAccount");
 const CreditPlan = require("../models/CreditPlan");
 const CreditRechargePlan = require("../models/CreditRechargePlan");
 const CreditTransaction = require("../models/CreditTransaction");
+const ObjectiveTest = require("../models/ObjectiveTest");
+const Workbook = require("../models/Workbook");
+const SubjectiveTest = require("../models/SubjectiveTest");
+const { generateGetPresignedUrl } = require("../utils/s3");
 
 exports.getCreditAccount = async (req, res) => {
   try {
@@ -272,3 +278,83 @@ exports.getCreditRechargePlans = async (req,res) => {
     })
   }
 }
+
+
+exports.getCreditRechargePlanById = async (req, res) => {
+  try {
+    const clientId = req.user.clientId;
+    const plan = await CreditRechargePlan.findOne({ _id: req.params.id, clientId }).populate('items');
+    if (!plan) {
+      return res.status(404).json({ success: false, message: 'Plan not found' });
+    }
+    
+    // Process plan items and fetch referenced item details
+    if(plan.items && plan.items.length > 0) {
+      for(const item of plan.items) {
+        // Fetch referenced item details based on itemType and referenceId
+        if(item.referenceId && item.itemType) {
+          try {
+            let referencedItem = null;
+            
+            // Convert referenceId to ObjectId
+            item.referenceId = new mongoose.Types.ObjectId(item.referenceId);
+            
+            switch(item.itemType.toLowerCase()) {
+              case 'book':
+                referencedItem = await Book.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                break;
+              case 'workbook':
+                referencedItem = await Workbook.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                break;
+              case 'objective-test':
+                referencedItem = await ObjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                break;
+              case 'subjective-test':
+                referencedItem = await SubjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                break;
+              default:
+                console.log(`Unknown item type: ${item.itemType}`);
+            }
+            
+            if(referencedItem) {
+              // Generate image URL for referenced item
+              if(referencedItem.coverImageKey) {
+                  referencedItem.coverImageUrl = await generateGetPresignedUrl(referencedItem.coverImageKey);
+                }else if(referencedItem.imageKey) {
+                referencedItem.imageUrl = await generateGetPresignedUrl(referencedItem.imageKey);
+              }else {
+                console.log('No image key or URL found for item');
+              }
+              // Store the referenced item with image URLs
+              item.referencedItem = {
+                _id: referencedItem._id,
+                title: referencedItem.title || referencedItem.name,
+                description: referencedItem.description || referencedItem.summary,
+                category: referencedItem.category || referencedItem.mainCategory,
+                subCategory: referencedItem.subCategory || referencedItem.subcategory,
+                coverImageUrl: referencedItem.coverImageUrl,
+                imageUrl: referencedItem.imageUrl
+              };
+              // console.log('Referenced item:', item.referencedItem);
+            }
+          } catch(refError) {
+            console.error(`Error fetching referenced item ${item.referenceId}:`, refError);
+          }
+        }
+      }
+    }
+    
+    // Add image URLs to the response for easy access
+    const responseData = {
+      ...plan.toObject(),
+      items: plan.items.map(item => ({
+        ...item.toObject(),
+        referencedItem: item.referencedItem || null
+      }))
+    };
+
+    res.json({ success: true, data: responseData });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
