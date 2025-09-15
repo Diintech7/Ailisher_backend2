@@ -234,10 +234,12 @@ router.post('/callback', async (req, res) => {
             if (planId) {
               const existingUserPlan = await UserPlan.findOne({ orderId });
               if (!existingUserPlan) {
-                const plan = await CreditRechargePlan.findById(planId);
-                if (plan) {
+                const plan = await CreditRechargePlan.findById(planId).select('duration items clientId');
+                const hasBundledItems = Array.isArray(plan?.items) && plan.items.length > 0;
+                // Only create a UserPlan when the recharge plan includes bundled items with a duration window
+                if (plan && hasBundledItems && plan.duration && plan.duration > 0) {
                   const startDate = new Date();
-                  const endDate = new Date(startDate.getTime() + (plan.duration || 0) * 24 * 60 * 60 * 1000);
+                  const endDate = new Date(startDate.getTime() + plan.duration * 24 * 60 * 60 * 1000);
                   const userPlan = new UserPlan({
                     userId: creditAccount.userId,
                     planId: plan._id,
@@ -250,7 +252,10 @@ router.post('/callback', async (req, res) => {
                   });
                   await userPlan.save();
                 } else {
-                  console.warn('Plan not found when creating UserPlan', { planId: String(planId), orderId });
+                  // Credits-only purchase: do not create UserPlan or set duration
+                  if (!plan) {
+                    console.warn('Plan not found; skipping UserPlan creation', { planId: String(planId), orderId });
+                  }
                 }
               }
             }
