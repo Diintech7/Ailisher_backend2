@@ -280,6 +280,51 @@ exports.getCreditRechargePlans = async (req,res) => {
 }
 
 
+// Get plans that include items (bundled plans)
+exports.getCreditRechargePlansWithItems = async (req, res) => {
+  try {
+    const clientId = req.user.clientId;
+    const plans = await CreditRechargePlan.find({
+      clientId: clientId,
+      items: { $exists: true, $ne: [] }
+    }).populate('items');
+
+    res.json({
+      success: true,
+      data: plans
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+}
+
+// Get plans without items (credits-only plans)
+exports.getCreditRechargePlansWithoutItems = async (req, res) => {
+  try {
+    const clientId = req.user.clientId;
+    const plans = await CreditRechargePlan.find({
+      clientId: clientId,
+      $or: [
+        { items: { $exists: false } },
+        { items: { $size: 0 } }
+      ]
+    })
+
+    res.json({
+      success: true,
+      data: plans
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+}
+
 exports.getCreditRechargePlanById = async (req, res) => {
   try {
     const clientId = req.user.clientId;

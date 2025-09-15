@@ -558,8 +558,15 @@ exports.getCreditRechargePlans = async (req,res) => {
         message : 'Admin access required'
       })
     }
-    const plans = await CreditRechargePlan.find({clientId}).sort({ createdAt: -1 });
-
+    const plans = await CreditRechargePlan.find({
+      clientId: clientId,
+      $or: [
+        { items: { $exists: false } },
+        { items: { $size: 0 } }
+      ]
+    })
+    .sort({ createdAt: -1 });
+    
     res.json({
       success : true,
       data : plans

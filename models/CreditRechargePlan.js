@@ -17,12 +17,17 @@ const CreditRechargePlanSchema = new mongoose.Schema({
   // Duration in days (or your preferred unit)
   duration: {
     type: Number,
-    required: true,
+    required: function () {
+      return Array.isArray(this.items) && this.items.length > 0;
+    },
     min: 1
   },
   credits: {
     type: Number,
-    min: 0
+    min: 0,
+    required: function () {
+      return !this.items || this.items.length === 0;
+    }
   },
   MRP: {
     type: Number,
