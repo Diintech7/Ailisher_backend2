@@ -418,7 +418,7 @@ router.get('/:answerId', async (req, res) => {
     if (userAnswer.testType === 'subjective') {
       // For subjective questions, populate from SubjectiveTestQuestion
       question = await SubjectiveTestQuestion.findById(userAnswer.questionId)
-        .select('question detailedAnswer modalAnswer answerVideoUrls metadata languageMode evaluationMode test')
+        .select('question detailedAnswer modalAnswer modalAnswerPdfKey answerVideoUrls metadata languageMode evaluationMode test')
         .lean();
       
       // Populate test info
@@ -432,7 +432,7 @@ router.get('/:answerId', async (req, res) => {
       console.log("AISWB")
       console.log(userAnswer.questionId)
       question = await AiswbQuestion.findById(userAnswer.questionId)
-        .select('_id question detailedAnswer modalAnswer answerVideoUrls metadata languageMode evaluationMode setId book chapter topic subtopic')
+        .select('_id question detailedAnswer modalAnswer modalAnswerPdfKey answerVideoUrls metadata languageMode evaluationMode setId book chapter topic subtopic')
         .lean();
     }
 
@@ -487,17 +487,24 @@ router.get('/:answerId', async (req, res) => {
 
     let questionInfo = null;
     let testInfo = null;
+    if(question?.modalAnswerPdfKey){
+      question.modalAnswerPdfKey = await Promise.all(question.modalAnswerPdfKey.map(async (key) => {
+        return { key, url: await generateGetPresignedUrl(key, 31536000) };
+      }));
+    }
       // Subjective test submission
       questionInfo = {
         _id: question?._id,
         text: question?.question,
         detailedAnswer: question?.detailedAnswer,
         modalAnswer: question?.modalAnswer,
+        modalAnswerPdf: question?.modalAnswerPdfKey,
         answerVideoUrls: question?.answerVideoUrls || [],
         metadata: question?.metadata,
         languageMode: question?.languageMode,
         evaluationMode: question?.evaluationMode
       };
+      
       if(test?.imageKey){
         test.imageUrl = await generateGetPresignedUrl(test.imageKey, 31536000);
       }
