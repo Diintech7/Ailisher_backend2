@@ -128,8 +128,6 @@ router.get('/', async (req, res) => {
   try {
     const { id: userId, clientId } = req.user;
     const { 
-      page = 1, 
-      limit = 10, 
       status,
       questionId,
       submissionStatus,
@@ -165,16 +163,10 @@ router.get('/', async (req, res) => {
           break;
       }
     }
-
-    // Calculate pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
     
     // Build sort object
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
-    // Get total count for pagination
-    const total = await UserAnswer.countDocuments(filter);
 
     // Fetch submitted answers without population first
     const submittedAnswers = await UserAnswer.find(filter)
@@ -185,8 +177,6 @@ router.get('/', async (req, res) => {
         requestID requestnote annotations reviewRequestedAt reviewAssignedAt reviewCompletedAt
       `)
       .sort(sort)
-      .skip(skip)
-      .limit(parseInt(limit))
       .lean();
 
     // Populate questions and tests based on testType
@@ -372,16 +362,8 @@ router.get('/', async (req, res) => {
       message: 'Submitted answers retrieved successfully',
       data: {
         answers: transformedAnswers,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / parseInt(limit)),
-          totalAnswers: total,
-          hasNextPage: skip + transformedAnswers.length < total,
-          hasPreviousPage: parseInt(page) > 1,
-          limit: parseInt(limit)
-        },
         summary: {
-          totalSubmitted: total,
+          totalSubmitted: transformedAnswers.length,
           evaluatedCount: transformedAnswers.filter(a => a.isEvaluated).length,
           publishedCount: transformedAnswers.filter(a => a.publishStatus === 'published').length,
           popularCount: transformedAnswers.filter(a => a.popularityStatus === 'popular').length
