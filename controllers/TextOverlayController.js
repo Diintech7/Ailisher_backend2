@@ -68,7 +68,7 @@ const toFilterPath = (absolutePath) => {
 // }
 const overlayTextOnImage = async (req, res) => {
   try {
-    const { imageBase64, imageUrl, text, fontsize, color, align, numbered, withTicks, tickColor, xPadding, sidebar, sidebarWidth, sidebarColor, ticks, evaluation, hindiEvaluation, fontStyle, customFontPath } = req.body;
+    const { imageBase64, imageUrl, text, fontsize, color, align, numbered, withTicks, tickColor, xPadding, sidebar, sidebarWidth, sidebarColor, ticks, evaluation, hindiEvaluation, fontStyle, customFontPath, maxScore } = req.body;
     if (!imageBase64 && !imageUrl) {
       return res.status(400).json({ error: 'Provide imageBase64 or imageUrl' });
     }
@@ -267,18 +267,10 @@ const overlayTextOnImage = async (req, res) => {
     try {
       const srcEval = (hindiEvaluation && typeof hindiEvaluation === 'object') ? hindiEvaluation
         : ((evaluation && typeof evaluation === 'object') ? evaluation : (req.body && req.body.header) || null);
-      // const relVal = Number.isFinite(srcEval?.relevancy) ? Math.round(srcEval.relevancy) : null;
-      const scoreVal = Number.isFinite(srcEval?.score) ? srcEval.score : null;
+      const scoreVal = Number.isFinite(srcEval?.score) ? Number(srcEval.score) : null;
+      const scoreMax = Number.isFinite(Number(maxScore)) ? Number(maxScore) : null;
       if (scoreVal !== null) {
-        const isHindiHeader = /[\u0900-\u097F]/.test(preferredText || '') || !!hindiEvaluation;
-        // const relLabel = isHindiHeader ? 'प्रासंगिकता' : 'Relevancy';
-        // const relLabel = 'Relevancy';
-        // const scoreLabel = isHindiHeader ? 'स्कोर' : 'Score';
-        const scoreLabel = 'Score';
-        const parts = [];
-        // if (relVal !== null) parts.push(`${relLabel}: ${relVal}%`);
-        if (scoreVal !== null) parts.push(`${scoreLabel}: ${scoreVal}`);
-        const headerText = parts.join('  |  ');
+        const headerText = `Score: ${scoreVal}${scoreMax !== null ? `/${scoreMax}` : ''}`;
         const headerClean = cleanTextForDrawtext(headerText);
         let hx = '(w-text_w)/2';
         if (addSidebar) {
@@ -290,10 +282,10 @@ const overlayTextOnImage = async (req, res) => {
         }
         const hy = Math.max(8, startY - Math.round(lineHeight * 0.9));
         const headerLayer = selectedFont
-          ? `drawtext=text='${headerClean}':fontfile='${toFilterPath(selectedFont)}':fontcolor=#16a34a:fontsize=20:x=${hx}:y=${hy}`
+          ? `drawtext=text='${headerClean}':fontfile='${toFilterPath(selectedFont)}':fontcolor=#16a34a:fontsize=30:x=${hx}:y=${hy}`
           : fallbackFontFamily
-          ? `drawtext=text='${headerClean}':font='${fallbackFontFamily}':fontcolor=#16a34a:fontsize=20:x=${hx}:y=${hy}`
-          : `drawtext=text='${headerClean}':fontcolor=#16a34a:fontsize=20:x=${hx}:y=${hy}`;
+          ? `drawtext=text='${headerClean}':font='${fallbackFontFamily}':fontcolor=#16a34a:fontsize=30:x=${hx}:y=${hy}`
+          : `drawtext=text='${headerClean}':fontcolor=#16a34a:fontsize=30:x=${hx}:y=${hy}`;
         layers.push(headerLayer);
       }
     } catch (_) {}

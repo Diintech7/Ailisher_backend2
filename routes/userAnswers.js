@@ -1337,6 +1337,7 @@ router.post(
                   }/auto-annotated-images/${
                     req.user.clientId
                   }/${questionId}/${Date.now()}_${i}${fileExtension}`;
+                  console.log("userAnswerData", userAnswerData);
 
                   // Create annotated image by overlaying text on the original image
                   const mockReq = {
@@ -1365,13 +1366,14 @@ router.post(
                       borderRadius: 6,
                       textShadow: "2px 2px 6px rgba(0,0,0,0.9)", // extra shadow to make red pop
                       evaluation,
-                      hindiEvaluation: userAnswerData.hindiEvaluation || undefined
+                      hindiEvaluation: userAnswerData.hindiEvaluation || undefined,
+                      maxScore: question.metadata.maximumMarks || undefined
                     },
                     
                   };
 
                   let annotatedImageBase64 = null;
-
+                  console.log("mockReq", mockReq);
                   const mockRes = {
                     json: (data) => {
                       if (data.success && data.image) {
@@ -1381,7 +1383,7 @@ router.post(
                       }
                     },
                   };
-
+                  console.log("mockRes", mockRes);
                   // Call the overlayTextOnImage function
                   await overlayTextOnImage(mockReq, mockRes);
 
