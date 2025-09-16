@@ -297,10 +297,14 @@ exports.getCreditRechargePlansWithItems = async (req, res) => {
         status: 'active'
       });
       plan.isEnrolled = isEnrolled ? true : false;
+      console.log(plan.isEnrolled);
     }
     res.json({
       success: true,
-      data: plans
+      data: plans.map(plan => ({
+        ...plan.toObject(),
+        isEnrolled: plan.isEnrolled
+      }))
     });
   } catch (error) {
     res.status(500).json({
