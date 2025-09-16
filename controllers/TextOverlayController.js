@@ -267,20 +267,19 @@ const overlayTextOnImage = async (req, res) => {
     try {
       const srcEval = (hindiEvaluation && typeof hindiEvaluation === 'object') ? hindiEvaluation
         : ((evaluation && typeof evaluation === 'object') ? evaluation : (req.body && req.body.header) || null);
-      const relVal = Number.isFinite(srcEval?.relevancy) ? Math.round(srcEval.relevancy) : null;
+      // const relVal = Number.isFinite(srcEval?.relevancy) ? Math.round(srcEval.relevancy) : null;
       const scoreVal = Number.isFinite(srcEval?.score) ? srcEval.score : null;
-      if (relVal !== null || scoreVal !== null) {
+      if (scoreVal !== null) {
         const isHindiHeader = /[\u0900-\u097F]/.test(preferredText || '') || !!hindiEvaluation;
         // const relLabel = isHindiHeader ? 'प्रासंगिकता' : 'Relevancy';
-        const relLabel = 'Relevancy';
+        // const relLabel = 'Relevancy';
         // const scoreLabel = isHindiHeader ? 'स्कोर' : 'Score';
         const scoreLabel = 'Score';
         const parts = [];
-        if (relVal !== null) parts.push(`${relLabel}: ${relVal}%`);
+        // if (relVal !== null) parts.push(`${relLabel}: ${relVal}%`);
         if (scoreVal !== null) parts.push(`${scoreLabel}: ${scoreVal}`);
         const headerText = parts.join('  |  ');
         const headerClean = cleanTextForDrawtext(headerText);
-        const headerSize = Math.max(14, Math.round((Number.isFinite(Number(fontsize)) ? Number(fontsize) : 16) * 1.05));
         let hx = '(w-text_w)/2';
         if (addSidebar) {
           hx = `w-${panelWidth}+${Math.max(12, paddingX)}`;
@@ -293,8 +292,8 @@ const overlayTextOnImage = async (req, res) => {
         const headerLayer = selectedFont
           ? `drawtext=text='${headerClean}':fontfile='${toFilterPath(selectedFont)}':fontcolor=${fontColor}:fontsize=${headerSize}:x=${hx}:y=${hy}`
           : fallbackFontFamily
-          ? `drawtext=text='${headerClean}':font='${fallbackFontFamily}':fontcolor=${fontColor}:fontsize=${headerSize}:x=${hx}:y=${hy}`
-          : `drawtext=text='${headerClean}':fontcolor=${fontColor}:fontsize=${headerSize}:x=${hx}:y=${hy}`;
+          ? `drawtext=text='${headerClean}':font='${fallbackFontFamily}':fontcolor=#16a34a:fontsize=20:x=${hx}:y=${hy}`
+          : `drawtext=text='${headerClean}':fontcolor=#16a34a:fontsize=20:x=${hx}:y=${hy}`;
         layers.push(headerLayer);
       }
     } catch (_) {}
