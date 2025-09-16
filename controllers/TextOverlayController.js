@@ -290,7 +290,7 @@ const overlayTextOnImage = async (req, res) => {
         }
         const hy = Math.max(8, startY - Math.round(lineHeight * 0.9));
         const headerLayer = selectedFont
-          ? `drawtext=text='${headerClean}':fontfile='${toFilterPath(selectedFont)}':fontcolor=${fontColor}:fontsize=${headerSize}:x=${hx}:y=${hy}`
+          ? `drawtext=text='${headerClean}':fontfile='${toFilterPath(selectedFont)}':fontcolor=#16a34a:fontsize=20:x=${hx}:y=${hy}`
           : fallbackFontFamily
           ? `drawtext=text='${headerClean}':font='${fallbackFontFamily}':fontcolor=#16a34a:fontsize=20:x=${hx}:y=${hy}`
           : `drawtext=text='${headerClean}':fontcolor=#16a34a:fontsize=20:x=${hx}:y=${hy}`;
