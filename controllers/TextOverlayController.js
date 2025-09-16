@@ -8,6 +8,10 @@ const http = require('http');
 const axios = require('axios');
 const { Readable } = require('stream');
 
+// Project-bundled fonts support (assets/fonts)
+const ASSET_FONT_DIR = path.join(__dirname, '..', 'assets', 'fonts');
+const assetFont = (name) => path.join(ASSET_FONT_DIR, name);
+
 // Set FFmpeg paths (reuse setup pattern from video controller)
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 ffmpeg.setFfprobePath(ffprobeStatic.path);
@@ -96,8 +100,8 @@ const overlayTextOnImage = async (req, res) => {
     };
 
     // Prefer Hindi evaluation content when provided; else English; else provided text
-    const preferredText = buildTextFromEval(hindiEvaluation) || buildTextFromEval(evaluation) || text || '';
-
+    // const preferredText = buildTextFromEval(hindiEvaluation) || buildTextFromEval(evaluation) || text || '';
+    const preferredText = text || '';
     // Process text to create properly wrapped lines
     const processTextForWrapping = (text, maxCharsPerLine = 50, maxLines = 10) => {
       if (!text || typeof text !== 'string') return [];
@@ -150,7 +154,7 @@ const overlayTextOnImage = async (req, res) => {
 
     // Split input into comments (blank line or '|||') and wrap each comment separately
     const rawComments = preferredText && typeof preferredText === 'string'
-      ? String(text)
+      ? String(preferredText)
           .split(/\n\n|\|\|\|/)
           .map(s => s.trim())
           .filter(Boolean)
@@ -176,97 +180,76 @@ const overlayTextOnImage = async (req, res) => {
 
     // Choose a font based on language (Latin vs Devanagari)
     const containsDevanagari = /[\u0900-\u097F]/.test(preferredText || '');
-    // English/Latin font candidates
-    const latinCandidates = process.platform === 'win32'
-      ? [
-          'C:/Windows/Fonts/arial.ttf',
-          'C:/Windows/Fonts/segoeui.ttf',
-          'C:/Windows/Fonts/calibri.ttf'
-        ]
-      : process.platform === 'darwin'
-      ? [
-          '/Library/Fonts/Arial.ttf',
-          '/System/Library/Fonts/Supplemental/Arial.ttf'
-        ]
-      : [
-          '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-          '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf'
-        ];
-    const latinFont = latinCandidates.find(p => fs.existsSync(p)) || null;
-    // Devanagari font candidates (Windows: Nirmala UI or Mangal; macOS/Linux: Noto/Devanagari support)
-    const devCandidates = process.platform === 'win32'
-      ? [
-          'C:/Windows/Fonts/Nirmala.ttf',
-          'C:/Windows/Fonts/mangal.ttf',
-          'C:/Windows/Fonts/arialuni.ttf'
-        ]
-      : process.platform === 'darwin'
-      ? [
-          '/System/Library/Fonts/Supplemental/KohinoorDevanagari-Regular.otf',
-          '/Library/Fonts/NotoSansDevanagari-Regular.ttf',
-          '/Library/Fonts/Arial Unicode.ttf'
-        ]
-      : [
-          '/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf',
-          '/usr/share/fonts/truetype/indie-fonts/lohit_dev.ttf',
-          '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
-        ];
-    const devFont = devCandidates.find(p => fs.existsSync(p)) || null;
-    // Optional handwritten font selection
-    let handwritingCandidates = [];
-    if (containsDevanagari) {
-      // Devanagari handwritten system fonts are uncommon; fallback to Devanagari primary
-      handwritingCandidates = [devFont].filter(Boolean);
-    } else {
-      handwritingCandidates = process.platform === 'win32'
-        ? [
-            'C:/Windows/Fonts/segoesc.ttf', // Segoe Script
-            'C:/Windows/Fonts/BRADHITC.TTF', // Bradley Hand ITC
-            'C:/Windows/Fonts/comic.ttf', // Comic Sans MS
-            'C:/Windows/Fonts/Comic.ttf'
-          ]
+    // Prefer bundled Latin font first, then system Arial
+    const latinAssetCandidates = [ assetFont('NotoSerif-Regular.ttf') ].filter(p => fs.existsSync(p));
+    const latinCandidates = (
+      latinAssetCandidates.length > 0 ? latinAssetCandidates : []
+    ).concat(
+      process.platform === 'win32'
+        ? [ 'C:/Windows/Fonts/arial.ttf' ]
         : process.platform === 'darwin'
-        ? [
-            '/Library/Fonts/Bradley Hand.ttf',
-            '/Library/Fonts/Noteworthy.ttc',
-            '/Library/Fonts/Chalkboard.ttf',
-            '/Library/Fonts/Comic Sans MS.ttf'
-          ]
-        : [
-            '/usr/share/fonts/truetype/msttcorefonts/Comic_Sans_MS.ttf',
-            '/usr/share/fonts/truetype/microsoft/Comic_Sans_MS.ttf',
-            '/usr/share/fonts/truetype/liberation/LiberationMono-Italic.ttf' // weak fallback
-          ];
+        ? [ '/Library/Fonts/Arial.ttf', '/System/Library/Fonts/Supplemental/Arial.ttf' ]
+        : [ '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf' ]
+    );
+    const latinFont = latinCandidates.find(p => fs.existsSync(p)) || null;
+    // Prefer bundled Devanagari font first, then system Nirmala/Noto
+    const devAssetCandidates = [ assetFont('Poppins-Regular.ttf') ].filter(p => fs.existsSync(p));
+    const devCandidates = (
+      devAssetCandidates.length > 0 ? devAssetCandidates : []
+    ).concat(
+      process.platform === 'win32'
+        ? [ 'C:/Windows/Fonts/Nirmala.ttf', 'C:/Windows/Fonts/NirmalaUI.ttf', 'C:/Windows/Fonts/NirmalaUI-Regular.ttf' ]
+        : process.platform === 'darwin'
+        ? [ '/Library/Fonts/NotoSansDevanagari-Regular.ttf', '/System/Library/Fonts/Supplemental/KohinoorDevanagari-Regular.otf' ]
+        : [ '/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf' ]
+    );
+    const devFont = devCandidates.find(p => fs.existsSync(p)) || null;
+    // Keep font selection simple and predictable
+    let selectedFont = containsDevanagari ? devFont : latinFont;
+    const fallbackFontFamily = containsDevanagari ? 'Nirmala UI' : 'Arial';
+
+    // Optional handwritten style
+    if (fontStyle === 'handwritten') {
+      if (containsDevanagari) {
+        const devanagariHandAsset = [ assetFont('Kalam-Regular.ttf') ].filter(p => fs.existsSync(p));
+        const devanagariHandCandidates = (
+          devanagariHandAsset.length > 0 ? devanagariHandAsset : []
+        ).concat(
+          process.platform === 'win32'
+            ? [ 'C:/Windows/Fonts/Kalam-Regular.ttf', 'C:/Windows/Fonts/Kalnirnay.ttf' ]
+            : process.platform === 'darwin'
+            ? [ '/Library/Fonts/Kalam-Regular.ttf' ]
+            : [ '/usr/share/fonts/truetype/kalam/Kalam-Regular.ttf', '/usr/share/fonts/truetype/google/Kalam-Regular.ttf' ]
+        );
+        const devHand = devanagariHandCandidates.find(p => fs.existsSync(p)) || null;
+        if (devHand) selectedFont = devHand;
+      } else {
+        const latinHandCandidates = process.platform === 'win32'
+          ? [ 'C:/Windows/Fonts/segoesc.ttf', 'C:/Windows/Fonts/BRADHITC.TTF' ]
+          : process.platform === 'darwin'
+          ? [ '/Library/Fonts/Bradley Hand.ttf', '/Library/Fonts/Noteworthy.ttc' ]
+          : [ '/usr/share/fonts/truetype/msttcorefonts/Comic_Sans_MS.ttf' ];
+        const latHand = latinHandCandidates.find(p => fs.existsSync(p)) || null;
+        if (latHand) selectedFont = latHand;
+      }
     }
 
-    const handwritingFont = handwritingCandidates.find(p => p && fs.existsSync(p)) || null;
-    let selectedFont = containsDevanagari ? (devFont || latinFont) : latinFont;
-
-    // Allow custom font override
+    // Allow custom font override (e.g., Kalam bundled with the app)
     if (customFontPath && typeof customFontPath === 'string' && fs.existsSync(customFontPath)) {
       selectedFont = customFontPath;
-    } else if (fontStyle === 'handwritten' && handwritingFont) {
-      selectedFont = handwritingFont;
     }
+
     // Try to pick a symbol-capable font for the tick glyph ✓ (U+2713)
-    const symbolFontCandidates = process.platform === 'win32'
-      ? [
-          'C:/Windows/Fonts/seguisym.ttf',
-          'C:/Windows/Fonts/seguiemj.ttf',
-          'C:/Windows/Fonts/arial.ttf'
-        ]
-      : process.platform === 'darwin'
-      ? [
-          '/System/Library/Fonts/Supplemental/Symbol.ttf',
-          '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
-          '/Library/Fonts/Arial Unicode.ttf',
-          '/Library/Fonts/Arial.ttf'
-        ]
-      : [
-          '/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf',
-          '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-          '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf'
-        ];
+    const symbolAssetCandidates = [ assetFont('NotoSansSymbols2-Regular.ttf') ].filter(p => fs.existsSync(p));
+    const symbolFontCandidates = (
+      symbolAssetCandidates.length > 0 ? symbolAssetCandidates : []
+    ).concat(
+      process.platform === 'win32'
+        ? [ 'C:/Windows/Fonts/seguisym.ttf' ]
+        : process.platform === 'darwin'
+        ? [ '/System/Library/Fonts/Supplemental/Symbol.ttf' ]
+        : [ '/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf' ]
+    );
     const tickFont = symbolFontCandidates.find(p => fs.existsSync(p)) || latinFont;
     const size = Number.isFinite(Number(fontsize)) ? Number(fontsize) : 16;
     const lineHeight = size * 1.4; // Line height for spacing
@@ -279,6 +262,42 @@ const overlayTextOnImage = async (req, res) => {
     // Build layers per comment: number on first line only; one tick per comment
     let currentY = startY;
     const layers = [];
+
+    // Optional header for relevancy and score drawn above comments (no-op if not provided)
+    try {
+      const srcEval = (hindiEvaluation && typeof hindiEvaluation === 'object') ? hindiEvaluation
+        : ((evaluation && typeof evaluation === 'object') ? evaluation : (req.body && req.body.header) || null);
+      const relVal = Number.isFinite(srcEval?.relevancy) ? Math.round(srcEval.relevancy) : null;
+      const scoreVal = Number.isFinite(srcEval?.score) ? srcEval.score : null;
+      if (relVal !== null || scoreVal !== null) {
+        const isHindiHeader = /[\u0900-\u097F]/.test(preferredText || '') || !!hindiEvaluation;
+        // const relLabel = isHindiHeader ? 'प्रासंगिकता' : 'Relevancy';
+        const relLabel = 'Relevancy';
+        // const scoreLabel = isHindiHeader ? 'स्कोर' : 'Score';
+        const scoreLabel = 'Score';
+        const parts = [];
+        if (relVal !== null) parts.push(`${relLabel}: ${relVal}%`);
+        if (scoreVal !== null) parts.push(`${scoreLabel}: ${scoreVal}`);
+        const headerText = parts.join('  |  ');
+        const headerClean = cleanTextForDrawtext(headerText);
+        const headerSize = Math.max(14, Math.round((Number.isFinite(Number(fontsize)) ? Number(fontsize) : 16) * 1.05));
+        let hx = '(w-text_w)/2';
+        if (addSidebar) {
+          hx = `w-${panelWidth}+${Math.max(12, paddingX)}`;
+        } else if (requestedAlign === 'left') {
+          hx = `${Math.max(12, paddingX)}`;
+        } else if (requestedAlign === 'right') {
+          hx = `w-text_w-${Math.max(12, paddingX)}`;
+        }
+        const hy = Math.max(8, startY - Math.round(lineHeight * 0.9));
+        const headerLayer = selectedFont
+          ? `drawtext=text='${headerClean}':fontfile='${toFilterPath(selectedFont)}':fontcolor=${fontColor}:fontsize=${headerSize}:x=${hx}:y=${hy}`
+          : fallbackFontFamily
+          ? `drawtext=text='${headerClean}':font='${fallbackFontFamily}':fontcolor=${fontColor}:fontsize=${headerSize}:x=${hx}:y=${hy}`
+          : `drawtext=text='${headerClean}':fontcolor=${fontColor}:fontsize=${headerSize}:x=${hx}:y=${hy}`;
+        layers.push(headerLayer);
+      }
+    } catch (_) {}
     if (totalWrappedLines.length > 0) {
       wrappedComments.forEach((lines, commentIndex) => {
         const linesForThis = Array.isArray(lines) && lines.length > 0 ? lines : [''];
@@ -304,6 +323,8 @@ const overlayTextOnImage = async (req, res) => {
 
           const textLayer = selectedFont
             ? `drawtext=text='${cleanLine}':fontfile='${toFilterPath(selectedFont)}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`
+            : fallbackFontFamily
+            ? `drawtext=text='${cleanLine}':font='${fallbackFontFamily}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`
             : `drawtext=text='${cleanLine}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`;
           layers.push(textLayer);
 

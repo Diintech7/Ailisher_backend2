@@ -642,7 +642,6 @@ router.post(
                         const hindiPrompt = generateCustomHindiEvaluationPrompt(
                           question,
                           extractedTexts,
-                          { includeImageAnnotations }
                         );
                         const hindiResponse = await axios.post(
                           `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
@@ -1290,21 +1289,31 @@ router.post(
               answerImages.length > 0
             ) {
               const annotations = [];
+              // Prefer Hindi evaluation comments for annotations if available
+              const hindiEval = userAnswerData.hindiEvaluation;
+              const sourceCommentsAll = Array.isArray(hindiEval?.comments) && hindiEval.comments.length > 0
+                ? hindiEval.comments
+                : (evaluation.comments || []);
               for (let i = 0; i < answerImages.length; i++) {
                 const img = answerImages[i];
                 // Use at most 4 evaluation comments overall
-                const evalComments = (evaluation.comments || []).slice(0, 4);
+                const evalComments = sourceCommentsAll.slice(0, 4);
                 let comments;
                 if (answerImages.length === 1) {
                   // Single image: show all 4 comments regardless of perImageComments
                   comments = evalComments;
                 } else {
                   // Multiple images: prefer per-image mapping, else 2 per image
-                  comments =
-                    Array.isArray(evaluation.perImageComments?.[i]) &&
-                    evaluation.perImageComments[i].length > 0
-                      ? evaluation.perImageComments[i]
-                      : evalComments.slice(0, 2);
+                  if (Array.isArray(hindiEval?.comments) && hindiEval.comments.length > 0) {
+                    // Distribute Hindi comments sequentially, two per image
+                    comments = sourceCommentsAll.slice(i * 2, i * 2 + 2);
+                  } else {
+                    comments =
+                      Array.isArray(evaluation.perImageComments?.[i]) &&
+                      evaluation.perImageComments[i].length > 0
+                        ? evaluation.perImageComments[i]
+                        : evalComments.slice(0, 2);
+                  }
                 }
                 if (!img.cloudinaryPublicId) continue;
                 // Professional text wrapping for better readability and proper line breaks
@@ -1335,16 +1344,17 @@ router.post(
                       imageUrl: img.imageUrl,
                       text: text,
                       fontsize: 18,
-                      fontFamily: "Arial",
+                      fontStyle: "handwritten",
+                      customFontPath: "./assets/fonts/Kalam-Regular.ttf",
                       fontWeight: "bold",
                       color: "#FF0000", // bright red text
                       align: "left",
                       numbered: true,
                       withTicks: false,
                       ticks: [
-                        { x: 0.22, y: 0.3, size: 100, color: "#FF0000" },
-                        { x: 0.10, y: 0.6, size: 100, color: "#FF0000" },
-                        { x: 0.40, y: 0.8, size: 100, color: "#FF0000" },
+                        { x: 0.22, y: 0.3, size: 80, color: "#FF0000" },
+                        { x: 0.10, y: 0.6, size: 80, color: "#FF0000" },
+                        { x: 0.40, y: 0.8, size: 80, color: "#FF0000" },
                       ],
 
                       xPadding: 24,
@@ -1354,7 +1364,10 @@ router.post(
                       padding: 10,
                       borderRadius: 6,
                       textShadow: "2px 2px 6px rgba(0,0,0,0.9)", // extra shadow to make red pop
+                      evaluation,
+                      hindiEvaluation: userAnswerData.hindiEvaluation || undefined
                     },
+                    
                   };
 
                   let annotatedImageBase64 = null;
