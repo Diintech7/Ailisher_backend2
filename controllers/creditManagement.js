@@ -8,6 +8,7 @@ const ObjectiveTest = require("../models/ObjectiveTest");
 const Workbook = require("../models/Workbook");
 const SubjectiveTest = require("../models/SubjectiveTest");
 const { generateGetPresignedUrl } = require("../utils/s3");
+const UserPlan = require("../models/UserPlan");
 
 exports.getCreditAccount = async (req, res) => {
   try {
@@ -289,6 +290,14 @@ exports.getCreditRechargePlansWithItems = async (req, res) => {
       items: { $exists: true, $ne: [] }
     }).populate('items');
 
+    for(const plan of plans) {
+      const isEnrolled = await UserPlan.findOne({
+        userId: req.user.id,
+        planId: plan._id,
+        status: 'active'
+      });
+      plan.isEnrolled = isEnrolled ? true : false;
+    }
     res.json({
       success: true,
       data: plans
