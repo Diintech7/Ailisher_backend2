@@ -616,6 +616,7 @@ router.get("/book/details", authenticateMobileUser, async (req, res) => {
         },
         // Plan information
         isPaid: planInfo.isPaid,
+        isEnrolled: planInfo.isEnrolled,
         planDetails: planInfo.planDetails,
       },
       meta: {

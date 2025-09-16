@@ -12,6 +12,7 @@ const Question = require('../models/Question');
 const ObjectiveQuestion = require('../models/ObjectiveQuestion');
 const SubjectiveQuestion = require('../models/SubjectiveQuestion');
 const MyWorkbook = require('../models/MyWorkbook'); // Make sure this is at the top if not present
+const UserPlan = require('../models/UserPlan');
 
 // Helper function to format workbook with user info and S3 URLs
 const formatWorkbookWithUserInfo = async (workbook) => {
@@ -62,8 +63,24 @@ const formatWorkbookWithUserInfo = async (workbook) => {
         clientId: workbook.clientId,
         status: 'active'
       }).select('_id name description MRP offerPrice category duration status');
-
+      // Determine if current user is enrolled in any of these plans
+      let isEnrolled = false;
+      try {
+        const now = new Date();
+        const enrolled = await UserPlan.findOne({
+          userId: req.user?.id,
+          clientId: workbook.clientId,
+          planId: { $in: planIds.map(plan => plan._id) },
+          status: 'active',
+          startDate: { $lte: now },
+          endDate: { $gte: now }
+        }).select('_id');
+        isEnrolled = Boolean(enrolled);
+      } catch (enrollErr) {
+        console.error('Error checking enrollment for book (details):', enrollErr);
+      }
       formattedWorkbook.isPaid = true;
+      formattedWorkbook.isEnrolled = isEnrolled;
       formattedWorkbook.planDetails = planIds.map(plan => ({
         id: plan._id,
         name: plan.name,
@@ -76,11 +93,13 @@ const formatWorkbookWithUserInfo = async (workbook) => {
       }));
     } else {
       formattedWorkbook.isPaid = workbook.isPaid || false;
+      formattedWorkbook.isEnrolled = false;
       formattedWorkbook.planDetails = [];
     }
   } catch (error) {
     console.error('Error fetching plan details for workbook:', error);
     formattedWorkbook.isPaid = workbook.isPaid || false;
+    formattedWorkbook.isEnrolled = false;
     formattedWorkbook.planDetails = [];
   }
 

@@ -8,6 +8,7 @@ const Book = require('../models/Book');
 const MobileUser = require('../models/MobileUser');
 const { authenticateMobileUser, ensureUserBelongsToClient } = require('../middleware/mobileAuth');
 const { generateGetPresignedUrl } = require('../utils/s3');
+const UserPlan = require('../models/UserPlan');
 
 // Apply authentication middleware to all routes
 router.use(authenticateMobileUser);
@@ -251,8 +252,25 @@ router.get('/list', async (req, res) => {
             status: 'active'
           }).select('_id name description MRP offerPrice category duration status');
     
+          // Determine if current user is enrolled in any of these plans
+      let isEnrolled = false;
+      try {
+        const now = new Date();
+        const enrolled = await UserPlan.findOne({
+          userId: req.user?.id,
+          clientId: clientId,
+          planId: { $in: plans.map(plan => plan._id) },
+          status: 'active',
+          startDate: { $lte: now },
+          endDate: { $gte: now }
+        }).select('_id');
+        isEnrolled = Boolean(enrolled);
+      } catch (enrollErr) {
+        console.error('Error checking enrollment for book:', enrollErr);
+      }
           planInfo = {
             isPaid: true,
+            isEnrolled,
             planDetails: plans.map(plan => ({
               id: plan._id,
               name: plan.name,
@@ -296,6 +314,7 @@ router.get('/list', async (req, res) => {
         priority: myBook.priority || 'normal',
         // Plan information
         isPaid: planInfo.isPaid,
+        isEnrolled: planInfo.isEnrolled,
         planDetails: planInfo.planDetails
       };
     }));
