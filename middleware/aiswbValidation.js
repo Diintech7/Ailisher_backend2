@@ -99,8 +99,8 @@ const validateQuestion = [
     .isString()
     .withMessage('Evaluation guideline must be a string')
     .trim()
-    .isLength({ min: 5, max: 5000 })
-    .withMessage('Evaluation guideline must be between 5 and 5000 characters'),
+    .isLength({ min: 5, max: 7000 })
+    .withMessage('Evaluation guideline must be between 5 and 7000 characters'),
   
   body('setId')
     .optional()

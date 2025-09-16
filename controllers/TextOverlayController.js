@@ -39,10 +39,32 @@ const toFilterPath = (absolutePath) => {
 };
 
 // Controller: overlay text on a single image (base64 or URL) using in-memory streams
-// Request body: { imageBase64?: string, imageUrl?: string, text: string, fontsize?: number, color?: string, align?: 'left'|'center'|'right', numbered?: boolean, withTicks?: boolean, tickColor?: string, xPadding?: number, sidebar?: boolean, sidebarWidth?: number, sidebarColor?: string }
+// Request body:
+// {
+//   imageBase64?: string,
+//   imageUrl?: string,
+//   // Preferred: provide one of these blocks to auto-pick language
+//   hindiEvaluation?: { comments?: string[], analysis?: { feedback?: string[], strengths?: string[], weaknesses?: string[] } },
+//   evaluation?: { comments?: string[], analysis?: { feedback?: string[], strengths?: string[], weaknesses?: string[] } },
+//   // Fallback: direct text to render (used as-is if provided)
+//   text?: string,
+//   fontsize?: number,
+//   color?: string,
+//   align?: 'left'|'center'|'right',
+//   numbered?: boolean,
+//   withTicks?: boolean,
+//   tickColor?: string,
+//   xPadding?: number,
+//   sidebar?: boolean,
+//   sidebarWidth?: number,
+//   sidebarColor?: string,
+//   // Font options
+//   fontStyle?: 'default'|'handwritten',
+//   customFontPath?: string
+// }
 const overlayTextOnImage = async (req, res) => {
   try {
-    const { imageBase64, imageUrl, text, fontsize, color, align, numbered, withTicks, tickColor, xPadding, sidebar, sidebarWidth, sidebarColor, ticks } = req.body;
+    const { imageBase64, imageUrl, text, fontsize, color, align, numbered, withTicks, tickColor, xPadding, sidebar, sidebarWidth, sidebarColor, ticks, evaluation, hindiEvaluation, fontStyle, customFontPath } = req.body;
     if (!imageBase64 && !imageUrl) {
       return res.status(400).json({ error: 'Provide imageBase64 or imageUrl' });
     }
@@ -56,6 +78,25 @@ const overlayTextOnImage = async (req, res) => {
       const resp = await axios.get(imageUrl, { responseType: 'arraybuffer' });
       inputBuffer = Buffer.from(resp.data);
     }
+
+    // Build text from inputs with Hindi preference if available
+    const buildTextFromEval = (ev) => {
+      if (!ev || typeof ev !== 'object') return '';
+      const parts = [];
+      if (Array.isArray(ev.comments)) parts.push(...ev.comments);
+      if (ev.analysis) {
+        if (Array.isArray(ev.analysis.feedback)) parts.push(...ev.analysis.feedback);
+        if (Array.isArray(ev.analysis.strengths)) parts.push(...ev.analysis.strengths.map(s => `✓ ${s}`));
+        if (Array.isArray(ev.analysis.weaknesses)) parts.push(...ev.analysis.weaknesses.map(w => `⚠ ${w}`));
+      }
+      return parts
+        .map(s => String(s || '').trim())
+        .filter(Boolean)
+        .join('\n\n');
+    };
+
+    // Prefer Hindi evaluation content when provided; else English; else provided text
+    const preferredText = buildTextFromEval(hindiEvaluation) || buildTextFromEval(evaluation) || text || '';
 
     // Process text to create properly wrapped lines
     const processTextForWrapping = (text, maxCharsPerLine = 50, maxLines = 10) => {
@@ -108,7 +149,7 @@ const overlayTextOnImage = async (req, res) => {
     };
 
     // Split input into comments (blank line or '|||') and wrap each comment separately
-    const rawComments = text && typeof text === 'string'
+    const rawComments = preferredText && typeof preferredText === 'string'
       ? String(text)
           .split(/\n\n|\|\|\|/)
           .map(s => s.trim())
@@ -133,7 +174,9 @@ const overlayTextOnImage = async (req, res) => {
     const tickFontColor = normalizeColor(tickColor); // green-500 by default
     const panelColor = normalizeColor(sidebarColor || '#FFFFFF');
 
-    // English-only: choose a Latin font
+    // Choose a font based on language (Latin vs Devanagari)
+    const containsDevanagari = /[\u0900-\u097F]/.test(preferredText || '');
+    // English/Latin font candidates
     const latinCandidates = process.platform === 'win32'
       ? [
           'C:/Windows/Fonts/arial.ttf',
@@ -149,8 +192,62 @@ const overlayTextOnImage = async (req, res) => {
           '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
           '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf'
         ];
-
     const latinFont = latinCandidates.find(p => fs.existsSync(p)) || null;
+    // Devanagari font candidates (Windows: Nirmala UI or Mangal; macOS/Linux: Noto/Devanagari support)
+    const devCandidates = process.platform === 'win32'
+      ? [
+          'C:/Windows/Fonts/Nirmala.ttf',
+          'C:/Windows/Fonts/mangal.ttf',
+          'C:/Windows/Fonts/arialuni.ttf'
+        ]
+      : process.platform === 'darwin'
+      ? [
+          '/System/Library/Fonts/Supplemental/KohinoorDevanagari-Regular.otf',
+          '/Library/Fonts/NotoSansDevanagari-Regular.ttf',
+          '/Library/Fonts/Arial Unicode.ttf'
+        ]
+      : [
+          '/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf',
+          '/usr/share/fonts/truetype/indie-fonts/lohit_dev.ttf',
+          '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+        ];
+    const devFont = devCandidates.find(p => fs.existsSync(p)) || null;
+    // Optional handwritten font selection
+    let handwritingCandidates = [];
+    if (containsDevanagari) {
+      // Devanagari handwritten system fonts are uncommon; fallback to Devanagari primary
+      handwritingCandidates = [devFont].filter(Boolean);
+    } else {
+      handwritingCandidates = process.platform === 'win32'
+        ? [
+            'C:/Windows/Fonts/segoesc.ttf', // Segoe Script
+            'C:/Windows/Fonts/BRADHITC.TTF', // Bradley Hand ITC
+            'C:/Windows/Fonts/comic.ttf', // Comic Sans MS
+            'C:/Windows/Fonts/Comic.ttf'
+          ]
+        : process.platform === 'darwin'
+        ? [
+            '/Library/Fonts/Bradley Hand.ttf',
+            '/Library/Fonts/Noteworthy.ttc',
+            '/Library/Fonts/Chalkboard.ttf',
+            '/Library/Fonts/Comic Sans MS.ttf'
+          ]
+        : [
+            '/usr/share/fonts/truetype/msttcorefonts/Comic_Sans_MS.ttf',
+            '/usr/share/fonts/truetype/microsoft/Comic_Sans_MS.ttf',
+            '/usr/share/fonts/truetype/liberation/LiberationMono-Italic.ttf' // weak fallback
+          ];
+    }
+
+    const handwritingFont = handwritingCandidates.find(p => p && fs.existsSync(p)) || null;
+    let selectedFont = containsDevanagari ? (devFont || latinFont) : latinFont;
+
+    // Allow custom font override
+    if (customFontPath && typeof customFontPath === 'string' && fs.existsSync(customFontPath)) {
+      selectedFont = customFontPath;
+    } else if (fontStyle === 'handwritten' && handwritingFont) {
+      selectedFont = handwritingFont;
+    }
     // Try to pick a symbol-capable font for the tick glyph ✓ (U+2713)
     const symbolFontCandidates = process.platform === 'win32'
       ? [
@@ -205,8 +302,8 @@ const overlayTextOnImage = async (req, res) => {
             xExpr = `w-text_w-${paddingX}`;
           }
 
-          const textLayer = latinFont
-            ? `drawtext=text='${cleanLine}':fontfile='${toFilterPath(latinFont)}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`
+          const textLayer = selectedFont
+            ? `drawtext=text='${cleanLine}':fontfile='${toFilterPath(selectedFont)}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`
             : `drawtext=text='${cleanLine}':fontcolor=${fontColor}:fontsize=${size}:x=${xExpr}:y=${yPos}`;
           layers.push(textLayer);
 
