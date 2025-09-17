@@ -179,6 +179,7 @@ router.get('/answers', [
       $project: {
         _id: 1,
         userId: 1,
+        clientId: 1,
         questionId: 1,
         testType: 1,
         testId: 1,
@@ -1457,6 +1458,7 @@ router.get('/answers/evaluator/evaluated', verifyTokenforevaluator, [
         _id: 1,
         userId: 1,
         questionId: 1,
+        clientId: 1,
         testType: 1,
         testId: 1,
         setId: 1,
@@ -1706,6 +1708,7 @@ router.get('/answers/evaluator/accepted', verifyTokenforevaluator, [
       $project: {
         _id: 1,
         userId: 1,
+        clientId: 1,
         questionId: 1,
         testType: 1,
         testId: 1,

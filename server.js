@@ -52,6 +52,7 @@ const creditManagementRoutes = require('./routes/creditManagement');
 const paytmRoutes = require('./routes/paytm')
 const UserPlan = require('./models/UserPlan')
 const CreditAccount = require('./models/CreditAccount')
+const answerapisRoutes = require('./routes/answerapis')
 const CreditRechargePlan = require('./models/CreditRechargePlan')
 
 app.use(cors())
@@ -132,6 +133,7 @@ app.use("/api/mobile/public-chat", require("./routes/mobilePDFChat"))
 
 // Global Evaluation routes (accessible without client-specific middleware)
 app.use("/api/aiswb", evaluationRoutes)
+app.use("/api/answerapis", answerapisRoutes)
 
 // Mobile routes with client-specific access
 app.use(

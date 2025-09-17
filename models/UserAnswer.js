@@ -14,7 +14,7 @@ const userAnswerSchema = new mongoose.Schema({
   testType: {
     type: String,
     enum: ['aiswb', 'subjective'],
-    required: true
+    // required: true
   },
   testId: {
     type: mongoose.Schema.Types.ObjectId,

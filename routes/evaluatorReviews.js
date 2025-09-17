@@ -2329,18 +2329,24 @@ router.post('/publishwithannotation', async (req,res) => {
 
     // Dynamically populate question based on testType
     let question;
-    if (userAnswer.testType === 'aiswb') {
-      const AiswbQuestion = require('../models/AiswbQuestion');
-      question = await AiswbQuestion.findById(userAnswer.questionId);
-    } else if (userAnswer.testType === 'subjective') {
-      const SubjectiveTestQuestion = require('../models/SubjectiveTestQuestion');
-      question = await SubjectiveTestQuestion.findById(userAnswer.questionId);
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid test type for this answer.'
-      });
+    if(userAnswer.testType){
+      if (userAnswer.testType === 'aiswb') {
+        const AiswbQuestion = require('../models/AiswbQuestion');
+        question = await AiswbQuestion.findById(userAnswer.questionId);
+      } else if (userAnswer.testType === 'subjective') {
+        const SubjectiveTestQuestion = require('../models/SubjectiveTestQuestion');
+        question = await SubjectiveTestQuestion.findById(userAnswer.questionId);
+      } else {
+        const AiswbQuestion = require('../models/AiswbQuestion');
+        question = await AiswbQuestion.findById(userAnswer.questionId);
+      }
     }
+    else
+    {
+      const AiswbQuestion = require('../models/AiswbQuestion');
+      question = await AiswbQuestion.findById(userAnswer.questionId); 
+    }
+    
 
     console.log(question)
     console.log(question.evaluationMode)
