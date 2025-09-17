@@ -94,4 +94,8 @@ router.post('/questions/:questionId/pdf/attach', verifyToken,
   aiswbController.attachPdfToQuestion
 );
 
+router.delete('/questions/:questionId/pdf/delete', verifyToken,
+  aiswbController.deletePdfFromQuestion
+);
+
 module.exports = router;

@@ -4,7 +4,7 @@ const { validationResult } = require('express-validator');
 const UserAnswer = require('../models/UserAnswer');
 const UserProfile = require('../models/UserProfile');
 const { getEvaluationFrameworkText } = require('../services/aiServices');
-const { generatePresignedUrl, generateGetPresignedUrl } = require('../utils/s3');
+const { generatePresignedUrl, generateGetPresignedUrl, deleteObject } = require('../utils/s3');
 
 // Question Controllers
 const addQuestion = async (req, res) => {
@@ -969,6 +969,66 @@ const attachPdfToQuestion = async (req, res) => {
   }
 };
 
+// Delete a PDF from question's modalAnswerPdfKey array and from S3
+const deletePdfFromQuestion = async (req, res) => {
+  try {
+    const { questionId } = req.params;
+    const { key } = req.body || {};
+
+    if (!key || typeof key !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'key is required',
+        error: { code: 'INVALID_INPUT', details: 'key must be a string' }
+      });
+    }
+
+    const question = await Question.findById(questionId);
+    if (!question) {
+      return res.status(404).json({
+        success: false,
+        message: 'Question not found',
+        error: { code: 'QUESTION_NOT_FOUND' }
+      });
+    }
+
+    // Check if the PDF key exists in the question
+    if (!Array.isArray(question.modalAnswerPdfKey) || !question.modalAnswerPdfKey.includes(key)) {
+      return res.status(404).json({
+        success: false,
+        message: 'PDF not found in question',
+        error: { code: 'PDF_NOT_FOUND' }
+      });
+    }
+
+    // Remove the key from the question's modalAnswerPdfKey array
+    question.modalAnswerPdfKey = question.modalAnswerPdfKey.filter(pdfKey => pdfKey !== key);
+    await question.save();
+
+    // Delete the file from S3/R2
+    try {
+      await deleteObject(key)
+      console.log(`Successfully deleted PDF from S3: ${key}`);
+    } catch (s3Error) {
+      console.error('Error deleting PDF from S3:', s3Error);
+      // Continue even if S3 deletion fails - the database is already updated
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'PDF deleted successfully',
+      data: { modalAnswerPdfKey: question.modalAnswerPdfKey }
+    });
+  } catch (error) {
+    console.error('Delete PDF from question error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: { code: 'SERVER_ERROR', details: error.message }
+    });
+  }
+};
+
 module.exports = {
   addQuestion,
   updateQuestion,
@@ -984,5 +1044,6 @@ module.exports = {
   getQuestionSubmissions,
   getDefaultEvaluationFramework,
   generatePdfUploadUrl,
-  attachPdfToQuestion
+  attachPdfToQuestion,
+  deletePdfFromQuestion
 };
