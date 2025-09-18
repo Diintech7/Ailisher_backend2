@@ -20,7 +20,7 @@ const CreditRechargePlanSchema = new mongoose.Schema({
     required: function () {
       return Array.isArray(this.items) && this.items.length > 0;
     },
-    min: 1
+    min: 0
   },
   credits: {
     type: Number,
