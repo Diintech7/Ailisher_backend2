@@ -5,6 +5,9 @@ const { createClient } = require('@deepgram/sdk');
 const { error } = require('console');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
+// Absolute yt-dlp path for Linux (EC2) and default exe for Windows
+const YTDLP_PATH = process.platform === 'win32' ? 'yt-dlp.exe' : '/usr/bin/yt-dlp';
+
 // Replace with your actual Deepgram API key
 const deepgram = createClient(process.env.DEEPGRAM_API_KEY || 'YOUR_DEEPGRAM_API_KEY');
 
@@ -15,7 +18,7 @@ router.post('/transcribe-audio', async (req, res) => {
         return res.status(400).json({ error: 'Invalid YouTube URL' });
     }
     try {
-        const ytdlp = spawn(process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp', [
+        const ytdlp = spawn(YTDLP_PATH, [
             '-x', '--audio-format', 'mp3', '-o', '-', url
         ]);
 
@@ -107,9 +110,9 @@ router.post('/transcribe-audio', async (req, res) => {
 // Serve individual clip video files
 // router.get('/clip/:id/:clipIndex', (req, res) => {
 //     const tempDir = path.join(__dirname, '../temp');
-//     const clipPath = path.join(tempDir, `${req.params.id}_clip${req.params.clipIndex}.mp4`);
+//     const clipPath = path.join(tempDir, ${req.params.id}_clip${req.params.clipIndex}.mp4);
 //     if (fs.existsSync(clipPath)) {
-//         res.download(clipPath, `clip${req.params.clipIndex}.mp4`, (err) => {
+//         res.download(clipPath, clip${req.params.clipIndex}.mp4, (err) => {
 //             if (!err) {
 //                 // Optionally, clean up temp files after download
 //                 // fs.unlinkSync(clipPath);
@@ -123,7 +126,7 @@ router.post('/transcribe-audio', async (req, res) => {
 // // Serve the reel video file
 // router.get('/reel/:id', (req, res) => {
 //     const tempDir = path.join(__dirname, '../temp');
-//     const reelPath = path.join(tempDir, `${req.params.id}_reel.mp4`);
+//     const reelPath = path.join(tempDir, ${req.params.id}_reel.mp4);
 //     if (fs.existsSync(reelPath)) {
 //         res.download(reelPath, 'reel.mp4', (err) => {
 //             if (!err) {

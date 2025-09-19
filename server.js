@@ -43,6 +43,7 @@ const ai = require("./routes/aiServiceConfig");
 const userAnswer1 = require('./routes/userAnswer1')
 const youTubeRoutes = require('./routes/youtube');
 const aiguidelinesRoutes = require('./routes/aiguidelines');
+const aiCoursesRoutes = require('./routes/aicourses');
 const subjectiveTestRoutes = require('./routes/subjectivetest');
 const objectiveTestRoutes = require('./routes/objectivetest');
 const objectiveTestQuestionRoutes = require('./routes/objectivetestquestion');
@@ -121,6 +122,7 @@ app.use('/api/reels', require('./routes/reel'))
 app.use('/api/marketing', require('./routes/marketing'))
 app.use('/api/image-generator', require('./routes/ImageGenerator'))
 app.use('/api/questionbank', require('./routes/questionbank'))
+app.use('/api/aicourses', aiCoursesRoutes)
 
 // Enhanced PDF processing routes with clustering and optional auth
 app.use("/api/enhanced-pdf-embedding", require("./routes/pdfEmbedding"))

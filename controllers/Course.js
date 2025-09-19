@@ -2,9 +2,7 @@ const path = require('path');
 const Book = require("../models/Book");
 const User = require("../models/User");
 const Course = require("../models/Course");
-const MobileUser = require("../models/MobileUser");
 const { generatePresignedUrl, generateGetPresignedUrl, deleteObject } = require("../utils/s3");
-const { GetObjectCommand } = require('@aws-sdk/client-s3');
 
 // Get presigned URL for cover image upload
 const getuploadurl = async (req, res) => {
@@ -43,7 +41,7 @@ const createcourse = async (req, res) => {
   try {
     const { name, overview, details, cover_imageKey, faculty } = req.body;
     const { bookId } = req.params;
-
+    console.log(req.body);
     // Optional: Check if the book exists
     const book = await Book.findById(bookId);
     if (!book) {
