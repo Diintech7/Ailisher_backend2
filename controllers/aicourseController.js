@@ -518,3 +518,60 @@ exports.deleteLecture = async (req, res) => {
   }
 };
 
+exports.addTopic = async (req, res) => {
+  try {
+    const { lectureId } = req.params;
+    const {
+      topicName,
+      topicDescription,
+      VideoUrl: bodyVideoUrl,
+      videoKey: bodyVideoKey,
+      transcriptKey,
+      transcriptUrl,
+    } = req.body;
+
+    if (!topicName || !topicDescription) {
+      return res.status(400).json({ success: false, message: 'topicName and topicDescription are required' });
+    }
+
+    const lecture = await AILecture.findOne({ _id: lectureId });
+    if (!lecture) {
+      return res.status(404).json({ success: false, message: 'Lecture not found' });
+    }
+
+    let VideoKey = '';
+    let VideoUrl = '';
+    if (bodyVideoUrl && isHttpUrl(bodyVideoUrl)) {
+      VideoUrl = bodyVideoUrl;
+    } else if (bodyVideoKey) {
+      VideoKey = bodyVideoKey;
+    } else if (bodyVideoUrl && !isHttpUrl(bodyVideoUrl)) {
+      // client might have sent the key in VideoUrl field
+      VideoKey = bodyVideoUrl;
+    }
+
+    const newTopic = {
+      topicName,
+      topicDescription,
+      VideoKey,
+      VideoUrl,
+      transcriptKey: transcriptKey || '',
+      transcriptUrl: transcriptUrl || '',
+    };
+
+    lecture.topics.push(newTopic);
+    await lecture.save();
+
+    // Hydrate signed URL for the newly added topic if stored by key
+    const savedTopic = lecture.topics[lecture.topics.length - 1].toObject ? lecture.topics[lecture.topics.length - 1].toObject() : lecture.topics[lecture.topics.length - 1];
+    if (savedTopic.VideoKey && !isHttpUrl(savedTopic.VideoKey)) {
+      try { savedTopic.VideoUrl = await generateGetPresignedUrl(savedTopic.VideoKey); } catch (_) {}
+    }
+
+    return res.status(200).json({ success: true, message: 'Topic added', topic: savedTopic });
+  } catch (error) {
+    console.error('Add Topic error:', error);
+    return res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+

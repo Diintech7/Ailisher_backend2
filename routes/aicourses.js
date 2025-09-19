@@ -12,6 +12,7 @@ const {
   getLectures,
   updateLecture,
   deleteLecture,
+  addTopic,
   getAICoursesForMobile,
   getAICourseForMobile
 } = require('../controllers/aicourseController');
@@ -34,6 +35,7 @@ router.get('/:courseId/lectures', verifyToken, getLectures);
 router.post('/:courseId/lectures', verifyToken, createLecture);
 router.put('/:courseId/lectures/:lectureId', verifyToken, updateLecture);
 router.delete('/:courseId/lectures/:lectureId', verifyToken, deleteLecture);
+router.post('/lecture/:lectureId/add-topic', verifyToken, addTopic);
 
 module.exports = router;
 
