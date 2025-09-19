@@ -99,7 +99,6 @@ exports.createAICourse = async (req, res) => {
       faculty: processedFaculty,
       clientId,
       user: req.user.id,
-      userType: 'User',
       isPublic: isPublic === 'true' || isPublic === true || false,
       isPaid: isPaid === 'true' || isPaid === true || false,
       price: price ? Number(price) : 0,
@@ -338,6 +337,7 @@ exports.updateAICourse = async (req, res) => {
     }
 
     course.updatedAt = new Date();
+    course.user = req.user._id;
     await course.save();
 
     return res.status(200).json({ success: true, message: 'AI Course updated', course });
@@ -571,6 +571,189 @@ exports.addTopic = async (req, res) => {
     return res.status(200).json({ success: true, message: 'Topic added', topic: savedTopic });
   } catch (error) {
     console.error('Add Topic error:', error);
+    return res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+exports.addCourseToHighlights = async (req, res) => {
+  try {
+    const { note, order } = req.body;
+    const aiCourse = await AICourse.findById(req.params.id).populate('user', 'name email userId');
+    
+    if (!aiCourse) {
+      return res.status(404).json({ success: false, message: 'AI Course not found' });
+    }
+
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const clientId = getClientId(currentUser);
+    const canHighlight = aiCourse.clientId === clientId || aiCourse.user._id.toString() === req.user.id;
+
+    if (!canHighlight) {
+      return res.status(403).json({ success: false, message: 'Not authorized to highlight this AI Course' });
+    }
+
+    if (aiCourse.isHighlighted) {
+      return res.status(400).json({ success: false, message: 'AI Course is already highlighted' });
+    }
+
+    if (order && order > 0) {
+      const existingAICourseWithOrder = await AICourse.findOne({ 
+        clientId, 
+        isHighlighted: true, 
+        highlightOrder: order,
+        _id: { $ne: req.params.id }
+      });
+
+      if (existingAICourseWithOrder) {
+        return res.status(400).json({
+          success: false,
+          message: `Highlight order ${order} is already taken by another AI Course`
+        });
+      }
+    }
+
+    const userType = 'User'; // Assuming web users are 'User' type
+    await aiCourse.toggleHighlight(currentUser._id, userType, note || '', order || 0);
+    await aiCourse.populate('highlightedBy', 'name email userId');
+
+    // const aiCourseWithUserInfo = formatAICourseWithUserInfo(aiCourse);
+
+    return res.status(200).json({
+      success: true,
+      message: 'AI Course added to highlights successfully',
+      aiCourse: aiCourse
+    });
+  } catch (error) {
+    console.error('Add AI Course to highlights error:', error);
+    return res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+exports.removeCourseFromHighlights = async (req, res) => {
+  try {
+    const aiCourse = await AICourse.findById(req.params.id).populate('user', 'name email userId');
+    
+    if (!aiCourse) {
+      return res.status(404).json({ success: false, message: 'AI Course not found' });
+    }
+
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const clientId = getClientId(currentUser);
+      const canRemoveHighlight = aiCourse.clientId === clientId || aiCourse.user._id.toString() === req.user.id;
+
+    if (!canRemoveHighlight) {
+      return res.status(403).json({ success: false, message: 'Not authorized to remove highlight from this AI Course' });
+    }
+
+    if (!aiCourse.isHighlighted) {
+      return res.status(400).json({ success: false, message: 'AI Course is not highlighted' });
+    }
+
+    const userType = 'User'; // Assuming web users are 'User' type
+    await aiCourse.toggleHighlight(currentUser._id, userType);
+    
+    // const aiCourseWithUserInfo = formatAICourseWithUserInfo(aiCourse);
+
+    return res.status(200).json({
+      success: true,
+      message: 'AI Course removed from highlights successfully',
+      aiCourse: aiCourse
+    });
+  } catch (error) {
+    console.error('Remove AI Course from highlights error:', error);
+    return res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+exports.addCourseToTrending = async (req, res) => {
+  try {
+    const { score, endDate } = req.body;
+    const aiCourse = await AICourse.findById(req.params.id).populate('user', 'name email userId');
+    
+    if (!aiCourse) {
+      return res.status(404).json({ success: false, message: 'AI Course not found' });
+    }
+
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const clientId = getClientId(currentUser);
+    const canMakeTrending = aiCourse.clientId === clientId || aiCourse.user._id.toString() === req.user.id;
+
+    if (!canMakeTrending) {
+      return res.status(403).json({ success: false, message: 'Not authorized to make this AI Course trending' });
+    }
+
+    if (aiCourse.isTrending) {
+      return res.status(400).json({ success: false, message: 'AI Course is already trending' });
+    }
+
+    const userType = 'User'; // Assuming web users are 'User' type
+    const parsedScore = score ? parseInt(score) : 0;
+    const parsedEndDate = endDate ? new Date(endDate) : null;
+
+    await aiCourse.toggleTrending(currentUser._id, userType, parsedScore, parsedEndDate);
+    await aiCourse.populate('trendingBy', 'name email userId');
+
+    // const aiCourseWithUserInfo = formatAICourseWithUserInfo(aiCourse);
+
+    return res.status(200).json({
+      success: true,
+      message: 'AI Course added to trending successfully',
+      aiCourse: aiCourse
+    });
+  } catch (error) {
+    console.error('Add AI Course to trending error:', error);
+    return res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+exports.removeCourseFromTrending = async (req, res) => {
+  try {
+    const aiCourse = await AICourse.findById(req.params.id).populate('user', 'name email userId');
+    
+    if (!aiCourse) {
+      return res.status(404).json({ success: false, message: 'AI Course not found' });
+    }
+
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const clientId = getClientId(currentUser);
+    const canRemoveTrending = aiCourse.clientId === clientId || aiCourse.user._id.toString() === req.user.id;
+
+    if (!canRemoveTrending) {
+      return res.status(403).json({ success: false, message: 'Not authorized to remove trending from this AI Course' });
+    }
+
+    if (!aiCourse.isTrending) {
+      return res.status(400).json({ success: false, message: 'AI Course is not trending' });
+    }
+
+    const userType = 'User'; // Assuming web users are 'User' type
+    await aiCourse.toggleTrending(currentUser._id, userType);
+    
+    // const aiCourseWithUserInfo = formatAICourseWithUserInfo(aiCourse);
+
+    return res.status(200).json({
+      success: true,
+      message: 'AI Course removed from trending successfully',
+      aiCourse: aiCourse
+    });
+  } catch (error) {
+    console.error('Remove AI Course from trending error:', error);
     return res.status(500).json({ success: false, message: 'Server Error' });
   }
 };

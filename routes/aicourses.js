@@ -14,7 +14,11 @@ const {
   deleteLecture,
   addTopic,
   getAICoursesForMobile,
-  getAICourseForMobile
+  getAICourseForMobile,
+  addCourseToHighlights,
+  removeCourseFromHighlights,
+  addCourseToTrending,
+  removeCourseFromTrending
 } = require('../controllers/aicourseController');
 const { authenticateMobileUser, ensureUserBelongsToClient } = require('../middleware/mobileAuth');
 const { checkClientAccess } = require('../middleware/mobileAuth');
@@ -36,6 +40,11 @@ router.post('/:courseId/lectures', verifyToken, createLecture);
 router.put('/:courseId/lectures/:lectureId', verifyToken, updateLecture);
 router.delete('/:courseId/lectures/:lectureId', verifyToken, deleteLecture);
 router.post('/lecture/:lectureId/add-topic', verifyToken, addTopic);
+
+router.post('/:id/highlight', verifyToken, addCourseToHighlights);
+router.delete('/:id/highlight', verifyToken, removeCourseFromHighlights);
+router.post('/:id/trending', verifyToken, addCourseToTrending);
+router.delete('/:id/trending', verifyToken, removeCourseFromTrending);
 
 module.exports = router;
 
