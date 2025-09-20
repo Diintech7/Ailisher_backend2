@@ -3,6 +3,8 @@ const router = express.Router()
 const Book = require("../models/Book")
 const DataStore = require("../models/DatastoreItems")
 const Chat = require("../models/Chat")
+const CreditAccount = require("../models/CreditAccount")
+const CreditTransaction = require("../models/CreditTransaction")
 const axios = require("axios")
 
 // Helper function to log external API data
@@ -15,6 +17,140 @@ function logExternalAPIData(question, payload, response, method) {
   console.log(`📥 Response Status: ${response?.status || 'N/A'}`)
   console.log(`📥 Response Data:`, JSON.stringify(response?.data, null, 2))
   console.log("=".repeat(80) + "\n")
+}
+
+// Helper function to get today's chat count for a user
+async function getTodayChatCount(userId, clientId) {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const todayChats = await Chat.find({
+      userId,
+      clientId,
+      lastMessageAt: { $gte: today, $lt: tomorrow }
+    });
+    
+    return todayChats.length;
+  } catch (error) {
+    console.error('Error getting today chat count:', error);
+    return 0;
+  }
+}
+
+// Helper function to check if user can chat (has free chats or credits)
+async function checkChatPermission(userId, clientId) {
+  try {
+    const todayChatCount = await getTodayChatCount(userId, clientId);
+    
+    // If user has free chats remaining, they can chat
+    if (todayChatCount < 5) {
+      return { 
+        canChat: true, 
+        reason: 'free_chat_available', 
+        remainingFree: 5 - todayChatCount,
+        todayChatCount
+      };
+    }
+    
+    // If no free chats, check if they have credits (need 0.20 credits per chat)
+    const creditAccount = await CreditAccount.findOne({ userId, clientId });
+    
+    if (!creditAccount || creditAccount.balance < 0.20) {
+      return { 
+        canChat: false, 
+        reason: 'insufficient_credits', 
+        requiredCredits: 0.20,
+        availableCredits: creditAccount?.balance || 0,
+        todayChatCount
+      };
+    }
+    
+    return { 
+      canChat: true, 
+      reason: 'credits_available', 
+      requiredCredits: 0.20,
+      todayChatCount
+    };
+  } catch (error) {
+    console.error('Error checking chat permission:', error);
+    return { 
+      canChat: false, 
+      reason: 'error', 
+      message: 'Failed to check chat permissions' 
+    };
+  }
+}
+
+// Helper function to record chat usage and deduct credits if needed
+async function recordChatUsage(userId, clientId, chatId, bookId, question) {
+  try {
+    const todayChatCount = await getTodayChatCount(userId, clientId);
+    
+    if (todayChatCount < 5) {
+      // Use free chat - no credit deduction needed
+      return { 
+        success: true, 
+        chatType: 'free', 
+        remainingFree: 5 - todayChatCount - 1,
+        creditsDeducted: 0
+      };
+    } else {
+      // Use paid chat (0.20 credits)
+      const creditAccount = await CreditAccount.findOne({ 
+        userId, 
+        clientId 
+      });
+      
+      if (!creditAccount || creditAccount.balance < 0.20) {
+        return { 
+          success: false, 
+          reason: 'insufficient_credits',
+          requiredCredits: 0.20,
+          availableCredits: creditAccount?.balance || 0
+        };
+      }
+      
+      // Deduct credits
+      const balanceBefore = creditAccount.balance;
+      creditAccount.balance -= 0.20;
+      await creditAccount.save();
+      
+      // Record transaction
+      await CreditTransaction.create({
+        userId,
+        type: 'debit',
+        amount: 0.20,
+        balanceBefore,
+        balanceAfter: creditAccount.balance,
+        category: 'service_usage',
+        description: 'Chat usage - 1 chat',
+        referenceId: `chat_${Date.now()}`,
+        metadata: {
+          chatId,
+          bookId,
+          question: question.substring(0, 100), // Store first 100 chars
+          chatType: 'paid'
+        }
+      });
+      
+      return { 
+        success: true, 
+        chatType: 'paid', 
+        creditsDeducted: 0.20,
+        remainingCredits: creditAccount.balance
+      };
+    }
+  } catch (error) {
+    console.error('Error recording chat usage:', error);
+    return { 
+      success: false, 
+      reason: 'error', 
+      message: 'Failed to record chat usage' 
+    };
+  }
 }
 
 // Helper function to generate chat title from first question
@@ -119,6 +255,82 @@ async function saveChatMessage(chatId, clientId, userId, bookId, userMessage, ai
   }
 }
 
+// Check daily chat status for a user
+router.post("/chat-status", async (req, res) => {
+  try {
+    const { user_id, client_id } = req.body
+
+    if (!user_id || typeof user_id !== "string" || user_id.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "user_id is required in body" })
+    }
+    if (!client_id || typeof client_id !== "string" || client_id.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "client_id is required in body" })
+    }
+
+    // Get today's chat count
+    const todayChatCount = await getTodayChatCount(user_id, client_id)
+    
+    // Get credit account
+    const creditAccount = await CreditAccount.findOne({ userId: user_id, clientId: client_id })
+    
+    // Get today's credit transactions for chat
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const todayCreditTransactions = await CreditTransaction.find({
+      userId: user_id,
+      createdAt: { $gte: today, $lt: tomorrow },
+      category: 'service_usage',
+      description: { $regex: /chat/i }
+    });
+    
+    const creditsSpentToday = todayCreditTransactions.reduce((sum, tx) => sum + tx.amount, 0);
+    
+    // Get last chat time
+    const lastChat = await Chat.findOne({
+      userId: user_id,
+      clientId: client_id
+    }).sort({ lastMessageAt: -1 });
+    
+    // Check if user can chat
+    const chatPermission = await checkChatPermission(user_id, client_id)
+    
+    return res.json({
+      success: true,
+      dailyUsage: {
+        freeChatsUsed: Math.min(todayChatCount, 5),
+        freeChatsRemaining: Math.max(0, 5 - todayChatCount),
+        paidChatsUsed: Math.max(0, todayChatCount - 5),
+        totalChatsUsed: todayChatCount,
+        creditsSpent: creditsSpentToday,
+        lastChatAt: lastChat?.lastMessageAt || null
+      },
+      creditAccount: {
+        balance: creditAccount?.balance || 0,
+        currency: 'credits'
+      },
+      chatPermission: {
+        canChat: chatPermission.canChat,
+        reason: chatPermission.reason,
+        requiredCredits: chatPermission.requiredCredits || 0.20,
+        availableCredits: chatPermission.availableCredits || 0
+      },
+      limits: {
+        freeChatsPerDay: 5,
+        costPerPaidChat: 0.20
+      }
+    })
+  } catch (error) {
+    console.error("Error checking chat status:", error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to check chat status"
+    })
+  }
+})
+
 // Health/status of a book's knowledge base (no auth)
 router.get("/health/:bookId", async (req, res) => {
   try {
@@ -178,6 +390,26 @@ router.post("/ask/:bookId", async (req, res) => {
     // Validate user_id for chat saving
     if (!user_id || typeof user_id !== "string" || user_id.trim().length === 0) {
       return res.status(400).json({ success: false, message: "user_id is required in body for chat saving" })
+    }
+
+    // Check if user can chat (has free chats or credits)
+    const chatPermission = await checkChatPermission(user_id, client_id)
+    if (!chatPermission.canChat) {
+      const errorResponse = {
+        success: false,
+        message: chatPermission.reason === 'insufficient_credits' 
+          ? `You need ${chatPermission.requiredCredits} credits to chat. You have ${chatPermission.availableCredits} credits available.`
+          : "You have reached your daily chat limit. Free chats reset at midnight.",
+        errorCode: chatPermission.reason === 'insufficient_credits' ? 'INSUFFICIENT_CREDITS' : 'DAILY_LIMIT_REACHED',
+        details: {
+          reason: chatPermission.reason,
+          requiredCredits: chatPermission.requiredCredits || 0.20,
+          availableCredits: chatPermission.availableCredits || 0,
+          remainingFree: chatPermission.remainingFree || 0
+        },
+        timing: { totalResponse: Date.now() - startTime + "ms" }
+      }
+      return res.status(402).json(errorResponse) // 402 Payment Required
     }
 
     // Check if book has PDF embeddings in MongoDB first
@@ -278,7 +510,21 @@ router.post("/ask/:bookId", async (req, res) => {
     const savedChatId = await saveChatMessage(chat_id, client_id, user_id, bookId, question, extData)
     responseData.chat_id = savedChatId
 
-    // Return response with chat_id
+    // Record chat usage and deduct credits if needed
+    const usageResult = await recordChatUsage(user_id, client_id, chat_id, bookId, question)
+    if (usageResult.success) {
+      responseData.chatUsage = {
+        type: usageResult.chatType,
+        creditsDeducted: usageResult.creditsDeducted || 0,
+        remainingFree: usageResult.remainingFree || 0,
+        remainingCredits: usageResult.remainingCredits || 0
+      }
+    } else {
+      console.error('Failed to record chat usage:', usageResult)
+      // Don't fail the request, just log the error
+    }
+
+    // Return response with chat_id and usage info
     return res.json(responseData)
   } catch (error) {
     const totalTime = Date.now() - startTime
