@@ -234,12 +234,14 @@ router.post('/callback', async (req, res) => {
             if (planId) {
               const existingUserPlan = await UserPlan.findOne({ orderId });
               if (!existingUserPlan) {
-                const plan = await CreditRechargePlan.findById(planId).select('duration items clientId');
+                const plan = await CreditRechargePlan.findById(planId).select('items duration clientId');
                 const hasBundledItems = Array.isArray(plan?.items) && plan.items.length > 0;
-                // Only create a UserPlan when the recharge plan includes bundled items with a duration window
-                if (plan && hasBundledItems && plan.duration && plan.duration > 0) {
+                if (plan) {
                   const startDate = new Date();
-                  const endDate = new Date(startDate.getTime() + plan.duration * 24 * 60 * 60 * 1000);
+                  let endDate = null;
+                  if(hasBundledItems && plan.duration && plan.duration > 0) {
+                    endDate = new Date(startDate.getTime() + plan.duration * 24 * 60 * 60 * 1000);
+                  }
                   const userPlan = new UserPlan({
                     userId: creditAccount.userId,
                     planId: plan._id,
