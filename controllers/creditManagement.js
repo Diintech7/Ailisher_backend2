@@ -1088,7 +1088,6 @@ exports.getPlanPaymentOverview = async (req, res) => {
         select: 'name email'
       })
       .sort({ createdAt: -1 })
-      .limit(50);
     
     // Calculate statistics from recentPayments
     const paymentOverview = [];
@@ -1134,7 +1133,7 @@ exports.getPlanPaymentOverview = async (req, res) => {
       success: true,
       data: {
         overview: paymentOverview,
-        recentPayments: recentPayments.slice(0, 10), // Return only first 10 for display
+        recentPayments: recentPayments, // Return only first 10 for display
         totalStats
       }
     });
@@ -1142,4 +1141,3 @@ exports.getPlanPaymentOverview = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
