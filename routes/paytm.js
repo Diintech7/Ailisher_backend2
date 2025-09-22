@@ -83,8 +83,13 @@ router.post('/initiate',authenticateMobileUser, async (req, res) => {
     // Send Telegram alert for payment initiated
     try {
       await axios.post(`https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`, {
-        text: `🆕 <b>Payment Initiated!</b>\n\n📱 Mobile: ${customerPhone} \nEmail: ${customerEmail} \nName: ${customerName} \nAmount: ${amount} \n⏰ Time: ${new Date().toLocaleString()}`
-      });
+        text: `🆕 <b>Payment Initiated!</b>\n\n
+        👤 <b>Name:</b> ${customerName}\n
+        📱 <b>Mobile:</b> ${customerPhone}\n
+        📧 <b>Email:</b> ${customerEmail}\n
+        💰 <b>Amount:</b> ₹${amount}\n
+        ⏰ <b>Time:</b> ${new Date().toLocaleString()}`
+        });
     } catch (telegramError) {
       console.error('Failed to send Telegram alert:', telegramError.message);
       // Don't fail the payment initiated if Telegram fails
@@ -290,8 +295,15 @@ router.post('/callback', async (req, res) => {
           // Send Telegram alert for payment successfull
     try {
       await axios.post(`https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`, {
-        text: `🆕 <b>Payment successfull for orderId: ${orderId}!</b>\n\n📱 Mobile: ${customerPhone} \nEmail: ${customerEmail} \nName: ${customerName} \nAmount: ${amount} \nPlan: ${planId} \n⏰ Time: ${new Date().toLocaleString()}`
-      });
+        text: `🎉 <b>Payment Successful!</b>\n\n
+        🆔 <b>Order ID:</b> ${orderId}\n
+        👤 <b>Name:</b> ${customerName}\n
+        📱 <b>Mobile:</b> ${customerPhone}\n
+        📧 <b>Email:</b> ${customerEmail}\n
+        💳 <b>Plan:</b> ${planId}\n
+        💰 <b>Amount:</b> ₹${amount}\n
+        ⏰ <b>Time:</b> ${new Date().toLocaleString()}`
+        });
     } catch (telegramError) {
       console.error('Failed to send Telegram alert:', telegramError.message);
       // Don't fail the payment successfull if Telegram fails
