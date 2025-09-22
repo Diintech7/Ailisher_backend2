@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateMobileUser } = require('../middleware/mobileAuth');
-const { getCreditAccount, getCreditTransactions, getCreditRechargePlans, getCreditRechargePlanById, getCreditRechargePlansWithItems, getCreditRechargePlansWithoutItems, getOrders, getOrderDetails, getPaymentByOrderId, getOrderWithPayment, getOrdersByPlan, getOrdersByPlanAdmin, getUserOrders, getOrdersForUser, getSucessOrdersByPlan, getPendingOrdersByPlan, getFailedPaymentsByPlan, getPendingPaymentsByPlan, getPaymentsByPlanAndStatus, getPlanPaymentOverview} = require('../controllers/creditManagement');
+const { getCreditAccount, getCreditTransactions, getCreditRechargePlans, getCreditRechargePlanById, getCreditRechargePlansWithItems, getCreditRechargePlansWithoutItems, getOrders, getOrderDetails, getPaymentByOrderId, getOrderWithPayment, getOrdersByPlan, getOrdersByPlanAdmin, getUserOrders, getOrdersForUser, getSucessOrdersByPlan, getPendingOrdersByPlan, getFailedPaymentsByPlan, getPendingPaymentsByPlan, getPaymentsByPlanAndStatus, getPlanPaymentOverview, togglePlanStatus, togglePlanEnabled} = require('../controllers/creditManagement');
 
 router.get('/account',authenticateMobileUser, getCreditAccount );
 
@@ -25,5 +25,8 @@ router.get('/plan/:planId/orders', getSucessOrdersByPlan);
 router.get('/plan/:planId/orders/failed', getFailedPaymentsByPlan);
 router.get('/plan/:planId/orders/pending', getPendingPaymentsByPlan);
 router.get('/plan/:planId/payment-overview', getPlanPaymentOverview);
+
+router.patch('/plan/:planId/toggle-status', togglePlanStatus);
+router.patch('/plan/:planId/toggle-enabled', togglePlanEnabled);
 
 module.exports = router;

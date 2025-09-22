@@ -211,24 +211,36 @@ router.patch('/popular/:id', async (req, res) => {
 });
 
 
-router.get('/popular',async(req,res)=>{
-  try{
-    const reels = await Reels.find({ active: true, isEnabled: true, isPopular:true })
-    .sort({ order: 1})
-    for(const reel of reels){
-      if(reel.videoKey){
-        let videoUrl = "";
-        videoUrl = await generateGetPresignedUrl(reel.videoKey);
-        reel.videoUrl = videoUrl;
-      }
-    }
+router.get('/popular',
+  authenticateMobileUser,
+  ensureUserBelongsToClient,
+  async (req, res) => {
+    try {
+      const createdBy = new mongoose.Types.ObjectId(req.clientInfo.id)
+      const userId = req.user.id;
+      const reels = await Reels.find({createdBy, isPopular: true, isEnabled: true}).sort({ order: 1 });
 
-    res.json({
-      success: true,
-      count: reels.length,
-      data:reels,
-    });
-  }
+      for (const reel of reels) {
+        if (reel.videoKey) {
+        reel.videoUrl = await generateGetPresignedUrl(reel.videoKey);
+        }
+      }
+
+      const data = reels.map((r) => {
+        const obj = r.toObject();
+        const likedBy = Array.isArray(obj.likedBy) ? obj.likedBy : [];
+        obj.isLiked = likedBy.some((id) => id?.toString() === userId?.toString());
+        const viewedBy = Array.isArray(obj.viewedBy) ? obj.viewedBy : [];
+        obj.isViewed = viewedBy.some((id) => id?.toString() === userId?.toString());
+        return obj;
+      });
+
+      res.json({
+        success: true,
+        count: data.length,
+        data,
+      });
+    }
   catch(error){
     console.error("Error fetching popular reels:", error);
     res.status(500).json({

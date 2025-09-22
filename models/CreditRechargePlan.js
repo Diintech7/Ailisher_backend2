@@ -63,6 +63,10 @@ const CreditRechargePlanSchema = new mongoose.Schema({
     enum: ['active', 'inactive'],
     default: 'active'
   },
+  isEnabled: {
+    type: Boolean,
+    default: false
+  },
   createdAt: {
     type: Date,
     default: Date.now

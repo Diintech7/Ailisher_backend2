@@ -34,6 +34,35 @@ exports.getCreditAccount = async (req, res) => {
   }
 }
 
+exports.togglePlanEnabled = async (req, res) => {
+  try {
+    const { planId } = req.params;
+    const { isEnabled } = req.body;
+
+    if (!planId) {
+      return res.status(400).json({ success: false, message: 'planId is required' });
+    }
+
+    if (typeof isEnabled !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'isEnabled must be a boolean' });
+    }
+
+    const updatedPlan = await CreditRechargePlan.findByIdAndUpdate(
+      planId,
+      { isEnabled: isEnabled, updatedAt: new Date() },
+      { new: true }
+    ).populate('items');
+
+    if (!updatedPlan) {
+      return res.status(404).json({ success: false, message: 'Plan not found' });
+    }
+
+    return res.json({ success: true, message: 'Plan isEnabled updated', data: updatedPlan });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
 exports.getCreditPlans = async (req, res) => {
   try {
     const plans = await CreditPlan.find({ isActive: true }).sort({ sortOrder: 1 });
@@ -1151,3 +1180,31 @@ exports.getPlanPaymentOverview = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.togglePlanStatus = async (req, res) => {
+  try {
+    const { planId } = req.params;
+    const { status } = req.body;
+    if (!planId) {
+      return res.status(400).json({ success: false, message: 'planId is required' });
+    }
+
+    if (!status || !['active', 'inactive'].includes(String(status).toLowerCase())) {
+      return res.status(400).json({ success: false, message: "Invalid status. Use 'active' or 'inactive'" });
+    }
+
+    const updatedPlan = await CreditRechargePlan.findByIdAndUpdate(
+      planId,
+      { status: String(status).toLowerCase(), updatedAt: new Date() },
+      { new: true }
+    ).populate('items');
+
+    if (!updatedPlan) {
+      return res.status(404).json({ success: false, message: 'Plan not found' });
+    }
+
+    return res.json({ success: true, message: 'Plan status updated', data: updatedPlan });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+}

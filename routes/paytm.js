@@ -90,11 +90,7 @@ router.post("/initiate", authenticateMobileUser, async (req, res) => {
       await axios.post(
         `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
         {
-          text: `<b>INITIATED PAYTM</b>\n\n
-          👤 ${customerPhone} (${customerName}) has initiated the process to purchase the plan:\n\n
-          📦 <b>${plan.name}</b>\n
-          💰 Worth: ₹${amount}\n
-          ⏰ Time: ${new Date().toLocaleString()}`,
+          text:`🆕 <b>INITIATED PAYTM</b>\n\n👤 ${customerPhone} (${customerName}) has initiated the process to purchase the plan:\n📦 <b>${plan.name}</b>\n💰 Worth: ₹${amount}\n⏰ Time: ${new Date().toLocaleString()}`,
         }
       );
     } catch (telegramError) {
@@ -325,12 +321,7 @@ router.post("/callback", async (req, res) => {
           await axios.post(
             `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
             {
-              text: `✅ <b>Paid to Mobishaala</b>\n\n
-        💰 <b>Total Amount:</b> ₹${amount}\n
-        🏦 <b>Net Amount:</b> ₹${amount}\n\n
-        👤 <b>${customerPhone}</b> (${customerName})\n\n
-        🆔 <b>Order No:</b> ${orderId}\n
-        📦 <b>Plan:</b> ${plan.name}`,
+              text:`✅ <b>Paid to Mobishaala</b>\n\n💰<b>Total Amount:</b> ₹${amount}\n🏦 <b>Net Amount:</b> ₹${amount}\n👤 <b>${customerPhone}</b> (${customerName})\n🆔 <b>Order No:</b> ${orderId}\n📦 <b>Plan:</b> ${plan.name}`,
             }
           );
         } catch (telegramError) {
