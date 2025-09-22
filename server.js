@@ -377,31 +377,78 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`)
-  // Simple daily expiry job (runs every day to be safe)
+  // Daily jobs (runs every day to be safe)
   setInterval(async () => {
     try {
       const now = new Date()
-      // Find active plans that have expired
+      
+      // 1. Find active plans that have expired
       const expiring = await UserPlan.find({ status: 'active', endDate: { $lte: now } })
-      if (!expiring.length) return
-      for (const up of expiring) {
-        up.status = 'expired'
-        up.updatedAt = now
-        await up.save()
+      if (expiring.length > 0) {
+        for (const up of expiring) {
+          up.status = 'expired'
+          up.updatedAt = now
+          await up.save()
 
-        // Remove plan from CreditAccount.planId array
-        if (up.userId && up.planId) {
-          await CreditAccount.updateOne(
-            { userId: up.userId },
-            { $pull: { planId: up.planId } }
-          )
+          // Remove plan from CreditAccount.planId array
+          if (up.userId && up.planId) {
+            await CreditAccount.updateOne(
+              { userId: up.userId },
+              { $pull: { planId: up.planId } }
+            )
+          }
         }
-      }
-      if (expiring.length) {
         console.log(`Expired ${expiring.length} user plans at ${now.toISOString()}`)
       }
+      
+      // 2. Reset daily chat usage at midnight (00:00)
+      const currentHour = now.getHours()
+      const currentMinute = now.getMinutes()
+      
+      // Check if it's around midnight (between 00:00 and 00:05)
+      if (currentHour === 0 && currentMinute <= 5) {
+        try {
+          // Get yesterday's date
+          const yesterday = new Date(now)
+          yesterday.setDate(yesterday.getDate() - 1)
+          yesterday.setHours(0, 0, 0, 0)
+          
+          // Count users who used chats yesterday
+          const Chat = require('./models/Chat')
+          const CreditTransaction = require('./models/CreditTransaction')
+          
+          const yesterdayStart = new Date(yesterday)
+          const yesterdayEnd = new Date(yesterday)
+          yesterdayEnd.setDate(yesterdayEnd.getDate() + 1)
+          
+          const yesterdayChats = await Chat.find({
+            lastMessageAt: { $gte: yesterdayStart, $lt: yesterdayEnd }
+          })
+          
+          const yesterdayCreditTransactions = await CreditTransaction.find({
+            createdAt: { $gte: yesterdayStart, $lt: yesterdayEnd },
+            category: 'service_usage',
+            description: { $regex: /chat/i }
+          })
+          
+          const totalUsers = [...new Set(yesterdayChats.map(chat => chat.userId))].length
+          const totalChats = yesterdayChats.length
+          const totalCreditsSpent = yesterdayCreditTransactions.reduce((sum, tx) => sum + tx.amount, 0)
+          
+          if (totalUsers > 0) {
+            console.log(`📊 Daily Chat Summary for ${yesterday.toDateString()}:`)
+            console.log(`   - ${totalUsers} users chatted`)
+            console.log(`   - ${totalChats} total chats`)
+            console.log(`   - ${totalCreditsSpent.toFixed(2)} credits spent`)
+            console.log(`   - Free chats reset for all users`)
+          }
+        } catch (chatResetError) {
+          console.error('Error processing daily chat reset:', chatResetError)
+        }
+      }
+      
     } catch (e) {
-      console.error('Error expiring user plans', e)
+      console.error('Error in daily jobs:', e)
     }
-  }, 60 * 60 * 24 * 1000)
+  }, 60 * 60 * 24 * 1000) // Run every 24 hours
 })
