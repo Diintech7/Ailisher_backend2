@@ -3,6 +3,7 @@
 
 const express = require("express");
 const router = express.Router({ mergeParams: true });
+const axios = require("axios");
 const MobileUser = require("../models/MobileUser");
 const UserProfile = require("../models/UserProfile");
 const User = require("../models/User");
@@ -148,6 +149,16 @@ router.post("/login", validateClient, async (req, res) => {
       const token = generateToken(mobileUser._id, mobile, clientId);
       mobileUser.authToken = token;
       await mobileUser.save(); // This will increment loginCount via pre-save hook
+      
+      // // Send Telegram alert for existing user login
+      // try {
+      //   await axios.post(`http://localhost:5000/api/clients/CLI147189HIGB/telegram/send-text`, {
+      //     text: `👤 <b>User Login</b>\n\n📱 Mobile: ${mobile}\n🏢 Client ID: ${clientId}\n⏰ Time: ${new Date().toLocaleString()}\n🆔 User ID: ${mobileUser._id}\n🔢 Login Count: ${mobileUser.loginCount || 1}`
+      //   });
+      // } catch (telegramError) {
+      //   console.error('Failed to send Telegram alert:', telegramError.message);
+      //   // Don't fail the login if Telegram fails
+      // }
       // 2. Immediately create a credit account for this user
       const existing = await CreditAccount.findOne({
         userId: mobileUser._id,
@@ -179,6 +190,16 @@ router.post("/login", validateClient, async (req, res) => {
         mobileUser.authToken = token;
 
         await mobileUser.save();
+        
+        // Send Telegram alert for new user
+        try {
+          await axios.post(`https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`, {
+            text: `🆕 <b>New User Registered!</b>\n\n📱 Mobile: ${mobile}\n⏰ Time: ${new Date().toLocaleString()}`
+          });
+        } catch (telegramError) {
+          console.error('Failed to send Telegram alert:', telegramError.message);
+          // Don't fail the registration if Telegram fails
+        }
 
         // 2. Immediately create a credit account for this user
         const existing = await CreditAccount.findOne({

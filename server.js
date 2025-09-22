@@ -55,6 +55,7 @@ const UserPlan = require('./models/UserPlan')
 const CreditAccount = require('./models/CreditAccount')
 const answerapisRoutes = require('./routes/answerapis')
 const CreditRechargePlan = require('./models/CreditRechargePlan')
+const telegramRoutes = require('./routes/telegramroutes')
 
 app.use(cors())
 app.use(express.json({ limit: "50mb" }))
@@ -348,6 +349,16 @@ app.use(
     next()
   },
   paytmRoutes,
+)
+
+app.use(
+  "/api/clients/:clientId/telegram",
+  checkClientAccess(),
+  (req, res, next) => {
+    req.clientId = req.params.clientId
+    next()
+  },
+  telegramRoutes,
 )
 
 // Mount subtopics routes
