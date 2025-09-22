@@ -347,6 +347,13 @@ exports.getCreditRechargePlanById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Plan not found' });
     }
     
+    const isEnrolled = await UserPlan.findOne({
+      userId: req.user.id,
+      planId: plan._id,
+      status: 'active'
+    });
+    plan.isEnrolled = isEnrolled ? true : false;
+    console.log(plan.isEnrolled);
     // Process plan items and fetch referenced item details
     if(plan.items && plan.items.length > 0) {
       for(const item of plan.items) {
@@ -406,6 +413,7 @@ exports.getCreditRechargePlanById = async (req, res) => {
     // Add image URLs to the response for easy access
     const responseData = {
       ...plan.toObject(),
+      isEnrolled: plan.isEnrolled,
       items: plan.items.map(item => ({
         ...item.toObject(),
         referencedItem: item.referencedItem || null
