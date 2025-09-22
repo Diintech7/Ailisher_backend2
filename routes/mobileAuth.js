@@ -149,7 +149,7 @@ router.post("/login", validateClient, async (req, res) => {
       const token = generateToken(mobileUser._id, mobile, clientId);
       mobileUser.authToken = token;
       await mobileUser.save(); // This will increment loginCount via pre-save hook
-      
+
       // // Send Telegram alert for existing user login
       // try {
       //   await axios.post(`http://localhost:5000/api/clients/CLI147189HIGB/telegram/send-text`, {
@@ -164,13 +164,13 @@ router.post("/login", validateClient, async (req, res) => {
         userId: mobileUser._id,
       });
       if (!existing) {
-      const creditAccount = new CreditAccount({
-        userId: mobileUser._id,
-        mobile: mobileUser.mobile,
-        clientId: mobileUser.clientId,
-        balance: 0,
-        totalEarned: 0,
-        totalSpent: 0,
+        const creditAccount = new CreditAccount({
+          userId: mobileUser._id,
+          mobile: mobileUser.mobile,
+          clientId: mobileUser.clientId,
+          balance: 0,
+          totalEarned: 0,
+          totalSpent: 0,
         });
         await creditAccount.save();
       }
@@ -190,14 +190,22 @@ router.post("/login", validateClient, async (req, res) => {
         mobileUser.authToken = token;
 
         await mobileUser.save();
-        
+
         // Send Telegram alert for new user
         try {
-          await axios.post(`https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`, {
-            text: `🆕 <b>New User Registered!</b>\n\n📱 Mobile: ${mobile}\n⏰ Time: ${new Date().toLocaleString()}`
-          });
+          await axios.post(
+            `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
+            {
+              text: `🆕 <b>New User Registered!</b>\n\n
+            📱 <b>Mobile:${mobile}</b>\n
+            ⏰ <b>Time:${new Date().toLocaleString()}</b>`,
+            }
+          );
         } catch (telegramError) {
-          console.error('Failed to send Telegram alert:', telegramError.message);
+          console.error(
+            "Failed to send Telegram alert:",
+            telegramError.message
+          );
           // Don't fail the registration if Telegram fails
         }
 
@@ -206,13 +214,13 @@ router.post("/login", validateClient, async (req, res) => {
           userId: mobileUser._id,
         });
         if (!existing) {
-        const creditAccount = new CreditAccount({
-          userId: mobileUser._id,
-          mobile: mobileUser.mobile,
-          clientId: mobileUser.clientId,
-          balance: 0,
-          totalEarned: 0,
-          totalSpent: 0,
+          const creditAccount = new CreditAccount({
+            userId: mobileUser._id,
+            mobile: mobileUser.mobile,
+            clientId: mobileUser.clientId,
+            balance: 0,
+            totalEarned: 0,
+            totalSpent: 0,
           });
           await creditAccount.save();
         }
@@ -515,6 +523,24 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     }
 
     await profile.save();
+    // Send Telegram alert for new user
+    try {
+      await axios.post(
+        `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
+        {
+          text: `📄 <b>New Profile Created</b>\n\n
+          👤 Name: ${name}\n
+          📱 Mobile: ${mobileUser.mobile}\n
+          🎂 Age: ${age}\n
+          📝 Exams: ${exams}\n
+          🗣️ Native Language: ${native_language}\n
+          ⏰ Created On: ${new Date().toLocaleString()}`,
+        }
+      );
+    } catch (telegramError) {
+      console.error("Failed to send Telegram alert:", telegramError.message);
+      // Don't fail the registration if Telegram fails
+    }
 
     res.status(200).json({
       status: "PROFILE_SAVED",
