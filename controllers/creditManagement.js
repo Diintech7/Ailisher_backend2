@@ -326,6 +326,8 @@ exports.getCreditRechargePlansWithoutItems = async (req, res) => {
         { items: { $size: 0 } }
       ]
     })
+    console.log(plans);
+
 
     res.json({
       success: true,
