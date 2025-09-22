@@ -391,8 +391,8 @@ exports.getCreditRechargePlanById = async (req, res) => {
                 description: referencedItem.description || referencedItem.summary,
                 category: referencedItem.category || referencedItem.mainCategory,
                 subCategory: referencedItem.subCategory || referencedItem.subcategory,
-                coverImageUrl: referencedItem.coverImageUrl,
-                imageUrl: referencedItem.imageUrl
+                coverImageUrl: referencedItem.coverImageUrl || referencedItem.imageUrl,
+                // imageUrl: referencedItem.imageUrl
               };
               // console.log('Referenced item:', item.referencedItem);
             }
