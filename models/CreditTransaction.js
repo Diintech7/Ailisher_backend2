@@ -43,6 +43,11 @@ const CreditTransactionSchema = new mongoose.Schema({
     ref: 'CreditRechargePlan',
     default: null
   },
+  workbookId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workbook',
+    default: null
+  },
   paymentAmount: {
     type: Number,
     default: null

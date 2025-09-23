@@ -23,6 +23,11 @@ const CreditAccountSchema = new mongoose.Schema({
     ref: 'CreditRechargePlan',
     default: null
   }],
+  workbookId: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workbook',
+    default: null
+  }],
   balance: {
     type: Number,
     default: 0,

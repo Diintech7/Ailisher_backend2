@@ -90,7 +90,7 @@ router.post("/initiate", authenticateMobileUser, async (req, res) => {
       await axios.post(
         `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
         {
-          text:`🆕 <b>INITIATED PAYTM</b>\n\n👤 ${customerPhone} (${customerName}) has initiated the process to purchase the plan:\n📦 <b>${plan.name}</b>\n💰 Worth: ₹${amount}\n⏰ Time: ${new Date().toLocaleString()}`,
+          text:`🆕 <b>INITIATED PAYMENT</b>\n\n👤 ${customerPhone} (${customerName}) has initiated the process to purchase the plan:\n📦 <b>${plan.name}</b>\n💰 Worth: ₹${amount}\n⏰ Time: ${new Date().toLocaleString()}`,
         }
       );
     } catch (telegramError) {
@@ -289,6 +289,21 @@ router.post("/callback", async (req, res) => {
                   status: "active",
                 });
                 await userPlan.save();
+                // Send Telegram alert for payment successfull
+        try {
+          await axios.post(
+            `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
+            {
+              text:`✅ <b>Paid to Mobishaala</b>\n\n💰<b>Total Amount:</b> ₹${creditsToAdd}\n🏦 <b>Net Amount:</b> ₹${creditsToAdd}\n👤 <b>${paymentDoc.customerPhone}</b> (${paymentDoc.customerName})\n🆔 <b>Order No:</b> ${orderId}\n📦 <b>Plan:</b> ${plan.name}`,
+            }
+          );
+        } catch (telegramError) {
+          console.error(
+            "Failed to send Telegram alert:",
+            telegramError.message
+          );
+          // Don't fail the payment successfull if Telegram fails
+        }
               } else {
                 // Credits-only purchase: do not create UserPlan or set duration
                 if (!plan) {
@@ -316,21 +331,7 @@ router.post("/callback", async (req, res) => {
             }
           );
         }
-        // Send Telegram alert for payment successfull
-        try {
-          await axios.post(
-            `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
-            {
-              text:`✅ <b>Paid to Mobishaala</b>\n\n💰<b>Total Amount:</b> ₹${amount}\n🏦 <b>Net Amount:</b> ₹${amount}\n👤 <b>${customerPhone}</b> (${customerName})\n🆔 <b>Order No:</b> ${orderId}\n📦 <b>Plan:</b> ${plan.name}`,
-            }
-          );
-        } catch (telegramError) {
-          console.error(
-            "Failed to send Telegram alert:",
-            telegramError.message
-          );
-          // Don't fail the payment successfull if Telegram fails
-        }
+        
       }
     } catch (creditErr) {
       console.error("Error crediting account post-payment:", creditErr);

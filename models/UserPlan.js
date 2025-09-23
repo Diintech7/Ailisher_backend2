@@ -10,8 +10,14 @@ const UserPlanSchema = new mongoose.Schema({
   planId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'CreditRechargePlan',
-    required: true,
-    index: true
+    // required: true,
+    // index: true
+  },
+  workbookId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workbook',
+    // required: true,
+    // index: true
   },
   clientId: {
     type: String,
