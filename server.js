@@ -51,6 +51,7 @@ const subjectiveTestQuestionRoutes = require('./routes/subjectivetestquestion');
 const testResultsRoutes = require('./routes/testResults');
 const creditManagementRoutes = require('./routes/creditManagement');
 const paytmRoutes = require('./routes/paytm')
+const cartRoutes = require('./routes/cart')
 const UserPlan = require('./models/UserPlan')
 const CreditAccount = require('./models/CreditAccount')
 const answerapisRoutes = require('./routes/answerapis')
@@ -238,6 +239,16 @@ app.use(
     next()
   },
   mainBookstoreRoutes,
+)
+
+app.use(
+  "/api/clients/:clientId/mobile/cart",
+  checkClientAccess(),
+  (req, res, next) => {
+    req.clientId = req.params.clientId
+    next()
+  },
+  cartRoutes,
 )
 
 app.use(

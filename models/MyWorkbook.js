@@ -27,6 +27,18 @@ const MyWorkbookSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  expiresAt: {
+    type: Date,
+    default: null
+  },
+  purchaseAmount: {
+    type: Number,
+    default: 0
+  },
+  currency: {
+    type: String,
+    default: 'INR'
+  },
   personalNote: {
     type: String,
     maxlength: [500, 'Personal note cannot be more than 500 characters'],

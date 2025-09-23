@@ -196,9 +196,7 @@ router.post("/login", validateClient, async (req, res) => {
           await axios.post(
             `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
             {
-              text: `🆕 <b>New User Registered!</b>\n\n
-            📱 <b>Mobile:${mobile}</b>\n
-            ⏰ <b>Time:${new Date().toLocaleString()}</b>`,
+            text: `🆕 <b>New User Registered!</b>\n\n📱 <b>Mobile:${mobile}</b>\n⏰ <b>Time:${new Date().toLocaleString()}</b>`,
             }
           );
         } catch (telegramError) {
@@ -528,13 +526,7 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
       await axios.post(
         `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
         {
-          text: `📄 <b>New Profile Created</b>\n\n
-          👤 Name: ${name}\n
-          📱 Mobile: ${mobileUser.mobile}\n
-          🎂 Age: ${age}\n
-          📝 Exams: ${exams}\n
-          🗣️ Native Language: ${native_language}\n
-          ⏰ Created On: ${new Date().toLocaleString()}`,
+          text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${name}\n📱 Mobile: ${mobileUser.mobile}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n⏰ Created On: ${new Date().toLocaleString()}`,
         }
       );
     } catch (telegramError) {

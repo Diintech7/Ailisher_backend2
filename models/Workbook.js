@@ -75,19 +75,6 @@ const WorkbookSchema = new mongoose.Schema({
   subCategory: {
     type: String,
     required: [true, 'Please select a subcategory'],
-    // enum: [
-    //   'UPSC(IAS)', 'BPSC', 'UPPCS', 'JPSC', 'RPSC', 'MPPCS',
-    //   'SSC-CGL', 'SSC-CHSL', 'SSC-GD',
-    //   'NDA', 'CDS', 'AFCAT',
-    //   'DSSSB', 'CTET', 'UPTET', 'Bihar-TET',
-    //   'CLAT', 'DU-LLB', 'JUDICIARY',
-    //   'CA-Foundation', 'CA-Inter', 'CA-Final',
-    //   'CMA-Foundation', 'CMA-Inter', 'CMA-Final',
-    //   'CS-Executive', 'CS-Professional',
-    //   '1st CLASS', '2nd CLASS', '3rd CLASS', '4th CLASS', '5th CLASS', '6th CLASS',
-    //   '7th CLASS', '8th CLASS', '9th CLASS', '10th CLASS', '11th CLASS', '12th CLASS',
-    //   'Other'
-    // ],
     default: 'Other'
   },
   customSubCategory: {
@@ -240,9 +227,32 @@ const WorkbookSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  isPaid:{
+  isForSale:{
     type:Boolean,
     default:false
+  },
+  MRP: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  offerPrice: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  currency: {
+    type: String,
+    default: 'INR'
+  },
+  validityDays: {
+    type: Number,
+    default: 0, // 0 or null means lifetime access
+    min: 0
+  },
+  details: {
+    type: String,
+    default: ''
   },
   createdAt: {
     type: Date,

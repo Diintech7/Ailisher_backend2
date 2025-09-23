@@ -44,6 +44,11 @@ const formatWorkbookWithUserInfo = async (workbook) => {
     } : null
   };
 
+  if(workbook.isForSale){
+    formattedWorkbook.price = workbook.offerPrice || workbook.MRP;
+    formattedWorkbook.isForSale = true;
+  }
+
   // Check if workbook is in any plan and get plan details
   try {
     const PlanItem = require('../models/PlanItem');
@@ -103,6 +108,7 @@ const formatWorkbookWithUserInfo = async (workbook) => {
     formattedWorkbook.planDetails = [];
   }
 
+  
   // Always try to generate a new presigned URL if we have a cover image
   if (workbook.coverImageKey) {
     try {
@@ -165,7 +171,8 @@ exports.createWorkbook = async (req, res) => {
     const {
       title, description, author, publisher, language, mainCategory, subCategory,
       customSubCategory, exam, paper, subject, tags, clientId, isPublic, categoryOrder,
-      coverImageKey, rating, ratingCount, conversations, users, summary
+      coverImageKey, rating, ratingCount, conversations, users, summary,
+      isForSale, MRP, offerPrice, currency, validityDays, details
     } = req.body;
 
     const currentUser = await User.findById(req.user.id);
@@ -229,6 +236,37 @@ exports.createWorkbook = async (req, res) => {
       users: parsedUsers,
       summary: summary ? summary.trim() : ''
     };
+
+    // Pricing validation if isPaid is true
+    const isPaidBool = isForSale === 'true' || isForSale === true;
+    if (isPaidBool) {
+      const mrpNum = Number(MRP);
+      const offerNum = Number(offerPrice);
+      const validityNum = validityDays === '' || validityDays === null || validityDays === undefined ? 0 : Number(validityDays);
+      if (!Number.isFinite(mrpNum) || mrpNum < 0) {
+        return res.status(400).json({ success: false, message: 'MRP must be a non-negative number' });
+      }
+      if (!Number.isFinite(offerNum) || offerNum < 0) {
+        return res.status(400).json({ success: false, message: 'Offer price must be a non-negative number' });
+      }
+      if (!Number.isFinite(validityNum) || validityNum < 0) {
+        return res.status(400).json({ success: false, message: 'validityDays must be a non-negative number (0 for lifetime)' });
+      }
+      if (offerNum > mrpNum) {
+        return res.status(400).json({ success: false, message: 'Offer price cannot exceed MRP' });
+      }
+      if (details !== undefined) {
+        workbookData.details = details;
+      }
+      workbookData.isForSale = true;
+      workbookData.MRP = mrpNum;
+      workbookData.offerPrice = offerNum;
+      workbookData.currency = (currency || 'INR');
+      workbookData.validityDays = validityNum;
+      workbookData.details = details;
+    } else if (isForSale === 'false' || isForSale === false) {
+      workbookData.isForSale = false;
+    }
     if (exam && exam.trim()) workbookData.exam = exam.trim();
     if (paper && paper.trim()) workbookData.paper = paper.trim();
     if (subject && subject.trim()) workbookData.subject = subject.trim();
@@ -386,7 +424,8 @@ exports.updateWorkbook = async (req, res) => {
     const {
       title, description, author, publisher, language, mainCategory, subCategory,
       customSubCategory, exam, paper, subject, tags, isPublic, categoryOrder,
-      coverImageKey, rating, ratingCount, conversations, users, summary
+      coverImageKey, rating, ratingCount, conversations, users, summary,
+      isForSale, MRP, offerPrice, currency, validityDays, details
     } = req.body;
     const workbook = await Workbook.findById(req.params.id);
     if (!workbook) {
@@ -462,6 +501,67 @@ exports.updateWorkbook = async (req, res) => {
         coverImageUrl: newCoverImageUrl
       } : {})
     };
+    // Pricing handling on update
+    if (isForSale !== undefined) {
+      const isPaidBool = isForSale === 'true' || isForSale === true;
+      if (isPaidBool) {
+        const mrpNum = Number(MRP);
+        const offerNum = Number(offerPrice);
+        const validityNum = validityDays === '' || validityDays === null || validityDays === undefined ? (workbook.validityDays || 0) : Number(validityDays);
+        if (!Number.isFinite(mrpNum) || mrpNum < 0) {
+          return res.status(400).json({ success: false, message: 'MRP must be a non-negative number' });
+        }
+        if (!Number.isFinite(offerNum) || offerNum < 0) {
+          return res.status(400).json({ success: false, message: 'Offer price must be a non-negative number' });
+        }
+        if (!Number.isFinite(validityNum) || validityNum < 0) {
+          return res.status(400).json({ success: false, message: 'validityDays must be a non-negative number (0 for lifetime)' });
+        }
+        if (offerNum > mrpNum) {
+          return res.status(400).json({ success: false, message: 'Offer price cannot exceed MRP' });
+        }
+        updateData.isForSale = true;
+        updateData.MRP = mrpNum;
+        updateData.offerPrice = offerNum;
+        updateData.currency = (currency || workbook.currency || 'INR');
+        updateData.validityDays = validityNum;
+        updateData.details = details;
+      } else {
+        updateData.isForSale = false;
+      }
+    } else {
+      // If prices provided without explicit isPaid, allow updating them safely
+      if (MRP !== undefined) {
+        const mrpNum = Number(MRP);
+        if (!Number.isFinite(mrpNum) || mrpNum < 0) {
+          return res.status(400).json({ success: false, message: 'MRP must be a non-negative number' });
+        }
+        updateData.MRP = mrpNum;
+      }
+      if (offerPrice !== undefined) {
+        const offerNum = Number(offerPrice);
+        if (!Number.isFinite(offerNum) || offerNum < 0) {
+          return res.status(400).json({ success: false, message: 'Offer price must be a non-negative number' });
+        }
+        if (updateData.MRP !== undefined && offerNum > updateData.MRP) {
+          return res.status(400).json({ success: false, message: 'Offer price cannot exceed MRP' });
+        }
+        updateData.offerPrice = offerNum;
+      }
+      if (currency !== undefined) {
+        updateData.currency = currency || workbook.currency || 'INR';
+      }
+      if (validityDays !== undefined) {
+        const validityNum = Number(validityDays);
+        if (!Number.isFinite(validityNum) || validityNum < 0) {
+          return res.status(400).json({ success: false, message: 'validityDays must be a non-negative number (0 for lifetime)' });
+        }
+        updateData.validityDays = validityNum;
+      }
+      if (details !== undefined) {
+        updateData.details = details;
+      }
+    }
     if (exam) updateData.exam = exam.trim();
     if (paper) updateData.paper = paper.trim();
     if (subject) updateData.subject = subject.trim();
