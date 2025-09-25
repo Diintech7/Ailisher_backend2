@@ -34,7 +34,7 @@ async function populateCart(userId, clientId) {
     .populate({
       path: "items.workbookId",
       select:
-        "title coverImageUrl coverImageKey MRP offerPrice validityDays details currency",
+        "title coverImageUrl coverImageKey MRP offerPrice validityDays details currency GST",
     })
     .lean();
 }
@@ -72,13 +72,14 @@ exports.addItem = async (req, res) => {
 
     const price = getEffectivePrice(workbook);
     const title = workbook.title;
+    const GST = workbook.GST;
     const cart = await ensureCart(userId, clientId);
 
     const exists = cart.items.some(
       (i) => String(i.workbookId) === String(workbookId)
     );
     if (!exists) {
-      cart.items.push({ workbookId, title, price, currency: "INR" });
+      cart.items.push({ workbookId, title, price, currency: "INR",GST });
     }
     await cart.save();
     const populated = await populateCart(userId, clientId);
@@ -171,6 +172,7 @@ exports.checkoutCart = async (req, res) => {
 
     // Ensure cart exists
     const cart = await ensureCart(userId, clientId);
+    console.log(cart)
     if (!cart.items.length) {
       return res.status(400).json({ success: false, message: "Cart is empty" });
     }
@@ -190,14 +192,32 @@ exports.checkoutCart = async (req, res) => {
           });
         }
         itemsToPurchase.push(item);
-        totalAmount += item.price;
       }
     } else {
       itemsToPurchase = cart.items;
-      totalAmount = itemsToPurchase.reduce((sum, i) => sum + i.price, 0);
     }
 
-    const selectedWorkbookIds = itemsToPurchase.map((i) => i.workbookId);
+    // Compute GST breakdown and grand total
+    const detailedItems = itemsToPurchase.map((i) => {
+      const base = Number(i.price || 0);
+      const gstPercent = Number(i.GST || 0);
+      const gstAmount = Math.round(base * (gstPercent / 100) * 100) / 100;
+      const lineTotal = Math.round((base + gstAmount) * 100) / 100;
+      return {
+        workbookId: i.workbookId,
+        title: i.title,
+        price: base,
+        GST: gstPercent,
+        gstAmount,
+        lineTotal,
+      };
+    });
+
+    const subtotal = Math.round(detailedItems.reduce((sum, i) => sum + i.price, 0) * 100) / 100;
+    const totalGst = Math.round(detailedItems.reduce((sum, i) => sum + i.gstAmount, 0) * 100) / 100;
+    totalAmount = Math.round((subtotal + totalGst) * 100) / 100;
+
+    const selectedWorkbookIds = detailedItems.map((i) => i.workbookId);
     console.log(selectedWorkbookIds);
     // Customer details
     const profile = await UserProfile.findOne({ userId });
@@ -221,6 +241,7 @@ exports.checkoutCart = async (req, res) => {
       customerName,
       projectId: "AILISHER",
       status: "PENDING",
+      // Optional: include breakdown fields if your Payment model allows it in future
     }).save();
 
     // Paytm Params
@@ -250,11 +271,11 @@ exports.checkoutCart = async (req, res) => {
 
     // ✅ Optional Telegram (uncomment when ready)
     try {
-      const itemTitles = itemsToPurchase.map(i => i.title).join(", ");
+      const itemTitles = detailedItems.map(i => i.title).join(", ");
       await axios.post(
         `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
         {
-          text: `🆕 <b>INITIATED PAYMENT</b>\n\n👤 ${customerPhone} (${customerName}) has initiated purchase:\n📦 <b>${itemTitles}</b>\n💰 Worth: ₹${totalAmount}\n⏰ Time: ${new Date().toLocaleString()}`,
+          text: `🆕 <b>INITIATED PAYMENT</b>\n\n👤 ${customerPhone} (${customerName}) has initiated purchase:\n📦 <b>${itemTitles}</b>\n💰 Subtotal: ₹${subtotal}\n🧾 GST: ₹${totalGst}\n💵 Total: ₹${totalAmount}\n⏰ Time: ${new Date().toLocaleString()}`,
         }
       );
     } catch (err) {
