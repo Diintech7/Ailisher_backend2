@@ -43,7 +43,7 @@ const CreditTransactionSchema = new mongoose.Schema({
     ref: 'CreditRechargePlan',
     default: null
   },
-  workbookId: {
+  workbookIds: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Workbook',
     default: null

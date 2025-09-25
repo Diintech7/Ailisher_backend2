@@ -13,6 +13,7 @@ const ObjectiveQuestion = require('../models/ObjectiveQuestion');
 const SubjectiveQuestion = require('../models/SubjectiveQuestion');
 const MyWorkbook = require('../models/MyWorkbook'); // Make sure this is at the top if not present
 const UserPlan = require('../models/UserPlan');
+const Cart = require('../models/Cart');
 
 // Helper function to format workbook with user info and S3 URLs
 const formatWorkbookWithUserInfo = async (workbook) => {
@@ -955,6 +956,15 @@ exports.getWorkbookSets = async (req, res) => {
     }
     console.log(isMyWorkbookAdded)
 
+    let cartItems = await Cart.findOne({userId:req.user.id})
+    let countOfCartItems = cartItems.items.length
+
+    let isInCart = false
+    if(countOfCartItems > 0)
+    {
+      isInCart = cartItems.items.some(item => item.workbookId.toString() === workbook._id.toString())
+    }
+
     const chapters = await Chapter.find({ workbook: id });
     const chapterIds = chapters.map(ch => ch._id);
 
@@ -991,7 +1001,8 @@ exports.getWorkbookSets = async (req, res) => {
     // Format workbook and add isMyWorkbookAdded
     const formattedWorkbook = await formatWorkbookWithUserInfo(workbook);
     formattedWorkbook.isMyWorkbookAdded = isMyWorkbookAdded;
-
+    formattedWorkbook.isInCart = isInCart;
+    formattedWorkbook.countOfCartItems = countOfCartItems;
     return res.status(200).json({
       success: true,
       totalQuestionsCount,

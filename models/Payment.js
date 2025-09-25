@@ -46,11 +46,11 @@ const paymentSchema = new mongoose.Schema({
     ref: 'CreditRechargePlan',
     default: null
   },
-  workbookId: {
+  workbookIds: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Workbook',
     default: null
-  },
+  }],
   // Number of credits intended to be credited on success (snapshot at initiation)
   creditsPurchased: {
     type: Number,

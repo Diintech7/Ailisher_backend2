@@ -10,7 +10,7 @@ router.post('/update', authenticateMobileUser, cartController.updateItem);
 router.delete('/item/:workbookId', authenticateMobileUser, cartController.removeItem);
 router.post('/clear', authenticateMobileUser, cartController.clearCart);
 // Checkout flows
-router.post('/checkout/item', authenticateMobileUser, cartController.checkoutItem);
+router.post('/checkout/item', authenticateMobileUser, cartController.checkoutCart);
 router.post('/callback',cartController.paytmCallback)
 
 module.exports = router;
