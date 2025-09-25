@@ -249,7 +249,6 @@ exports.checkoutCart = async (req, res) => {
     );
 
     // ✅ Optional Telegram (uncomment when ready)
-    /*
     try {
       const itemTitles = itemsToPurchase.map(i => i.title).join(", ");
       await axios.post(
@@ -261,7 +260,6 @@ exports.checkoutCart = async (req, res) => {
     } catch (err) {
       console.error("Telegram error:", err.message);
     }
-    */
 
     res.json({
       success: true,
