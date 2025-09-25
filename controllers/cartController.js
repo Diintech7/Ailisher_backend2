@@ -183,12 +183,10 @@ exports.checkoutCart = async (req, res) => {
           (i) => String(i.workbookId) === String(workbookId)
         );
         if (!item) {
-          return res
-            .status(404)
-            .json({
-              success: false,
-              message: `Item ${workbookId} not found in cart`,
-            });
+          return res.status(404).json({
+            success: false,
+            message: `Item ${workbookId} not found in cart`,
+          });
         }
         itemsToPurchase.push(item);
         totalAmount += item.price;
@@ -272,13 +270,11 @@ exports.checkoutCart = async (req, res) => {
     });
   } catch (error) {
     console.error("Checkout error:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Checkout failed",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Checkout failed",
+      error: error.message,
+    });
   }
 };
 
@@ -387,10 +383,14 @@ exports.paytmCallback = async (req, res) => {
         }
         await creditAccount.save();
 
-        // Clear cart after success
+        // Clear only purchased items from cart
         await Cart.findOneAndUpdate(
           { userId: payment.userId, clientId: payment.clientId },
-          { items: [] }
+          {
+            $pull: {
+              items: { workbookId: { $in: payment.workbookIds } },
+            },
+          }
         );
 
         // Telegram notification
@@ -416,12 +416,10 @@ exports.paytmCallback = async (req, res) => {
     });
   } catch (error) {
     console.error("Callback error:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Payment callback error",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Payment callback error",
+      error: error.message,
+    });
   }
 };
