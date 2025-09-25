@@ -49,7 +49,10 @@ const formatWorkbookWithUserInfo = async (workbook) => {
     formattedWorkbook.price = workbook.offerPrice || workbook.MRP;
     formattedWorkbook.isForSale = true;
   }
-
+  
+  const isPurchased = await UserPlan.find({userId:req.user.id, workbookId:workbook._id});
+  console.log(isPurchased)
+  formattedWorkbook.isPurchased = isPurchased;
   // Check if workbook is in any plan and get plan details
   try {
     const PlanItem = require('../models/PlanItem');
