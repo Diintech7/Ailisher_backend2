@@ -15,8 +15,16 @@ const MyWorkbook = require('../models/MyWorkbook'); // Make sure this is at the 
 const UserPlan = require('../models/UserPlan');
 const Cart = require('../models/Cart');
 
+
+const formatDuration = (seconds) => {
+  if (seconds == null) return 'Lifetime access';
+  if (seconds <= 0) return 'Expired';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  return d > 0 ? `${d}d ${h}h left` : `${h}h left`;
+};
 // Helper function to format workbook with user info and S3 URLs
-const formatWorkbookWithUserInfo = async (workbook) => {
+const formatWorkbookWithUserInfo = async (workbook, userId) => {
   const formattedWorkbook = {
     ...workbook.toObject(),
     createdBy: workbook.user ? {
@@ -50,9 +58,46 @@ const formatWorkbookWithUserInfo = async (workbook) => {
     formattedWorkbook.isForSale = true;
   }
   
-  const isPurchased = await UserPlan.find({workbookId:workbook._id});
-  console.log(isPurchased)
-  formattedWorkbook.isPurchased = isPurchased;
+  // Calculate purchase status for this user and workbook
+  try {
+    if (userId && workbook._id) {
+      const now = new Date();
+      const plan = await UserPlan.findOne({
+        userId: userId,
+        workbookId: workbook._id,
+        status: 'active',
+        startDate: { $lte: now },
+        $or: [
+          { endDate: null },
+          { endDate: { $gte: now } }
+        ]
+      }).select('endDate');
+      if (plan) {
+        formattedWorkbook.isPurchased = true;
+        if (plan.endDate) {
+          const msLeft = new Date(plan.endDate).getTime() - now.getTime();
+          const secondsLeft = msLeft > 0 ? Math.ceil(msLeft / 1000) : 0; // seconds
+
+          formattedWorkbook.expiresIn = formatDuration(secondsLeft);
+          // formattedWorkbook.expiresInDays = secondsLeft > 0 ? Math.ceil(secondsLeft / 86400) : 0; // days
+        } else {
+          formattedWorkbook.expiresIn = null; // lifetime
+        }
+      } else {
+        formattedWorkbook.isPurchased = false;
+        formattedWorkbook.expiresIn = null;
+      }
+    } else {
+      formattedWorkbook.isPurchased = false;
+      formattedWorkbook.expiresIn = null;
+    }
+  } catch (purchaseErr) {
+    console.error('Error checking purchase status for workbook:', purchaseErr);
+    formattedWorkbook.isPurchased = false;
+    formattedWorkbook.expiresIn = null;
+    formattedWorkbook.expiresInDays = null;
+  }
+ 
   // Check if workbook is in any plan and get plan details
   try {
     const PlanItem = require('../models/PlanItem');
@@ -74,19 +119,21 @@ const formatWorkbookWithUserInfo = async (workbook) => {
       }).select('_id name description MRP offerPrice category duration status');
       // Determine if current user is enrolled in any of these plans
       let isEnrolled = false;
-      try {
-        const now = new Date();
-        const enrolled = await UserPlan.findOne({
-          userId: req.user?.id,
-          clientId: workbook.clientId,
-          planId: { $in: planIds.map(plan => plan._id) },
-          status: 'active',
-          startDate: { $lte: now },
-          endDate: { $gte: now }
-        }).select('_id');
-        isEnrolled = Boolean(enrolled);
-      } catch (enrollErr) {
-        console.error('Error checking enrollment for book (details):', enrollErr);
+      if (userId) {
+        try {
+          const now = new Date();
+          const enrolled = await UserPlan.findOne({
+            userId: userId,
+            clientId: workbook.clientId,
+            planId: { $in: planIds.map(plan => plan._id) },
+            status: 'active',
+            startDate: { $lte: now },
+            endDate: { $gte: now }
+          }).select('_id');
+          isEnrolled = Boolean(enrolled);
+        } catch (enrollErr) {
+          console.error('Error checking enrollment for book (details):', enrollErr);
+        }
       }
       formattedWorkbook.isPaid = true;
       formattedWorkbook.isEnrolled = isEnrolled;
@@ -648,16 +695,14 @@ exports.deleteWorkbook = async (req, res) => {
 // Get workbooks with S3 URLs
 exports.getWorkbooksformobile = async (req, res) => {
   try {
-    console.log("getting workbooks")
+    const userId = req.user.id;
     const user = req.clientInfo.id.toString();
-    console.log(user)
     const { category, subcategory, trending, highlighted, search, limit, page = 1 } = req.query;
     let filter = { user };
     if (category) filter.mainCategory = category;
     if (subcategory) filter.subCategory = subcategory;
     if (trending === 'true') {
       filter.isTrending = true;
-     
     }
     if (highlighted === 'true') filter.isHighlighted = true;
     if (search) {
@@ -709,10 +754,10 @@ exports.getWorkbooksformobile = async (req, res) => {
     .sort({ trendingScore: -1, viewCount: -1 })
 
     const workbooks = await query;
-    const workbooksWithUserInfo = await Promise.all(workbooks.map(formatWorkbookWithUserInfo));
-    const highlightedBooksWithUserInfo = await Promise.all(highlightedBooks.map(formatWorkbookWithUserInfo));
-    const trendingBooksWithUserInfo = await Promise.all(trendingBooks.map(formatWorkbookWithUserInfo));
-    
+    const workbooksWithUserInfo = await Promise.all(workbooks.map(w => formatWorkbookWithUserInfo(w, userId)));
+    const highlightedBooksWithUserInfo = await Promise.all(highlightedBooks.map(w => formatWorkbookWithUserInfo(w, userId)));
+    const trendingBooksWithUserInfo = await Promise.all(trendingBooks.map(w => formatWorkbookWithUserInfo(w, userId)));
+
     const categoryOrders = {};
     workbooks.forEach(workbook => {
       if (!categoryOrders[workbook.mainCategory] || workbook.categoryOrder > categoryOrders[workbook.mainCategory]) {
@@ -729,7 +774,6 @@ exports.getWorkbooksformobile = async (req, res) => {
      
     });
   } catch (error) {
-    console.log(error)
     return res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
@@ -746,7 +790,7 @@ exports.getHighlightedWorkbooks = async (req, res) => {
     const { limit } = req.query;
 
     const highlightedworkbooks = await Workbook.getHighlightedWorkbooks(clientId, limit ? parseInt(limit) : null);
-    const workbooksWithUserInfo = highlightedworkbooks.map(formatWorkbookWithUserInfo);
+    const workbooksWithUserInfo = await Promise.all(highlightedworkbooks.map(formatWorkbookWithUserInfo));
     console.log(workbooksWithUserInfo)
     return res.status(200).json({
       success: true,
@@ -958,7 +1002,7 @@ exports.getTrendingWorkbooks = async (req, res) => {
 exports.getWorkbookSets = async (req, res) => {
   try {
     const { id } = req.params; // workbook ID
-
+    const userId = req.user.id;
     // Find the workbook
     const workbook = await Workbook.findById(id)
       .populate('user', 'name email userId');
@@ -969,20 +1013,16 @@ exports.getWorkbookSets = async (req, res) => {
 
     // Check if this workbook is in MyWorkbook for the current mobile user
     let isMyWorkbookAdded = false;
-    console.log(req.user.id);
-    console.log(workbook._id)
-    if (req.user.id && workbook._id) {
-      isMyWorkbookAdded = await MyWorkbook.isWorkbookSavedByUser(req.user.id, workbook._id);
+    if (userId && workbook._id) {
+      isMyWorkbookAdded = await MyWorkbook.isWorkbookSavedByUser(userId, workbook._id);
     }
-    console.log(isMyWorkbookAdded)
 
-    let cartItems = await Cart.findOne({userId:req.user.id})
-    let countOfCartItems = cartItems.items.length
+    const cartItems = await Cart.findOne({ userId: userId });
+    const countOfCartItems = cartItems?.items?.length || 0;
 
-    let isInCart = false
-    if(countOfCartItems > 0)
-    {
-      isInCart = cartItems.items.some(item => item.workbookId.toString() === workbook._id.toString())
+    let isInCart = false;
+    if (countOfCartItems > 0) {
+      isInCart = cartItems.items.some(item => item.workbookId.toString() === workbook._id.toString());
     }
 
     const chapters = await Chapter.find({ workbook: id });
@@ -1019,7 +1059,7 @@ exports.getWorkbookSets = async (req, res) => {
     });
 
     // Format workbook and add isMyWorkbookAdded
-    const formattedWorkbook = await formatWorkbookWithUserInfo(workbook);
+    const formattedWorkbook = await formatWorkbookWithUserInfo(workbook, userId);
     formattedWorkbook.isMyWorkbookAdded = isMyWorkbookAdded;
     formattedWorkbook.isInCart = isInCart;
     formattedWorkbook.countOfCartItems = countOfCartItems;

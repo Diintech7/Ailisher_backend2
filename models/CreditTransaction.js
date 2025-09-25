@@ -18,11 +18,11 @@ const CreditTransactionSchema = new mongoose.Schema({
   },
   balanceBefore: {
     type: Number,
-    required: true
+    // required: true
   },
   balanceAfter: {
     type: Number,
-    required: true
+    // required: true
   },
   category: {
     type: String,

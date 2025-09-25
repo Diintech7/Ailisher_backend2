@@ -7,6 +7,7 @@ const PaytmChecksum = require("paytmchecksum");
 const axios = require("axios");
 const CreditAccount = require("../models/CreditAccount");
 const UserPlan = require("../models/UserPlan");
+const CreditTransaction = require("../models/CreditTransaction");
 
 function getEffectivePrice(workbook) {
   if (typeof workbook.offerPrice === "number" && workbook.offerPrice > 0) {
@@ -283,7 +284,7 @@ exports.paytmCallback = async (req, res) => {
   try {
     const paytmResponse = req.body;
     const orderId = paytmResponse.ORDERID;
-
+    console.log(orderId)
     console.log("Paytm Callback:", paytmResponse);
 
     // Verify checksum
@@ -322,7 +323,9 @@ exports.paytmCallback = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Payment record not found", orderId });
+
     }
+    console.log("payment",payment)
 
     // Credit user account if success
     if (payment.status === "SUCCESS") {
