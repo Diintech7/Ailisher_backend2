@@ -50,7 +50,7 @@ const formatWorkbookWithUserInfo = async (workbook) => {
     formattedWorkbook.isForSale = true;
   }
   
-  const isPurchased = await UserPlan.find({userId:req.user.id, workbookId:workbook._id});
+  const isPurchased = await UserPlan.find({workbookId:workbook._id});
   console.log(isPurchased)
   formattedWorkbook.isPurchased = isPurchased;
   // Check if workbook is in any plan and get plan details
