@@ -173,7 +173,7 @@ exports.createWorkbook = async (req, res) => {
       title, description, author, publisher, language, mainCategory, subCategory,
       customSubCategory, exam, paper, subject, tags, clientId, isPublic, categoryOrder,
       coverImageKey, rating, ratingCount, conversations, users, summary,
-      isForSale, MRP, offerPrice, currency, validityDays, details
+      isForSale, MRP, offerPrice, currency, validityDays, details, GST
     } = req.body;
 
     const currentUser = await User.findById(req.user.id);
@@ -243,12 +243,16 @@ exports.createWorkbook = async (req, res) => {
     if (isPaidBool) {
       const mrpNum = Number(MRP);
       const offerNum = Number(offerPrice);
+      const gstNum = Number(GST);
       const validityNum = validityDays === '' || validityDays === null || validityDays === undefined ? 0 : Number(validityDays);
       if (!Number.isFinite(mrpNum) || mrpNum < 0) {
         return res.status(400).json({ success: false, message: 'MRP must be a non-negative number' });
       }
       if (!Number.isFinite(offerNum) || offerNum < 0) {
         return res.status(400).json({ success: false, message: 'Offer price must be a non-negative number' });
+      }
+      if (!Number.isFinite(gstNum) || gstNum < 0) {
+        return res.status(400).json({ success: false, message: 'GST must be a non-negative number' });
       }
       if (!Number.isFinite(validityNum) || validityNum < 0) {
         return res.status(400).json({ success: false, message: 'validityDays must be a non-negative number (0 for lifetime)' });
@@ -265,6 +269,7 @@ exports.createWorkbook = async (req, res) => {
       workbookData.currency = (currency || 'INR');
       workbookData.validityDays = validityNum;
       workbookData.details = details;
+      workbookData.GST = gstNum;
     } else if (isForSale === 'false' || isForSale === false) {
       workbookData.isForSale = false;
     }
@@ -426,7 +431,7 @@ exports.updateWorkbook = async (req, res) => {
       title, description, author, publisher, language, mainCategory, subCategory,
       customSubCategory, exam, paper, subject, tags, isPublic, categoryOrder,
       coverImageKey, rating, ratingCount, conversations, users, summary,
-      isForSale, MRP, offerPrice, currency, validityDays, details
+      isForSale, MRP, offerPrice, currency, validityDays, details, GST
     } = req.body;
     const workbook = await Workbook.findById(req.params.id);
     if (!workbook) {
@@ -508,12 +513,16 @@ exports.updateWorkbook = async (req, res) => {
       if (isPaidBool) {
         const mrpNum = Number(MRP);
         const offerNum = Number(offerPrice);
+        const gstNum = Number(GST);
         const validityNum = validityDays === '' || validityDays === null || validityDays === undefined ? (workbook.validityDays || 0) : Number(validityDays);
         if (!Number.isFinite(mrpNum) || mrpNum < 0) {
           return res.status(400).json({ success: false, message: 'MRP must be a non-negative number' });
         }
         if (!Number.isFinite(offerNum) || offerNum < 0) {
           return res.status(400).json({ success: false, message: 'Offer price must be a non-negative number' });
+        }
+        if (!Number.isFinite(gstNum) || gstNum < 0) {
+          return res.status(400).json({ success: false, message: 'GST must be a non-negative number' });
         }
         if (!Number.isFinite(validityNum) || validityNum < 0) {
           return res.status(400).json({ success: false, message: 'validityDays must be a non-negative number (0 for lifetime)' });
@@ -527,6 +536,7 @@ exports.updateWorkbook = async (req, res) => {
         updateData.currency = (currency || workbook.currency || 'INR');
         updateData.validityDays = validityNum;
         updateData.details = details;
+        updateData.GST = gstNum;
       } else {
         updateData.isForSale = false;
       }
@@ -548,6 +558,13 @@ exports.updateWorkbook = async (req, res) => {
           return res.status(400).json({ success: false, message: 'Offer price cannot exceed MRP' });
         }
         updateData.offerPrice = offerNum;
+      }
+      if (GST !== undefined) {
+        const gstNum = Number(GST);
+        if (!Number.isFinite(gstNum) || gstNum < 0) {
+          return res.status(400).json({ success: false, message: 'GST must be a non-negative number' });
+        }
+        updateData.GST = gstNum;
       }
       if (currency !== undefined) {
         updateData.currency = currency || workbook.currency || 'INR';
