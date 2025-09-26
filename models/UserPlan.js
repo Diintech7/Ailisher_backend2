@@ -57,6 +57,48 @@ const UserPlanSchema = new mongoose.Schema({
   }
 });
 
+// Helpful compound index for common lookups
+UserPlanSchema.index({ userId: 1, workbookId: 1, status: 1, endDate: 1 });
+
+// Mark as expired automatically if endDate is in the past
+UserPlanSchema.pre('save', function(next) {
+  this.updatedAt = new Date();
+  if (this.endDate && this.endDate <= new Date() && this.status !== 'expired') {
+    this.status = 'expired';
+  }
+  next();
+});
+
+// Ensure queries for active plans exclude expired ones by time
+UserPlanSchema.query.active = function() {
+  return this.where({ status: 'active' }).where({
+    $or: [
+      { endDate: null },
+      { endDate: { $gt: new Date() } }
+    ]
+  });
+};
+
+// Static: expire all overdue plans (run on a schedule or before critical reads)
+UserPlanSchema.statics.expireOverdue = function() {
+  return this.updateMany(
+    {
+      endDate: { $ne: null, $lte: new Date() },
+      status: { $ne: 'expired' }
+    },
+    {
+      $set: { status: 'expired', updatedAt: new Date() }
+    }
+  );
+};
+
+// Static: find currently active plans for a user (optionally for a workbook)
+UserPlanSchema.statics.findActiveForUser = function(userId, workbookId) {
+  const query = { userId, status: 'active' };
+  if (workbookId) query.workbookId = workbookId;
+  return this.find(query).active();
+};
+
 module.exports = mongoose.model('UserPlan', UserPlanSchema);
 
 

@@ -62,7 +62,46 @@ const subjectiveTestSchema =  new mongoose.Schema({
         type:Boolean,
         default:false
       },
+    // Scheduling
+    startsAt:{
+        type:Date,
+        default:null
+    },
+    endsAt:{
+        type:Date,
+        default:null
+    },
 },
 {timestamps:true});
+
+// Helpful indexes for scheduling queries
+subjectiveTestSchema.index({ clientId: 1, isEnabled: 1, isActive: 1, startsAt: 1, endsAt: 1 });
+
+// Query helpers
+subjectiveTestSchema.query.scheduled = function() {
+    return this.where({ $or: [ { startsAt: { $ne: null } }, { endsAt: { $ne: null } } ] });
+};
+
+subjectiveTestSchema.query.live = function(now = new Date()) {
+    return this.where({ isEnabled: true, isActive: true }).where({
+        $and: [
+            { $or: [ { startsAt: null }, { startsAt: { $lte: now } } ] },
+            { $or: [ { endsAt: null }, { endsAt: { $gt: now } } ] }
+        ]
+    });
+};
+
+// Instance helper
+subjectiveTestSchema.methods.isLive = function(now = new Date()){
+    const enabled = this.isEnabled !== false && this.isActive !== false;
+    const started = !this.startsAt || this.startsAt <= now;
+    const notEnded = !this.endsAt || this.endsAt > now;
+    return enabled && started && notEnded;
+};
+
+// Static convenience
+subjectiveTestSchema.statics.findLive = function(filter = {}, now = new Date()){
+    return this.find(filter).live(now);
+};
 
 module.exports = mongoose.model('SubjectiveTest', subjectiveTestSchema);

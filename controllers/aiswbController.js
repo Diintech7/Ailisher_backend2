@@ -283,7 +283,9 @@ const getAISWBSets = async (req, res) => {
       sets: sets.map(set => ({
         id: set._id.toString(),
         name: set.name,
-        questions: set.questions
+        questions: set.questions,
+        startsAt:set.startsAt,
+        endsAt:set.endsAt
       }))
     });
 
@@ -316,14 +318,16 @@ const createAISWBSet = async (req, res) => {
 
     const { itemType, itemId } = req.params;
     const isWorkbook = req.query.isWorkbook === 'true';
-    const { name } = req.body;
+    const { name,startsAt,endsAt } = req.body;
 
     const newSet = new AISWBSet({
       name,
       itemType,
       itemId,
       isWorkbook,
-      questions: []
+      questions: [],
+      startsAt,
+      endsAt
     });
 
     await newSet.save();
@@ -365,8 +369,9 @@ const updateAISWBSet = async (req, res) => {
     }
 
     const { setId } = req.params;
-    const { name } = req.body;
+    const { name,startsAt,endsAt } = req.body;
 
+    console.log(req.body)
     const set = await AISWBSet.findById(setId);
     if (!set) {
       return res.status(404).json({
@@ -380,8 +385,10 @@ const updateAISWBSet = async (req, res) => {
     }
 
     set.name = name;
+    set.startsAt = startsAt,
+    set.endsAt = endsAt
     await set.save();
-
+    console.log(set)
     res.status(200).json({
       success: true,
       set: {

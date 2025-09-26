@@ -77,6 +77,8 @@ exports.createTest = async (req, res) => {
       isHighlighted,
       isActive,
       instructions,
+      startsAt,
+      endsAt
     } = req.body;
     console.log(req.user.userId);
     const clientId = req.user.userId;
@@ -107,6 +109,18 @@ exports.createTest = async (req, res) => {
       }
     }
 
+    // Validate schedule if provided
+    if (startsAt && endsAt) {
+      const start = new Date(startsAt);
+      const end = new Date(endsAt);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({ success: false, message: "Invalid start/end datetime" });
+      }
+      if (end <= start) {
+        return res.status(400).json({ success: false, message: "endsAt must be after startsAt" });
+      }
+    }
+
     const test = await ObjectiveTest.create({
       name,
       clientId,
@@ -120,6 +134,8 @@ exports.createTest = async (req, res) => {
       isHighlighted,
       isActive,
       instructions,
+      startsAt,
+      endsAt
     });
 
     res.status(201).json({
@@ -194,7 +210,6 @@ exports.getTest = async (req, res) => {
 exports.getAllTests = async (req, res) => {
   try {
     const clientId = req.user.userId;
-    console.log(clientId);
     const client = await User.findOne({ userId: clientId });
     if (!client) {
       res.status(400).json({ message: "client not found" });
@@ -336,6 +351,8 @@ exports.getAllTestsForMobile = async (req, res) => {
         isEnabled: test.isEnabled,
         totalQuestions: test.totalQuestions,
         testMaximumMarks: test.testMaximumMarks,
+        startsAt:test.startsAt,
+        endsAt:test.endsAt,
         created_at: test.createdAt,
         updated_at: test.updatedAt,
       };
@@ -502,7 +519,6 @@ exports.getAllTestsForMobile = async (req, res) => {
 exports.updateTest = async (req, res) => {
   try {
     const clientId = req.user.userId;
-    console.log(clientId);
     const client = await User.findOne({ userId: clientId });
     if (!client) {
       res.status(400).json({ message: "client not found" });
@@ -519,7 +535,11 @@ exports.updateTest = async (req, res) => {
       instructions,
       category,
       subcategory,
+      startsAt,
+      endsAt
     } = req.body;
+
+    console.log(req.body);
 
     if (!id) {
       return res.status(400).json({
@@ -561,6 +581,18 @@ exports.updateTest = async (req, res) => {
       }
     }
 
+    // Validate schedule if provided
+    if (startsAt && endsAt) {
+      const start = new Date(startsAt);
+      const end = new Date(endsAt);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({ success: false, message: "Invalid start/end datetime" });
+      }
+      if (end <= start) {
+        return res.status(400).json({ success: false, message: "endsAt must be after startsAt" });
+      }
+    }
+
     const updatedTest = await ObjectiveTest.findByIdAndUpdate(
       id,
       {
@@ -575,10 +607,13 @@ exports.updateTest = async (req, res) => {
         instructions,
         category,
         subcategory,
+        startsAt,
+        endsAt
       },
       { new: true }
     );
 
+    console.log("updated",updatedTest)
     res.status(200).json({
       success: true,
       message: "Test updated successfully",

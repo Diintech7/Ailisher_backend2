@@ -62,16 +62,10 @@ const formatWorkbookWithUserInfo = async (workbook, userId) => {
   try {
     if (userId && workbook._id) {
       const now = new Date();
-      const plan = await UserPlan.findOne({
-        userId: userId,
-        workbookId: workbook._id,
-        status: 'active',
-        startDate: { $lte: now },
-        $or: [
-          { endDate: null },
-          { endDate: { $gte: now } }
-        ]
-      }).select('endDate');
+      const plan = await UserPlan
+        .findOne({ userId: userId, workbookId: workbook._id, startDate: { $lte: now } })
+        .active()
+        .select('endDate');
       if (plan) {
         formattedWorkbook.isPurchased = true;
         if (plan.endDate) {
@@ -85,7 +79,12 @@ const formatWorkbookWithUserInfo = async (workbook, userId) => {
         }
       } else {
         formattedWorkbook.isPurchased = false;
-        formattedWorkbook.expiresIn = null;
+        // If there was a plan that expired in the past, surface 'Expired'
+        const expiredPlan = await UserPlan
+          .findOne({ userId: userId, workbookId: workbook._id, endDate: { $ne: null, $lt: now } })
+          .sort({ endDate: -1 })
+          .select('endDate');
+        formattedWorkbook.expiresIn = expiredPlan ? 'Expired' : null;
       }
     } else {
       formattedWorkbook.isPurchased = false;

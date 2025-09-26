@@ -35,18 +35,18 @@ const generatePresignedUrl = async (key, contentType) => {
       ContentType: contentType
     });
 
-    console.log('Created PutObjectCommand with params:', {
-      Bucket: process.env.AWS_BUCKET_NAME,
-      Key: formattedKey,
-      ContentType: contentType
-    });
+    // console.log('Created PutObjectCommand with params:', {
+    //   Bucket: process.env.AWS_BUCKET_NAME,
+    //   Key: formattedKey,
+    //   ContentType: contentType
+    // });
 
     // Generate presigned URL with 1 hour expiration
     const url = await getSignedUrl(s3Client, command, { 
       expiresIn: 604800 
     });
 
-    console.log('Successfully generated presigned URL');
+    // console.log('Successfully generated presigned URL');
     return url;
   } catch (error) {
     console.error('Error generating presigned URL:', {
@@ -64,30 +64,30 @@ const generatePresignedUrl = async (key, contentType) => {
 // Generate presigned URL for getting/reading an object
 const generateGetPresignedUrl = async (key, expiresIn = 604800) => { // Default 7 days (max allowed)
   try {
-    console.log('Generating presigned URL for key:', key);
-    console.log('Using bucket:', process.env.AWS_BUCKET_NAME);
-    console.log('Using region:', process.env.AWS_REGION);
+    // console.log('Generating presigned URL for key:', key);
+    // console.log('Using bucket:', process.env.AWS_BUCKET_NAME);
+    // console.log('Using region:', process.env.AWS_REGION);
 
     // Ensure the key is properly formatted
     const formattedKey = key.startsWith('/') ? key.slice(1) : key;
-    console.log('Formatted key:', formattedKey);
+    // console.log('Formatted key:', formattedKey);
 
     const command = new GetObjectCommand({
       Bucket: process.env.AWS_BUCKET_NAME,
       Key: formattedKey,
     });
 
-    console.log('Created GetObjectCommand with params:', {
-      Bucket: process.env.AWS_BUCKET_NAME,
-      Key: formattedKey
-    });
+    // console.log('Created GetObjectCommand with params:', {
+    //   Bucket: process.env.AWS_BUCKET_NAME,
+    //   Key: formattedKey
+    // });
 
     // Generate URL with valid expiration (max 7 days)
     const signedUrl = await getSignedUrl(s3Client, command, { 
       expiresIn: Math.min(expiresIn, 604800) // Ensure we don't exceed 7 days
     });
 
-    console.log('Successfully generated presigned URL');
+    // console.log('Successfully generated presigned URL');
     return signedUrl;
   } catch (error) {
     console.error('Error generating get presigned URL:', {

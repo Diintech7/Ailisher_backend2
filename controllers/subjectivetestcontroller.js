@@ -146,6 +146,8 @@ exports.createTest = async (req, res) => {
       isHighlighted,
       isActive,
       instructions,
+      startsAt,
+      endsAt
     } = req.body;
     console.log(req.user.userId);
     const clientId = req.user.userId;
@@ -176,6 +178,18 @@ exports.createTest = async (req, res) => {
       }
     }
 
+    // Validate schedule if provided
+    if (startsAt && endsAt) {
+      const start = new Date(startsAt);
+      const end = new Date(endsAt);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({ success: false, message: "Invalid start/end datetime" });
+      }
+      if (end <= start) {
+        return res.status(400).json({ success: false, message: "endsAt must be after startsAt" });
+      }
+    }
+
     const test = await Test.create({
       name,
       clientId,
@@ -189,6 +203,8 @@ exports.createTest = async (req, res) => {
       isHighlighted,
       isActive,
       instructions,
+      startsAt,
+      endsAt
     });
 
     res.status(201).json({
@@ -450,6 +466,8 @@ exports.getAllTestsForMobile = async (req, res) => {
         testMaximumMarks: test.testMaximumMarks,
         totalScore: test.totalScore,
         percentage: test.percentage,
+        startsAt:test.startsAt,
+        endsAt:test.endsAt,
         created_at: test.createdAt,
         updated_at: test.updatedAt,
         userTestStatus: test.userTestStatus, // Include user status
@@ -634,6 +652,8 @@ exports.updateTest = async (req, res) => {
       instructions,
       category,
       subcategory,
+      startsAt,
+      endsAt
     } = req.body;
 
     if (!id) {
@@ -676,6 +696,18 @@ exports.updateTest = async (req, res) => {
       }
     }
 
+    // Validate schedule if provided
+    if (startsAt && endsAt) {
+      const start = new Date(startsAt);
+      const end = new Date(endsAt);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({ success: false, message: "Invalid start/end datetime" });
+      }
+      if (end <= start) {
+        return res.status(400).json({ success: false, message: "endsAt must be after startsAt" });
+      }
+    }
+
     const updatedTest = await Test.findByIdAndUpdate(
       id,
       {
@@ -690,6 +722,8 @@ exports.updateTest = async (req, res) => {
         instructions,
         category,
         subcategory,
+        startsAt,
+        endsAt
       },
       { new: true }
     );
