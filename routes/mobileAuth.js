@@ -199,7 +199,7 @@ router.post("/login", validateClient, async (req, res) => {
         // Send Telegram alert for new user
         try {
           await axios.post(
-            `http://localhost:5000/api/clients/${clientId}/telegram/send-text`,
+            `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
             {
               text: `🆕 <b>New User Registered!</b>\n\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>Registration No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`
             },
@@ -546,21 +546,21 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     }
 
     await profile.save();
-    // if(clientId === "CLI147189HIGB")
-    // {
-    //   // Send Telegram alert for new user
-    //   try {
-    //     await axios.post(
-    //       `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
-    //       {
-    //         text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${name}\n📱 Mobile: ${mobileUser.mobile}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
-    //       }
-    //     );
-    //   } catch (telegramError) {
-    //     console.error("Failed to send Telegram alert:", telegramError.message);
-    //     // Don't fail the registration if Telegram fails
-    //   }
-    // }
+    if(clientId === "CLI147189HIGB")
+    {
+      // Send Telegram alert for new user
+      try {
+        await axios.post(
+          `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
+          {
+            text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${name}\n📱 Mobile: ${mobileUser.mobile}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
+          }
+        );
+      } catch (telegramError) {
+        console.error("Failed to send Telegram alert:", telegramError.message);
+        // Don't fail the registration if Telegram fails
+      }
+    }
 
 
     res.status(200).json({
