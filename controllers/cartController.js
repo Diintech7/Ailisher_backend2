@@ -173,7 +173,7 @@ exports.checkoutCart = async (req, res) => {
 
     // Ensure cart exists
     const cart = await ensureCart(userId, clientId);
-    console.log(cart)
+    console.log(cart);
     if (!cart.items.length) {
       return res.status(400).json({ success: false, message: "Cart is empty" });
     }
@@ -212,12 +212,16 @@ exports.checkoutCart = async (req, res) => {
         lineTotal,
       };
     });
-    console.log(detailedItems)
+    console.log(detailedItems);
 
-    const subtotal = Math.round(detailedItems.reduce((sum, i) => sum + i.price, 0) * 100) / 100;
-    const totalGst = Math.round(detailedItems.reduce((sum, i) => sum + i.gstAmount, 0) * 100) / 100;
+    const subtotal =
+      Math.round(detailedItems.reduce((sum, i) => sum + i.price, 0) * 100) /
+      100;
+    const totalGst =
+      Math.round(detailedItems.reduce((sum, i) => sum + i.gstAmount, 0) * 100) /
+      100;
     totalAmount = Math.round((subtotal + totalGst) * 100) / 100;
-    
+
     const selectedWorkbookIds = detailedItems.map((i) => i.workbookId);
     console.log(selectedWorkbookIds);
     // Customer details
@@ -270,17 +274,22 @@ exports.checkoutCart = async (req, res) => {
       { checksumHash: checksum, paytmOrderId: orderId }
     );
 
-    // ✅ Optional Telegram (uncomment when ready)
-    try {
-      const itemTitles = detailedItems.map(i => i.title).join(", ");
-      await axios.post(
-        `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
-        {
-          text: `🆕 <b>INITIATED PAYMENT</b>\n\n👤 ${customerPhone} (${customerName}) has initiated purchase:\n📦 <b>${itemTitles}</b>\n💰 Subtotal: ₹${subtotal}\n🧾 GST: ₹${totalGst}\n💵 Total: ₹${totalAmount}\n⏰ Time: ${new Date().toLocaleString()}`,
-        }
-      );
-    } catch (err) {
-      console.error("Telegram error:", err.message);
+    if (clientId === "CLI147189HIGB") {
+      // ✅ Optional Telegram (uncomment when ready)
+      try {
+        const itemTitles = detailedItems.map((i) => i.title).join(", ");
+        await axios.post(
+          `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
+          {
+            text: `🆕 <b>INITIATED PAYMENT</b>\n\n👤 ${customerPhone} (${customerName}) has initiated purchase:\n📦 <b>${itemTitles}</b>\n💰 Subtotal: ₹${subtotal}\n🧾 GST: ₹${totalGst}\n💵 Total: ₹${totalAmount}\n⏰ Time: ${new Date().toLocaleString(
+              "en-IN",
+              { timeZone: "Asia/Kolkata" }
+            )}`,
+          }
+        );
+      } catch (err) {
+        console.error("Telegram error:", err.message);
+      }
     }
 
     res.json({
@@ -304,7 +313,7 @@ exports.paytmCallback = async (req, res) => {
   try {
     const paytmResponse = req.body;
     const orderId = paytmResponse.ORDERID;
-    console.log(orderId)
+    console.log(orderId);
     console.log("Paytm Callback:", paytmResponse);
 
     // Verify checksum
@@ -343,9 +352,8 @@ exports.paytmCallback = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Payment record not found", orderId });
-
     }
-    console.log("payment",payment)
+    console.log("payment", payment);
 
     // Credit user account if success
     if (payment.status === "SUCCESS") {
@@ -415,17 +423,18 @@ exports.paytmCallback = async (req, res) => {
             },
           }
         );
-
-        // Telegram notification
-        try {
-          await axios.post(
-            `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
-            {
-              text: `✅ <b>Payment Successful</b>\n\n💰 ₹${payment.amount}\n👤 ${payment.customerPhone} (${payment.customerName})\n🆔 Order: ${orderId}\n📦 Workbooks: ${payment.workbookIds.length}`,
-            }
-          );
-        } catch (err) {
-          console.error("Telegram error:", err.message);
+        if (req.clientId === "CLI147189HIGB") {
+          // Telegram notification
+          try {
+            await axios.post(
+              `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
+              {
+                text: `✅ <b>Payment Successful</b>\n\n💰 ₹${payment.amount}\n👤 ${payment.customerPhone} (${payment.customerName})\n🆔 Order: ${orderId}\n📦 Workbooks: ${payment.workbookIds.length}`,
+              }
+            );
+          } catch (err) {
+            console.error("Telegram error:", err.message);
+          }
         }
       }
     }

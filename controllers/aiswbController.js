@@ -285,7 +285,8 @@ const getAISWBSets = async (req, res) => {
         name: set.name,
         questions: set.questions,
         startsAt:set.startsAt,
-        endsAt:set.endsAt
+        endsAt:set.endsAt,
+        isEnabled:set.isEnabled
       }))
     });
 
@@ -448,6 +449,41 @@ const deleteAISWBSet = async (req, res) => {
         details: error.message
       }
     });
+  }
+};
+
+const toggleIsEnabled = async (req,res) => {
+  try {
+    const {id} = req.params;
+    const {isEnabled} = req.body || {};
+
+    if(!id)
+    {
+      return res.status(400).json({
+        success:true,
+        message:"set id is required",
+      })
+    }
+
+    const set = await AISWBSet.findById(id)
+    if(!set)
+    {
+      return res.status(404).json({success:false,message:"Set not found"})
+    }
+
+    const newValue = typeof isEnabled === 'boolean'? isEnabled : !set.isEnabled;
+    set.isEnabled = newValue;
+
+    await set.save();
+
+    return res.status(200).json({
+      success:true,
+      message:"set isEnabled updated"
+    })
+  } 
+  catch (error) {
+    console.error('Toggle isEnabled error:',error);
+    return res.status(500).json({success:false,message:"Failed to update isEnabled", error:error.message});
   }
 };
 
@@ -1052,5 +1088,6 @@ module.exports = {
   getDefaultEvaluationFramework,
   generatePdfUploadUrl,
   attachPdfToQuestion,
-  deletePdfFromQuestion
+  deletePdfFromQuestion,
+  toggleIsEnabled
 };

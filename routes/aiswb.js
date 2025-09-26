@@ -55,6 +55,10 @@ router.delete('/:itemType/:itemId/sets/:setId',
   aiswbController.deleteAISWBSet
 );
 
+router.patch('/:itemType/:itemId/sets/:id',
+  aiswbController.toggleIsEnabled
+)
+
 router.get('/:itemType/:itemId/sets/:setId/questions', 
   aiswbValidation.validateSetParams,
   aiswbValidation.validateSetId, 

@@ -2,6 +2,7 @@ const express=require('express');
 const router=express.Router();
 
 const TelegramServiceController=require('../controllers/telegrambotcontroller');
+const { authenticateMobileUser } = require('../middleware/mobileAuth');
 
 const telegramService = new TelegramServiceController();
 

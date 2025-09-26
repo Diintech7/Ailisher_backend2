@@ -152,7 +152,7 @@ router.post("/login", validateClient, async (req, res) => {
 
       // // Send Telegram alert for existing user login
       // try {
-      //   await axios.post(`http://localhost:5000/api/clients/CLI147189HIGB/telegram/send-text`, {
+      //   await axios.post(`https://test.ailisher.com/api/clients/CLI147189HIGB/telegram/send-text`, {
       //     text: `👤 <b>User Login</b>\n\n📱 Mobile: ${mobile}\n🏢 Client ID: ${clientId}\n⏰ Time: ${new Date().toLocaleString()}\n🆔 User ID: ${mobileUser._id}\n🔢 Login Count: ${mobileUser.loginCount || 1}`
       //   });
       // } catch (telegramError) {
@@ -180,6 +180,9 @@ router.post("/login", validateClient, async (req, res) => {
       isNewUser = true;
 
       try {
+        // Determine registration position within this client BEFORE creating
+        const totalUsersBefore = await MobileUser.countDocuments({ clientId });
+        const registrationNumber = totalUsersBefore + 1;
         mobileUser = new MobileUser({
           mobile,
           clientId,
@@ -191,13 +194,21 @@ router.post("/login", validateClient, async (req, res) => {
 
         await mobileUser.save();
 
+        if(clientId === "CLI147189HIGB")
+        {
         // Send Telegram alert for new user
         try {
           await axios.post(
-            `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
+            `http://localhost:5000/api/clients/${clientId}/telegram/send-text`,
             {
-            text: `🆕 <b>New User Registered!</b>\n\n📱 <b>Mobile:${mobile}</b>\n⏰ <b>Time:${new Date().toLocaleString()}</b>`,
-            }
+              text: `🆕 <b>New User Registered!</b>\n\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>Registration No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`
+            },
+            // {
+            //   headers:{
+            //     Authorization:`Bearer ${token}`
+            //   }
+            // }
+            
           );
         } catch (telegramError) {
           console.error(
@@ -206,6 +217,8 @@ router.post("/login", validateClient, async (req, res) => {
           );
           // Don't fail the registration if Telegram fails
         }
+        }
+        
 
         // 2. Immediately create a credit account for this user
         const existing = await CreditAccount.findOne({
@@ -465,10 +478,10 @@ router.post("/bulk-check", validateClient, async (req, res) => {
 router.post("/profile", authenticateMobileUser, async (req, res) => {
   try {
     console.log("=== PROFILE CREATE ROUTE HIT ===");
-    const { name, age, gender, exams, native_language } = req.body;
+    const { name, age, gender, exams, native_language, city, pincode } = req.body;
     const clientId = req.params.clientId;
     const userId = req.user.id;
-
+    console.log(req.body)
     const mobileUser = await MobileUser.findOne({ _id: userId, clientId });
     if (!mobileUser) {
       return res.status(403).json({
@@ -488,6 +501,13 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     if (!exams || !Array.isArray(exams) || exams.length === 0)
       errors.push("Please select at least one exam.");
     if (!native_language) errors.push("Please select your native language.");
+    // Optional: basic pincode validation if provided
+    if (typeof pincode !== 'undefined' && pincode !== null && pincode !== '') {
+      const pinStr = String(pincode).trim();
+      if (!/^\d{6}$/.test(pinStr)) {
+        errors.push("Please enter a valid 6-digit pincode.");
+      }
+    }
 
     if (errors.length > 0) {
       return res.status(400).json({
@@ -500,6 +520,7 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
 
     let profile = await UserProfile.findOne({ userId });
     const isNewProfile = !profile;
+    console.log(profile);
 
     if (profile) {
       profile.name = name.trim();
@@ -507,6 +528,8 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
       profile.gender = gender;
       profile.exams = exams;
       profile.nativeLanguage = native_language;
+      profile.city = city;
+      profile.pincode = Number(pincode) || 0;
       profile.updatedAt = new Date();
     } else {
       profile = new UserProfile({
@@ -517,22 +540,28 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
         exams,
         nativeLanguage: native_language,
         clientId,
+        city: typeof city !== 'undefined' ? city : '',
+        pincode: typeof pincode !== 'undefined' ? (Number(pincode) || 0) : 0,
       });
     }
 
     await profile.save();
-    // Send Telegram alert for new user
-    try {
-      await axios.post(
-        `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
-        {
-          text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${name}\n📱 Mobile: ${mobileUser.mobile}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n⏰ Created On: ${new Date().toLocaleString()}`,
-        }
-      );
-    } catch (telegramError) {
-      console.error("Failed to send Telegram alert:", telegramError.message);
-      // Don't fail the registration if Telegram fails
-    }
+    // if(clientId === "CLI147189HIGB")
+    // {
+    //   // Send Telegram alert for new user
+    //   try {
+    //     await axios.post(
+    //       `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
+    //       {
+    //         text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${name}\n📱 Mobile: ${mobileUser.mobile}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
+    //       }
+    //     );
+    //   } catch (telegramError) {
+    //     console.error("Failed to send Telegram alert:", telegramError.message);
+    //     // Don't fail the registration if Telegram fails
+    //   }
+    // }
+
 
     res.status(200).json({
       status: "PROFILE_SAVED",
@@ -547,6 +576,8 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
         gender: profile.gender,
         exams: profile.exams,
         native_language: profile.nativeLanguage,
+        city: profile.city,
+        pincode: profile.pincode,
       },
     });
   } catch (error) {
@@ -599,6 +630,8 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
         gender: profile.gender,
         exams: profile.exams,
         native_language: profile.nativeLanguage,
+        city:profile.city,
+        pincode:profile.pincode,
         mobile: profile.userId.mobile,
         isEvaluator: profile.isEvaluator,
         created_at: profile.createdAt,
@@ -619,7 +652,7 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
 router.put("/profile", authenticateMobileUser, async (req, res) => {
   try {
     console.log("=== UPDATE PROFILE ROUTE HIT ===");
-    const { name, age, gender, exams, native_language } = req.body;
+    const { name, age, gender, exams, native_language, city, pincode } = req.body;
     const clientId = req.params.clientId;
     const userId = req.user.id;
 
@@ -656,7 +689,14 @@ router.put("/profile", authenticateMobileUser, async (req, res) => {
     if (gender !== undefined) profile.gender = gender;
     if (exams !== undefined) profile.exams = exams;
     if (native_language !== undefined) profile.nativeLanguage = native_language;
-
+    if(city !== undefined)profile.city = city;
+    // Optional: basic pincode validation if provided
+    if (pincode !== undefined) {
+      const pinStr = String(pincode).trim();
+      if (!/^\d{6}$/.test(pinStr)) {
+        errors.push("Please enter a valid 6-digit pincode.");
+      }
+    } profile.pincode = pincode;
     profile.updatedAt = new Date();
     await profile.save();
 
@@ -670,6 +710,8 @@ router.put("/profile", authenticateMobileUser, async (req, res) => {
         gender: profile.gender,
         exams: profile.exams,
         native_language: profile.nativeLanguage,
+        city:profile.city,
+        pincode:profile.pincode
       },
     });
   } catch (error) {

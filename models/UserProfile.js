@@ -30,6 +30,15 @@ const UserProfileSchema = new mongoose.Schema({
     type: String,
     enum: ['Hindi', 'English', 'Bengali', 'Telugu', 'Marathi', 'Tamil', 'Gujarati', 'Urdu', 'Kannada', 'Odia', 'Malayalam', 'Punjabi', 'Assamese', 'Other']
   },
+  city:{
+    type:String,
+    default:""
+  },
+  pincode:{
+    type:String,
+    match: [/^\d{6}$/, 'Pincode must be a 6-digit number'],
+    default: ''
+  },
   clientId: { // Changed from 'client' to 'clientId'
     type: String,
     required: true

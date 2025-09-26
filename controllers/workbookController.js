@@ -1113,7 +1113,7 @@ exports.toggleIsEnabled = async (req, res) => {
 
     if(!id)
     {
-      return re.status(400).json({success:false,message:"Workbook Id is required"})
+      return res.status(400).json({success:false,message:"Workbook Id is required"})
     }
 
     const workbook = await Workbook.findById(id);
@@ -1139,7 +1139,7 @@ exports.toggleIsEnabled = async (req, res) => {
     return res.status(200).json({success:true,message:"Workbook isEnabled updated"})
   } 
   catch (error) {
-    console.error('Tpggle isEnabled error:',error);
+    console.error('Toggle isEnabled error:',error);
     return res.status(500).json({success:false,message:"Failed to update isEnabled", error:error.message});
     }
 }
