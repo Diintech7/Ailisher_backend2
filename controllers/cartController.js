@@ -79,7 +79,7 @@ exports.addItem = async (req, res) => {
       (i) => String(i.workbookId) === String(workbookId)
     );
     if (!exists) {
-      cart.items.push({ workbookId, title, price, currency: "INR",GST });
+      cart.items.push({ workbookId, title, price, currency: "INR", GST });
     }
     await cart.save();
     const populated = await populateCart(userId, clientId);
@@ -114,6 +114,7 @@ exports.updateItem = async (req, res) => {
     if (workbook) {
       cart.items[idx].title = workbook.title;
       cart.items[idx].price = getEffectivePrice(workbook);
+      cart.items[idx].GST = workbook.GST;
     }
     await cart.save();
     const populated = await populateCart(userId, clientId);
@@ -196,7 +197,6 @@ exports.checkoutCart = async (req, res) => {
     } else {
       itemsToPurchase = cart.items;
     }
-
     // Compute GST breakdown and grand total
     const detailedItems = itemsToPurchase.map((i) => {
       const base = Number(i.price || 0);
@@ -212,11 +212,12 @@ exports.checkoutCart = async (req, res) => {
         lineTotal,
       };
     });
+    console.log(detailedItems)
 
     const subtotal = Math.round(detailedItems.reduce((sum, i) => sum + i.price, 0) * 100) / 100;
     const totalGst = Math.round(detailedItems.reduce((sum, i) => sum + i.gstAmount, 0) * 100) / 100;
     totalAmount = Math.round((subtotal + totalGst) * 100) / 100;
-
+    
     const selectedWorkbookIds = detailedItems.map((i) => i.workbookId);
     console.log(selectedWorkbookIds);
     // Customer details

@@ -19,6 +19,10 @@ const CartItemSchema = new mongoose.Schema({
     currency: {
         type: String,
         default: 'INR'
+    },
+    GST: {
+        type: Number,
+        default: 0
     }
 }, { _id: false });
 
