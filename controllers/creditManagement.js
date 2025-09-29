@@ -328,12 +328,60 @@ exports.getCreditRechargePlansWithItems = async (req, res) => {
       });
       plan.isEnrolled = isEnrolled ? true : false;
       console.log(plan.isEnrolled);
+    
+    // Process items for each plan and fetch referenced item details
+    if (plan.items && plan.items.length > 0) {
+      for (const item of plan.items) {
+        // Fetch referenced item details based on itemType and referenceId
+        if(item.referenceId && item.itemType) {
+          try {
+            let referencedItem = null;
+            
+            // Convert referenceId to ObjectId
+            item.referenceId = new mongoose.Types.ObjectId(item.referenceId);
+            
+            switch(item.itemType.toLowerCase()) {
+              case 'book':
+                referencedItem = await Book.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                break;
+              case 'workbook':
+                referencedItem = await Workbook.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                break;
+              case 'objective-test':
+                referencedItem = await ObjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                break;
+              case 'subjective-test':
+                referencedItem = await SubjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                break;
+              default:
+                console.log(`Unknown item type: ${item.itemType}`);
+            }
+            
+            if(referencedItem) {
+              // Store the referenced item with image URLs
+              item.referencedItem = {
+                category: referencedItem.category || referencedItem.mainCategory,
+                subCategory: referencedItem.subCategory || referencedItem.subcategory,
+              };
+              console.log('Referenced item:', item.referencedItem);
+            }
+          } catch(refError) {
+            console.error(`Error fetching referenced item ${item.referenceId}:`, refError);
+          }
+        }
+      }
     }
+  }
     res.json({
       success: true,
       data: plans.map(plan => ({
         ...plan.toObject(),
-        isEnrolled: plan.isEnrolled
+        isEnrolled: plan.isEnrolled,
+        items: plan.items.map(item => ({
+          ...item.toObject(),
+          category: item.referencedItem ? item.referencedItem.category : null,
+          subCategory: item.referencedItem ? item.referencedItem.subCategory : null
+        }))
       }))
     });
   } catch (error) {
