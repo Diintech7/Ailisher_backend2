@@ -1,4 +1,5 @@
 const Workbook = require('../models/Workbook');
+const mongoose = require('mongoose');
 const User = require('../models/User');
     // Find all chapters for this book
     const Chapter = require('../models/Chapter');
@@ -25,6 +26,9 @@ const formatDuration = (seconds) => {
 };
 // Helper function to format workbook with user info and S3 URLs
 const formatWorkbookWithUserInfo = async (workbook, userId) => {
+  const normalizedUserId = mongoose.isValidObjectId(userId)
+    ? (typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId)
+    : null;
   const formattedWorkbook = {
     ...workbook.toObject(),
     createdBy: workbook.user ? {
@@ -60,10 +64,10 @@ const formatWorkbookWithUserInfo = async (workbook, userId) => {
   
   // Calculate purchase status for this user and workbook
   try {
-    if (userId && workbook._id) {
+    if (normalizedUserId && workbook._id) {
       const now = new Date();
       const plan = await UserPlan
-        .findOne({ userId: userId, workbookId: workbook._id, startDate: { $lte: now } })
+        .findOne({ userId: normalizedUserId, workbookId: workbook._id, startDate: { $lte: now } })
         .active()
         .select('endDate');
       if (plan) {
@@ -81,7 +85,7 @@ const formatWorkbookWithUserInfo = async (workbook, userId) => {
         formattedWorkbook.isPurchased = false;
         // If there was a plan that expired in the past, surface 'Expired'
         const expiredPlan = await UserPlan
-          .findOne({ userId: userId, workbookId: workbook._id, endDate: { $ne: null, $lt: now } })
+          .findOne({ userId: normalizedUserId, workbookId: workbook._id, endDate: { $ne: null, $lt: now } })
           .sort({ endDate: -1 })
           .select('endDate');
         formattedWorkbook.expiresIn = expiredPlan ? 'Expired' : null;
@@ -750,9 +754,10 @@ exports.getWorkbooksformobile = async (req, res) => {
     .sort({ trendingScore: -1, viewCount: -1 })
 
     const workbooks = await query;
-    const workbooksWithUserInfo = await Promise.all(workbooks.map(w => formatWorkbookWithUserInfo(w, mongoose.Types.ObjectId(userId))));
-    const highlightedBooksWithUserInfo = await Promise.all(highlightedBooks.map(w => formatWorkbookWithUserInfo(w, mongoose.Types.ObjectId(userId))));
-    const trendingBooksWithUserInfo = await Promise.all(trendingBooks.map(w => formatWorkbookWithUserInfo(w, mongoose.Types.ObjectId(userId))));
+    const safeUserId = mongoose.Types.ObjectId.isValid(userId) ? userId : null;
+    const workbooksWithUserInfo = await Promise.all(workbooks.map(w => formatWorkbookWithUserInfo(w, safeUserId)));
+    const highlightedBooksWithUserInfo = await Promise.all(highlightedBooks.map(w => formatWorkbookWithUserInfo(w, safeUserId)));
+    const trendingBooksWithUserInfo = await Promise.all(trendingBooks.map(w => formatWorkbookWithUserInfo(w, safeUserId)));
 
     const categoryOrders = {};
     workbooks.forEach(workbook => {
@@ -770,6 +775,7 @@ exports.getWorkbooksformobile = async (req, res) => {
      
     });
   } catch (error) {
+    console.error('getWorkbooksformobile error:', error);
     return res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
