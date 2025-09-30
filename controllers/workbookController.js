@@ -750,9 +750,9 @@ exports.getWorkbooksformobile = async (req, res) => {
     .sort({ trendingScore: -1, viewCount: -1 })
 
     const workbooks = await query;
-    const workbooksWithUserInfo = await Promise.all(workbooks.map(w => formatWorkbookWithUserInfo(w, userId)));
-    const highlightedBooksWithUserInfo = await Promise.all(highlightedBooks.map(w => formatWorkbookWithUserInfo(w, userId)));
-    const trendingBooksWithUserInfo = await Promise.all(trendingBooks.map(w => formatWorkbookWithUserInfo(w, userId)));
+    const workbooksWithUserInfo = await Promise.all(workbooks.map(w => formatWorkbookWithUserInfo(w, mongoose.Types.ObjectId(userId))));
+    const highlightedBooksWithUserInfo = await Promise.all(highlightedBooks.map(w => formatWorkbookWithUserInfo(w, mongoose.Types.ObjectId(userId))));
+    const trendingBooksWithUserInfo = await Promise.all(trendingBooks.map(w => formatWorkbookWithUserInfo(w, mongoose.Types.ObjectId(userId))));
 
     const categoryOrders = {};
     workbooks.forEach(workbook => {

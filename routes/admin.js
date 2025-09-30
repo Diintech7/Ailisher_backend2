@@ -402,7 +402,7 @@ router.get("/paytm/status/:orderId", async (req, res) => {
 });
 
 
-router.post('/evaluators/:id/kyc/verified', async (req, res) => {
+router.post('/evaluators/:id/kyc/verify',verifyAdminToken, async (req, res) => {
   try {
     const evaluatorId = req.params.id;
     const evaluator = await Evaluator.findByIdAndUpdate(evaluatorId);
@@ -432,7 +432,7 @@ router.post('/evaluators/:id/kyc/verified', async (req, res) => {
   }
 })
 
-router.post('/evaluators/:id/kyc/rejected', async (req, res) => {
+router.post('/evaluators/:id/kyc/reject',verifyAdminToken, async (req, res) => {
   try {
     const evaluatorId = req.params.id;
     const {reason} = req.body;
@@ -455,11 +455,42 @@ router.post('/evaluators/:id/kyc/rejected', async (req, res) => {
   }
 })
 
+router.get('/withdrawals', verifyAdminToken, async (req, res) => {
+  try {
+    const withdrawals = await EvaluatorWithdrawalRequest.find().populate('evaluatorId');
+    const count = withdrawals.length;
+    return res.json({ success: true, data: withdrawals , count});
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/verified-requests', verifyAdminToken, async (req, res) => {
+  try {
+    const evaluators = await Evaluator.find({ 'kycDetails.status': 'verified' });
+    const count = evaluators.length;
+    return res.json({ success: true, data: evaluators, count });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/rejected-requests', verifyAdminToken, async (req, res) => {
+  try {
+    const evaluators = await Evaluator.find({ 'kycDetails.status': 'rejected' });
+    const count = evaluators.length;
+    return res.json({ success: true, data: evaluators, count });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+
 // Admin: mark a withdrawal as processed (paid)
 router.post('/withdrawals/:requestId/process', verifyAdminToken, async (req, res) => {
   try {
     const { requestId } = req.params;
-    const { transactionId, adminNotes } = req.body;
+    const { transactionId, adminNotes, screenshot } = req.body;
 
     const request = await EvaluatorWithdrawalRequest.findById(requestId);
     if (!request) {
@@ -471,7 +502,7 @@ router.post('/withdrawals/:requestId/process', verifyAdminToken, async (req, res
     request.adminNotes = adminNotes || request.adminNotes;
     request.processedAt = new Date();
     request.processedBy = req.admin._id;
-
+    request.screenshot = screenshot || request.screenshot;
     await request.save();
 
     return res.json({ success: true, message: 'Withdrawal marked as processed', data: request });
