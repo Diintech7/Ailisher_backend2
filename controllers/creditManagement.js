@@ -295,10 +295,11 @@ exports.useCreditsForService = async (req, res) => {
 exports.getCreditRechargePlans = async (req,res) => {
   try {
     const clientId = req.user.clientId
-    const plans = await CreditRechargePlan.find({clientId:clientId}).populate('items');
-
+    const plans = await CreditRechargePlan.find({clientId:clientId}).select('-items')
+    const count = plans.length
     res.json({
       success : true,
+      totalPlans:count,
       data : plans
     })
   } 
@@ -309,7 +310,6 @@ exports.getCreditRechargePlans = async (req,res) => {
     })
   }
 }
-
 
 // Get plans that include items (bundled plans)
 exports.getCreditRechargePlansWithItems = async (req, res) => {

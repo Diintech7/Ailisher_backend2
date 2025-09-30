@@ -66,21 +66,50 @@ const saveEvaluatedAnswer = async (req, res) => {
       });
     }
 
-    // Create new evaluation
+    // Create new evaluation with only the fields that exist in the Evaluation model
     const newEvaluation = new Evaluation({
       submissionId,
       questionId,
       userId,
       clientId: submission.clientId,
-      extractedTexts: evaluation.extractedTexts || [],
-      geminiAnalysis: {
-        accuracy: evaluation.geminiAnalysis.accuracy,
-        strengths: evaluation.geminiAnalysis.strengths || [],
-        weaknesses: evaluation.geminiAnalysis.weaknesses || [],
-        suggestions: evaluation.geminiAnalysis.suggestions || []
+      evaluationMode: evaluation.evaluationMode || 'auto',
+      evaluation: {
+        relevancy: evaluation.evaluation?.relevancy || 0,
+        extractedText: evaluation.evaluation?.extractedText || '',
+        score: evaluation.evaluation?.score || 0,
+        remark: evaluation.evaluation?.remark || '',
+        feedbackStatus: evaluation.evaluation?.feedbackStatus || true,
+        userFeedback: evaluation.evaluation?.userFeedback || {
+          message: '',
+          submittedAt: null
+        },
+        comments: evaluation.evaluation?.comments || [],
+        analysis: {
+          introduction: evaluation.evaluation?.analysis?.introduction || [],
+          body: evaluation.evaluation?.analysis?.body || [],
+          conclusion: evaluation.evaluation?.analysis?.conclusion || [],
+          strengths: evaluation.evaluation?.analysis?.strengths || [],
+          weaknesses: evaluation.evaluation?.analysis?.weaknesses || [],
+          suggestions: evaluation.evaluation?.analysis?.suggestions || [],
+          feedback: evaluation.evaluation?.analysis?.feedback || []
+        }
       },
-      status: evaluation.status || 'not_published',
-      evaluatedAt: evaluation.evaluatedAt || new Date()
+      hindiEvaluation: {
+        relevancy: evaluation.hindiEvaluation?.relevancy || 0,
+        score: evaluation.hindiEvaluation?.score || 0,
+        remark: evaluation.hindiEvaluation?.remark || '',
+        comments: evaluation.hindiEvaluation?.comments || [],
+        analysis: {
+          introduction: evaluation.hindiEvaluation?.analysis?.introduction || [],
+          body: evaluation.hindiEvaluation?.analysis?.body || [],
+          conclusion: evaluation.hindiEvaluation?.analysis?.conclusion || [],
+          strengths: evaluation.hindiEvaluation?.analysis?.strengths || [],
+          weaknesses: evaluation.hindiEvaluation?.analysis?.weaknesses || [],
+          suggestions: evaluation.hindiEvaluation?.analysis?.suggestions || [],
+          feedback: evaluation.hindiEvaluation?.analysis?.feedback || []
+        }
+      },
+      annotations: evaluation.annotations || []
     });
 
     const savedEvaluation = await newEvaluation.save();
@@ -91,8 +120,15 @@ const saveEvaluatedAnswer = async (req, res) => {
       data: {
         evaluationId: savedEvaluation._id,
         submissionId: savedEvaluation.submissionId,
-        status: savedEvaluation.status,
-        evaluatedAt: savedEvaluation.evaluatedAt
+        questionId: savedEvaluation.questionId,
+        userId: savedEvaluation.userId,
+        clientId: savedEvaluation.clientId,
+        evaluationMode: savedEvaluation.evaluationMode,
+        evaluation: savedEvaluation.evaluation,
+        hindiEvaluation: savedEvaluation.hindiEvaluation,
+        annotations: savedEvaluation.annotations,
+        createdAt: savedEvaluation.createdAt,
+        updatedAt: savedEvaluation.updatedAt
       }
     });
 
@@ -504,11 +540,110 @@ const getAllEvaluations = async (req, res) => {
   }
 };
 
+// Update evaluation with complete data
+const updateEvaluationComplete = async (req, res) => {
+  try {
+    const { evaluationId } = req.params;
+    const { evaluation } = req.body;
+
+    if (!evaluationId || !evaluation) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: evaluationId and evaluation data'
+      });
+    }
+
+    // Find existing evaluation
+    const existingEvaluation = await Evaluation.findById(evaluationId);
+    if (!existingEvaluation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Evaluation not found'
+      });
+    }
+
+    // Update evaluation with only the fields that exist in the Evaluation model
+    const updateData = {
+      evaluationMode: evaluation.evaluationMode || existingEvaluation.evaluationMode,
+      evaluation: {
+        relevancy: evaluation.evaluation?.relevancy !== undefined ? evaluation.evaluation.relevancy : existingEvaluation.evaluation?.relevancy || 0,
+        extractedText: evaluation.evaluation?.extractedText !== undefined ? evaluation.evaluation.extractedText : existingEvaluation.evaluation?.extractedText || '',
+        score: evaluation.evaluation?.score !== undefined ? evaluation.evaluation.score : existingEvaluation.evaluation?.score || 0,
+        remark: evaluation.evaluation?.remark !== undefined ? evaluation.evaluation.remark : existingEvaluation.evaluation?.remark || '',
+        feedbackStatus: evaluation.evaluation?.feedbackStatus !== undefined ? evaluation.evaluation.feedbackStatus : existingEvaluation.evaluation?.feedbackStatus || true,
+        userFeedback: evaluation.evaluation?.userFeedback || existingEvaluation.evaluation?.userFeedback || {
+          message: '',
+          submittedAt: null
+        },
+        comments: evaluation.evaluation?.comments || existingEvaluation.evaluation?.comments || [],
+        analysis: {
+          introduction: evaluation.evaluation?.analysis?.introduction || existingEvaluation.evaluation?.analysis?.introduction || [],
+          body: evaluation.evaluation?.analysis?.body || existingEvaluation.evaluation?.analysis?.body || [],
+          conclusion: evaluation.evaluation?.analysis?.conclusion || existingEvaluation.evaluation?.analysis?.conclusion || [],
+          strengths: evaluation.evaluation?.analysis?.strengths || existingEvaluation.evaluation?.analysis?.strengths || [],
+          weaknesses: evaluation.evaluation?.analysis?.weaknesses || existingEvaluation.evaluation?.analysis?.weaknesses || [],
+          suggestions: evaluation.evaluation?.analysis?.suggestions || existingEvaluation.evaluation?.analysis?.suggestions || [],
+          feedback: evaluation.evaluation?.analysis?.feedback || existingEvaluation.evaluation?.analysis?.feedback || []
+        }
+      },
+      hindiEvaluation: {
+        relevancy: evaluation.hindiEvaluation?.relevancy !== undefined ? evaluation.hindiEvaluation.relevancy : existingEvaluation.hindiEvaluation?.relevancy || 0,
+        score: evaluation.hindiEvaluation?.score !== undefined ? evaluation.hindiEvaluation.score : existingEvaluation.hindiEvaluation?.score || 0,
+        remark: evaluation.hindiEvaluation?.remark !== undefined ? evaluation.hindiEvaluation.remark : existingEvaluation.hindiEvaluation?.remark || '',
+        comments: evaluation.hindiEvaluation?.comments || existingEvaluation.hindiEvaluation?.comments || [],
+        analysis: {
+          introduction: evaluation.hindiEvaluation?.analysis?.introduction || existingEvaluation.hindiEvaluation?.analysis?.introduction || [],
+          body: evaluation.hindiEvaluation?.analysis?.body || existingEvaluation.hindiEvaluation?.analysis?.body || [],
+          conclusion: evaluation.hindiEvaluation?.analysis?.conclusion || existingEvaluation.hindiEvaluation?.analysis?.conclusion || [],
+          strengths: evaluation.hindiEvaluation?.analysis?.strengths || existingEvaluation.hindiEvaluation?.analysis?.strengths || [],
+          weaknesses: evaluation.hindiEvaluation?.analysis?.weaknesses || existingEvaluation.hindiEvaluation?.analysis?.weaknesses || [],
+          suggestions: evaluation.hindiEvaluation?.analysis?.suggestions || existingEvaluation.hindiEvaluation?.analysis?.suggestions || [],
+          feedback: evaluation.hindiEvaluation?.analysis?.feedback || existingEvaluation.hindiEvaluation?.analysis?.feedback || []
+        }
+      },
+      annotations: evaluation.annotations || existingEvaluation.annotations || []
+    };
+
+    const updatedEvaluation = await Evaluation.findByIdAndUpdate(
+      evaluationId,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    res.json({
+      success: true,
+      message: 'Evaluation updated successfully',
+      data: {
+        evaluationId: updatedEvaluation._id,
+        submissionId: updatedEvaluation.submissionId,
+        questionId: updatedEvaluation.questionId,
+        userId: updatedEvaluation.userId,
+        clientId: updatedEvaluation.clientId,
+        evaluationMode: updatedEvaluation.evaluationMode,
+        evaluation: updatedEvaluation.evaluation,
+        hindiEvaluation: updatedEvaluation.hindiEvaluation,
+        annotations: updatedEvaluation.annotations,
+        createdAt: updatedEvaluation.createdAt,
+        updatedAt: updatedEvaluation.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating evaluation:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update evaluation',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   saveEvaluatedAnswer,
   getUserEvaluatedAnswers,
   updateEvaluationStatus,
   getEvaluationDetails,
   getEvaluationDetailsByQuestion, // NEW method
-  getAllEvaluations
+  getAllEvaluations,
+  updateEvaluationComplete
 };

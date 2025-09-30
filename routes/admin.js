@@ -15,6 +15,8 @@ const {
   sendErrorResponse,
   sendValidationError,
 } = require("../utils/response");
+const Evaluator = require("../models/Evaluator");
+const EvaluatorWithdrawalRequest = require("../models/EvaluatorWithdrawalRequest");
 
 // Auth routes
 router.post("/register", adminController.register);
@@ -122,7 +124,7 @@ router.post("/paytm/initiate", async (req, res) => {
       ORDER_ID: orderId,
       CUST_ID: customerEmail,
       TXN_AMOUNT: parseFloat(amount).toFixed(2),
-      CALLBACK_URL: "https://test.ailisher.com/api/admin/paytm/callback",
+      CALLBACK_URL: "http://localhost:5000/api/admin/paytm/callback",
       EMAIL: customerEmail,
       MOBILE_NO: customerPhone,
     };
@@ -396,6 +398,85 @@ router.get("/paytm/status/:orderId", async (req, res) => {
       message: "Status check failed",
       error: error.message,
     });
+  }
+});
+
+
+router.post('/evaluators/:id/kyc/verified', async (req, res) => {
+  try {
+    const evaluatorId = req.params.id;
+    const evaluator = await Evaluator.findByIdAndUpdate(evaluatorId);
+    if(!evaluator)
+    {
+      return res.status(404).json({
+        success:false,
+        message:"evaluator not found"
+      })
+    }
+    evaluator.kycDetails.status = 'verified';
+    evaluator.kycDetails.verifiedAt = new Date();
+    evaluator.kycDetails.verifiedBy = req.admin._id;
+    evaluator.withdrawalSettings.withdrawalEnabled = true;
+
+    await evaluator.save();
+    return res.json({
+      success:true,
+      message:"kyc verified"
+    })
+  } 
+  catch (error) {
+    return res.status(400).json({
+      success:false,
+      message:error.message
+    })
+  }
+})
+
+router.post('/evaluators/:id/kyc/rejected', async (req, res) => {
+  try {
+    const evaluatorId = req.params.id;
+    const {reason} = req.body;
+    const evaluator = await Evaluator.findById(evaluatorId);
+    evaluator.kycDetails.status = 'rejected',
+    evaluator.kycDetails.rejectionReason = reason;
+    evaluator.withdrawalSettings.withdrawalEnabled = false;
+
+    await evaluator.save();
+    return res.json({
+      success:true,
+      message:"kyc rejected"
+    })
+  } 
+  catch (error) {
+    return res.status(400).json({
+      success:false,
+      message:error.message
+    })
+  }
+})
+
+// Admin: mark a withdrawal as processed (paid)
+router.post('/withdrawals/:requestId/process', verifyAdminToken, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { transactionId, adminNotes } = req.body;
+
+    const request = await EvaluatorWithdrawalRequest.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ success: false, message: 'Withdrawal request not found' });
+    }
+
+    request.status = 'processed';
+    request.transactionId = transactionId || request.transactionId;
+    request.adminNotes = adminNotes || request.adminNotes;
+    request.processedAt = new Date();
+    request.processedBy = req.admin._id;
+
+    await request.save();
+
+    return res.json({ success: true, message: 'Withdrawal marked as processed', data: request });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
   }
 });
 

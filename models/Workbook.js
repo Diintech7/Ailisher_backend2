@@ -66,6 +66,10 @@ const WorkbookSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  videoUrl:{
+    type: String,
+    default: ''
+  },
   mainCategory: {
     type: String,
     required: [true, 'Please select a main category'],

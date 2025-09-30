@@ -245,4 +245,11 @@ router.post('/addexistinguserasevaluator', async (req, res) => {
   }
 });
 
+// Update Evaluation with Complete Data API
+// PUT /api/aiswb/submissions/evaluation/:evaluationId/complete
+router.put('/submissions/evaluation/:evaluationId/complete', 
+  validateEvaluationId,
+  evaluationController.updateEvaluationComplete
+);
+
 module.exports = router;

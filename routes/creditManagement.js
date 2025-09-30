@@ -7,6 +7,8 @@ router.get('/account',authenticateMobileUser, getCreditAccount );
 
 router.get('/transactions', authenticateMobileUser, getCreditTransactions );
 
+router.get('/allPlans',authenticateMobileUser,getCreditRechargePlans)
+
 router.get('/plans', authenticateMobileUser, getCreditRechargePlansWithItems);
 
 router.get('/plans/without-items', authenticateMobileUser, getCreditRechargePlansWithoutItems);

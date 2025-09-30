@@ -73,6 +73,7 @@ exports.createTest = async (req, res) => {
       subcategory,
       Estimated_time,
       imageKey,
+      videoUrl,
       isTrending,
       isHighlighted,
       isActive,
@@ -130,6 +131,7 @@ exports.createTest = async (req, res) => {
       Estimated_time,
       imageKey,
       imageUrl,
+      videoUrl,
       isTrending,
       isHighlighted,
       isActive,
@@ -373,15 +375,37 @@ exports.getAllTestsForMobile = async (req, res) => {
         if (planItems.length > 0) {
           // Get all plans that contain these plan items
           const plans = await CreditRechargePlan.find({
-            items: { $in: planItems.map(item => item._id) },
+            items: { $in: planItems.map(item => new mongoose.Types.ObjectId(item._id)) },
             clientId: clientId,
             status: 'active'
           }).select('_id name description MRP offerPrice category duration status');
-
+          
+          
+          console.log("plans",plans)
           // Determine if current user is enrolled in any of these plans
           let isEnrolled = false;
+          let enrollmentStatus = 'not_enrolled';
           try {
             const now = new Date();
+            
+            // First, check for any expired plans and update their status
+            await UserPlan.updateMany(
+              {
+                userId: req.user?.id,
+                clientId: clientId,
+                planId: { $in: plans.map(plan => plan._id) },
+                status: 'active',
+                endDate: { $lt: now }
+              },
+              { 
+                $set: { 
+                  status: 'expired',
+                  updatedAt: now
+                } 
+              }
+            );
+            
+            // Now check for active enrollment
             const enrolled = await UserPlan.findOne({
               userId: req.user?.id,
               clientId: clientId,
@@ -389,16 +413,33 @@ exports.getAllTestsForMobile = async (req, res) => {
               status: 'active',
               startDate: { $lte: now },
               endDate: { $gte: now }
-            }).select('_id');
-            isEnrolled = Boolean(enrolled);
+            }).select('_id status startDate endDate');
+            
+            if (enrolled) {
+              isEnrolled = true;
+              enrollmentStatus = 'enrolled';
+            } else {
+              // Check if user has expired plans for this test
+              const expiredPlan = await UserPlan.findOne({
+                userId: req.user?.id,
+                clientId: clientId,
+                planId: { $in: plans.map(plan => plan._id) },
+                status: 'expired'
+              }).select('_id endDate');
+              
+              if (expiredPlan) {
+                enrollmentStatus = 'expired';
+              }
+            }
           } catch (enrollErr) {
             console.error('Error checking enrollment for objective test:', enrollErr);
           }
-
+          console.log("isEnrolled", isEnrolled, "status:", enrollmentStatus)
           return {
             ...baseFormat,
             isPaid: true,
             isEnrolled,
+            enrollmentStatus,
             planDetails: plans.map(plan => ({
               id: plan._id,
               name: plan.name,
@@ -529,6 +570,7 @@ exports.updateTest = async (req, res) => {
       description,
       Estimated_time,
       imageKey,
+      videoUrl,
       isTrending,
       isHighlighted,
       isActive,
@@ -600,6 +642,7 @@ exports.updateTest = async (req, res) => {
         description,
         Estimated_time,
         imageKey,
+        videoUrl,
         imageUrl,
         isTrending,
         isHighlighted,

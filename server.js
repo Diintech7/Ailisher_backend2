@@ -125,7 +125,8 @@ app.use('/api/marketing', require('./routes/marketing'))
 app.use('/api/image-generator', require('./routes/ImageGenerator'))
 app.use('/api/questionbank', require('./routes/questionbank'))
 app.use('/api/aicourses', aiCoursesRoutes)
-app.use('/api/credit', creditManagementRoutes)
+app.use('/api/credit', creditManagementRoutes);
+app.use('/api/evaluator',require("./routes/evaluatorCredit"))
 
 // Enhanced PDF processing routes with clustering and optional auth
 app.use("/api/enhanced-pdf-embedding", require("./routes/pdfEmbedding"))

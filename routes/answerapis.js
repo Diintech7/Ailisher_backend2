@@ -862,103 +862,6 @@ router.get('/answers/accepted', [
   }
 });
 
-// PUT /crud/answers/:answerId/accept - Accept answer (for manual mode)
-router.put('/answers/:answerId/accept', verifyTokenforevaluator, [
-  param('answerId')
-    .isMongoId()
-    .withMessage('Answer ID must be a valid MongoDB ObjectId')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid input data",
-        error: {
-          code: "INVALID_INPUT",
-          details: errors.array()
-        }
-      });
-    }
-
-    const { answerId } = req.params;
-    const evaluatorId = req.evaluator._id; // From verifyTokenforevaluator middleware
-
-    // Find the answer
-    const answer = await UserAnswer.findById(answerId);
-    if (!answer) {
-      return res.status(404).json({
-        success: false,
-        message: "Answer not found",
-        error: {
-          code: "ANSWER_NOT_FOUND",
-          details: "The specified answer does not exist"
-        }
-      });
-    }
-
-    // Check if answer is in submitted status
-    if (answer.submissionStatus !== 'submitted') {
-      return res.status(400).json({
-        success: false,
-        message: "Answer cannot be accepted",
-        error: {
-          code: "INVALID_STATUS",
-          details: `Only answers with 'submitted' status can be accepted. Current status: ${answer.submissionStatus}`
-        }
-      });
-    }
-
-    // Update the answer
-    const updatedAnswer = await UserAnswer.findByIdAndUpdate(
-      answerId,
-      {
-        submissionStatus: 'accepted',
-        acceptedAt: new Date(),
-        reviewedByEvaluator: evaluatorId
-      },
-      { new: true, runValidators: true }
-    ).populate([
-      {
-        path: 'questionId',
-        select: 'question evaluationMode metadata'
-      },
-      {
-        path: 'userId',
-        select: 'name email phoneNumber'
-      },
-      {
-        path: 'setId',
-        select: 'name itemType'
-      },
-      {
-        path: 'reviewedByEvaluator',
-        select: 'name email'
-      }
-    ]);
-
-    res.status(200).json({
-      success: true,
-      message: "Answer accepted successfully",
-      data: {
-        answer: updatedAnswer
-      }
-    });
-    console.log(res)
-
-  } catch (error) {
-    console.error('Error accepting answer:', error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: {
-        code: "SERVER_ERROR",
-        details: error.message
-      }
-    });
-  }
-});
-
 // PUT /crud/answers/:answerId/publish - Publish answer
 router.put('/answers/:answerId/publish', [
   param('answerId')
@@ -1302,6 +1205,103 @@ router.get('/answers/:answerId', [
 
   } catch (error) {
     console.error('Error fetching answer:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: {
+        code: "SERVER_ERROR",
+        details: error.message
+      }
+    });
+  }
+});
+
+// PUT /crud/answers/:answerId/accept - Accept answer (for manual mode)
+router.put('/answers/:answerId/accept', verifyTokenforevaluator, [
+  param('answerId')
+    .isMongoId()
+    .withMessage('Answer ID must be a valid MongoDB ObjectId')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid input data",
+        error: {
+          code: "INVALID_INPUT",
+          details: errors.array()
+        }
+      });
+    }
+
+    const { answerId } = req.params;
+    const evaluatorId = req.evaluator._id; // From verifyTokenforevaluator middleware
+
+    // Find the answer
+    const answer = await UserAnswer.findById(answerId);
+    if (!answer) {
+      return res.status(404).json({
+        success: false,
+        message: "Answer not found",
+        error: {
+          code: "ANSWER_NOT_FOUND",
+          details: "The specified answer does not exist"
+        }
+      });
+    }
+
+    // Check if answer is in submitted status
+    if (answer.submissionStatus !== 'submitted') {
+      return res.status(400).json({
+        success: false,
+        message: "Answer cannot be accepted",
+        error: {
+          code: "INVALID_STATUS",
+          details: `Only answers with 'submitted' status can be accepted. Current status: ${answer.submissionStatus}`
+        }
+      });
+    }
+
+    // Update the answer
+    const updatedAnswer = await UserAnswer.findByIdAndUpdate(
+      answerId,
+      {
+        submissionStatus: 'accepted',
+        acceptedAt: new Date(),
+        reviewedByEvaluator: evaluatorId
+      },
+      { new: true, runValidators: true }
+    ).populate([
+      {
+        path: 'questionId',
+        select: 'question evaluationMode metadata'
+      },
+      {
+        path: 'userId',
+        select: 'name email phoneNumber'
+      },
+      {
+        path: 'setId',
+        select: 'name itemType'
+      },
+      {
+        path: 'reviewedByEvaluator',
+        select: 'name email'
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: "Answer accepted successfully",
+      data: {
+        answer: updatedAnswer
+      }
+    });
+    console.log(res)
+
+  } catch (error) {
+    console.error('Error accepting answer:', error);
     res.status(500).json({
       success: false,
       message: "Internal server error",

@@ -221,7 +221,7 @@ exports.createWorkbook = async (req, res) => {
     const {
       title, description, author, publisher, language, mainCategory, subCategory,
       customSubCategory, exam, paper, subject, tags, clientId, isPublic, categoryOrder,
-      coverImageKey, rating, ratingCount, conversations, users, summary,
+      coverImageKey, rating, ratingCount, conversations, users, summary, videoUrl,
       isForSale, MRP, offerPrice, currency, validityDays, details, GST
     } = req.body;
 
@@ -284,7 +284,8 @@ exports.createWorkbook = async (req, res) => {
       ratingCount: ratingCount ? parseInt(ratingCount) : 0,
       conversations: parsedConversations,
       users: parsedUsers,
-      summary: summary ? summary.trim() : ''
+      summary: summary ? summary.trim() : '',
+      videoUrl: videoUrl || ''
     };
 
     // Pricing validation if isPaid is true
@@ -474,7 +475,7 @@ exports.updateWorkbook = async (req, res) => {
     const {
       title, description, author, publisher, language, mainCategory, subCategory,
       customSubCategory, exam, paper, subject, tags, isPublic, categoryOrder,
-      coverImageKey, rating, ratingCount, conversations, users, summary,
+      coverImageKey, rating, ratingCount, conversations, users, summary, videoUrl,
       isForSale, MRP, offerPrice, currency, validityDays, details, GST
     } = req.body;
     const workbook = await Workbook.findById(req.params.id);
@@ -546,6 +547,7 @@ exports.updateWorkbook = async (req, res) => {
       conversations: parsedConversations.length > 0 ? parsedConversations : workbook.conversations,
       users: parsedUsers.length > 0 ? parsedUsers : workbook.users,
       summary: summary ? summary.trim() : workbook.summary,
+      ...(videoUrl !== undefined ? { videoUrl } : {}),
       ...(coverImageKey && coverImageKey !== workbook.coverImageKey ? {
         coverImageKey: newCoverImageKey,
         coverImageUrl: newCoverImageUrl

@@ -4,7 +4,7 @@ const User = require('../models/User');
 const Admin = require('../models/Admin');
 const Evaluator = require('../models/Evaluator');
 
-// Verify user token
+// Verify evaluator token
 exports.verifyTokenforevaluator = async (req, res, next) => {
   try {
     // Get token from header
@@ -112,4 +112,43 @@ exports.hasRole = (req, res, next) => {
     return res.status(403).json({ success: false, message: 'Access denied: No role assigned' });
   }
   next();
+};
+
+exports.ensureBankDetailsComplete = async (req, res, next) => {
+  try {
+    const b = req.evaluator?.bankDetails || {};
+    const hasMinimum =
+     ( !!b.accountHolderName &&
+      !!b.accountNumber &&
+      !!b.ifscCode &&
+      !!b.bankName) || !!b.upiId
+
+    if (!hasMinimum) {
+      return res.status(400).json({
+        success: false,
+        code: 'BANK_DETAILS_INCOMPLETE',
+        message: 'Please complete bank details before withdrawing.'
+      });
+    }
+    return next();
+  } catch (error) {
+    return res.status(400).json({ success: false, message: 'Bank details validation failed' });
+  }
+};
+
+exports.ensureWithdrawalEligibility = async (req, res, next) => {
+  try {
+    const eligibility = req.evaluator.getWithdrawalEligibility();
+    if (!eligibility.canWithdraw) {
+      return res.status(400).json({
+        success: false,
+        code: 'WITHDRAWAL_NOT_ALLOWED',
+        message: 'Withdrawal not allowed.',
+        reasons: eligibility.reasons
+      });
+    }
+    return next();
+  } catch (error) {
+    return res.status(400).json({ success: false, message: 'Eligibility check failed' });
+  }
 };

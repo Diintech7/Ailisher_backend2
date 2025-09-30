@@ -1,22 +1,26 @@
 // routes/evaluatorReviews.js
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const ReviewRequest = require('../models/ReviewRequest');
-const UserAnswer = require('../models/UserAnswer');
-const Evaluator = require('../models/Evaluator');
-const { verifyTokenforevaluator } = require('../middleware/auth'); // Assuming evaluators use regular auth
-const AiswbQuestion = require('../models/AiswbQuestion');
-const SubjectiveTestQuestion = require('../models/SubjectiveTestQuestion');
-const { generatePresignedUrl, generateAnnotatedImageUrl } = require('../utils/s3');
-const path = require('path');
-
-
+const ReviewRequest = require("../models/ReviewRequest");
+const UserAnswer = require("../models/UserAnswer");
+const Evaluator = require("../models/Evaluator");
+const { verifyTokenforevaluator } = require("../middleware/auth"); // Assuming evaluators use regular auth
+const AiswbQuestion = require("../models/AiswbQuestion");
+const SubjectiveTestQuestion = require("../models/SubjectiveTestQuestion");
+const {
+  generatePresignedUrl,
+  generateAnnotatedImageUrl,
+} = require("../utils/s3");
+const path = require("path");
+const Evaluation = require("../models/Evaluation");
+const EvaluatorCreditService = require("../services/evaluatorCreditService");
+const EvaluatorCreditTransaction = require("../models/EvaluatorCreditTransaction");
 
 // // Get pending review requests for evaluator
 // router.get('/pending', verifyToken, async (req, res) => {
 //   try {
 //     const evaluatorId = req.user.id;
-    
+
 //     // Find evaluator to get client access
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     if (!evaluator) {
@@ -94,7 +98,7 @@ const path = require('path');
 //     // Check if evaluator has access to this client
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     const hasAccess = evaluator.clientAccess.some(client => client.id === request.clientId);
-    
+
 //     if (!hasAccess) {
 //       return res.status(403).json({
 //         success: false,
@@ -352,7 +356,7 @@ const path = require('path');
 //     // Verify evaluator has access
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     const hasAccess = evaluator.clientAccess.some(client => client.id === request.clientId);
-    
+
 //     if (!hasAccess) {
 //       return res.status(403).json({
 //         success: false,
@@ -379,7 +383,7 @@ const path = require('path');
 // router.get('/pending', verifyToken, async (req, res) => {
 //   try {
 //     const evaluatorId = req.user.id;
-    
+
 //     // Find evaluator to get client access
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     if (!evaluator) {
@@ -457,7 +461,7 @@ const path = require('path');
 //     // Check if evaluator has access to this client
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     const hasAccess = evaluator.clientAccess.some(client => client.id === request.clientId);
-    
+
 //     if (!hasAccess) {
 //       return res.status(403).json({
 //         success: false,
@@ -715,7 +719,7 @@ const path = require('path');
 //     // Verify evaluator has access
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     const hasAccess = evaluator.clientAccess.some(client => client.id === request.clientId);
-    
+
 //     if (!hasAccess) {
 //       return res.status(403).json({
 //         success: false,
@@ -742,7 +746,7 @@ const path = require('path');
 // router.get('/pending', verifyToken, async (req, res) => {
 //   try {
 //     const evaluatorId = req.user.id;
-    
+
 //     // Find evaluator to get client access
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     if (!evaluator) {
@@ -820,7 +824,7 @@ const path = require('path');
 //     // Check if evaluator has access to this client
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     const hasAccess = evaluator.clientAccess.some(client => client.id === request.clientId);
-    
+
 //     if (!hasAccess) {
 //       return res.status(403).json({
 //         success: false,
@@ -1078,7 +1082,7 @@ const path = require('path');
 //     // Verify evaluator has access
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     const hasAccess = evaluator.clientAccess.some(client => client.id === request.clientId);
-    
+
 //     if (!hasAccess) {
 //       return res.status(403).json({
 //         success: false,
@@ -1105,7 +1109,7 @@ const path = require('path');
 // router.get('/pending', verifyToken, async (req, res) => {
 //   try {
 //     const evaluatorId = req.user.id;
-    
+
 //     // Find evaluator to get client access
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     if (!evaluator) {
@@ -1183,7 +1187,7 @@ const path = require('path');
 //     // Check if evaluator has access to this client
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     const hasAccess = evaluator.clientAccess.some(client => client.id === request.clientId);
-    
+
 //     if (!hasAccess) {
 //       return res.status(403).json({
 //         success: false,
@@ -1441,7 +1445,7 @@ const path = require('path');
 //     // Verify evaluator has access
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     const hasAccess = evaluator.clientAccess.some(client => client.id === request.clientId);
-    
+
 //     if (!hasAccess) {
 //       return res.status(403).json({
 //         success: false,
@@ -1468,7 +1472,7 @@ const path = require('path');
 // router.get('/pending', verifyToken, async (req, res) => {
 //   try {
 //     const evaluatorId = req.user.id;
-    
+
 //     // Find evaluator to get client access
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     if (!evaluator) {
@@ -1546,7 +1550,7 @@ const path = require('path');
 //     // Check if evaluator has access to this client
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     const hasAccess = evaluator.clientAccess.some(client => client.id === request.clientId);
-    
+
 //     if (!hasAccess) {
 //       return res.status(403).json({
 //         success: false,
@@ -1804,7 +1808,7 @@ const path = require('path');
 //     // Verify evaluator has access
 //     const evaluator = await Evaluator.findById(evaluatorId);
 //     const hasAccess = evaluator.clientAccess.some(client => client.id === request.clientId);
-    
+
 //     if (!hasAccess) {
 //       return res.status(403).json({
 //         success: false,
@@ -1831,57 +1835,56 @@ const path = require('path');
 
 //evaluator profile
 
-router.get('/profile',verifyTokenforevaluator,async(req,res)=>{
+router.get("/profile", verifyTokenforevaluator, async (req, res) => {
   try {
     const evaluatorId = req.evaluator._id;
-    
+
     // Get evaluator to check client access
     const evaluator = await Evaluator.findById(evaluatorId);
     if (!evaluator) {
       return res.status(404).json({
         success: false,
-        message: 'Evaluator not found'
+        message: "Evaluator not found",
       });
     }
 
     res.status(200).json({
-      success:true,
-      message:"successfull retrieved profile",
-      evaluator:evaluator
-    })
+      success: true,
+      message: "successfull retrieved profile",
+      evaluator: evaluator,
+    });
   } catch (error) {
-    console.log(error)
+    console.log(error);
   }
-})
+});
 
-router.get('/pending-reviews', verifyTokenforevaluator, async (req, res) => {
+router.get("/pending-reviews", verifyTokenforevaluator, async (req, res) => {
   try {
     const evaluatorId = req.evaluator._id;
-    
+
     // Get evaluator to check client access
     const evaluator = await Evaluator.findById(evaluatorId);
     if (!evaluator) {
       return res.status(404).json({
         success: false,
-        message: 'Evaluator not found'
+        message: "Evaluator not found",
       });
     }
-    
+
     // Query parameters for pagination and filtering
     const { page = 1, limit = 10, clientId } = req.query;
     const skip = (page - 1) * limit;
 
     // Build filter object
     const filter = {
-      reviewStatus: 'review_pending',
-      reviewedByEvaluator: evaluatorId
+      reviewStatus: "review_pending",
+      reviewedByEvaluator: evaluatorId,
     };
-       
 
     // Get pending reviews with pagination
     const pendingReviews = await UserAnswer.find(filter)
-      .populate('userId', 'mobile name')
-      .populate('setId', 'name')
+      .populate("userId", "mobile name")
+      .populate("setId", "name")
       .sort({ submittedAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
@@ -1890,24 +1893,33 @@ router.get('/pending-reviews', verifyTokenforevaluator, async (req, res) => {
     // Attach question documents dynamically based on testType
     for (const review of pendingReviews) {
       try {
-        if (review.testType === 'aiswb') {
+        if (review.testType === "aiswb") {
           const question = await AiswbQuestion.findById(review.questionId)
-            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .select(
+              "question detailedAnswer metadata languageMode evaluationMode evaluationType setId"
+            )
             .lean();
           if (question) review.questionId = question;
-        } else if (review.testType === 'subjective') {
-          const question = await SubjectiveTestQuestion.findById(review.questionId)
-            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+        } else if (review.testType === "subjective") {
+          const question = await SubjectiveTestQuestion.findById(
+            review.questionId
+          )
+            .select(
+              "question detailedAnswer metadata languageMode evaluationMode evaluationType setId"
+            )
+            .lean();
+          if (question) review.questionId = question;
+        } else {
+          const question = await AiswbQuestion.findById(review.questionId)
+            .select(
+              "question detailedAnswer metadata languageMode evaluationMode evaluationType setId"
+            )
             .lean();
           if (question) review.questionId = question;
         }
-        else{
-          const question = await AiswbQuestion.findById(review.questionId)
-            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
-            .lean();
-          if (question) review.questionId = question;
-        }
-      } catch (_) { /* ignore populate errors per item */ }
+      } catch (_) {
+        /* ignore populate errors per item */
+      }
     }
 
     // Get total count for pagination
@@ -1916,15 +1928,16 @@ router.get('/pending-reviews', verifyTokenforevaluator, async (req, res) => {
       if (review.annotations && Array.isArray(review.annotations)) {
         for (const annotation of review.annotations) {
           if (annotation.s3Key) {
-            annotation.downloadUrl = await generateAnnotatedImageUrl(annotation.s3Key);
+            annotation.downloadUrl = await generateAnnotatedImageUrl(
+              annotation.s3Key
+            );
           }
         }
       }
     }
 
-
     // Format response data
-    const formattedReviews = pendingReviews.map(review => ({
+    const formattedReviews = pendingReviews.map((review) => ({
       _id: review._id,
       userId: review.userId,
       questionId: review.questionId,
@@ -1935,20 +1948,19 @@ router.get('/pending-reviews', verifyTokenforevaluator, async (req, res) => {
       textAnswer: review.textAnswer,
       reviewStatus: review.reviewStatus,
       reviewedByEvaluator: review.reviewedByEvaluator,
-      requestId:review.requestID,
-      requestnote:review.requestnote,
+      requestId: review.requestID,
+      requestnote: review.requestnote,
       evaluation: review.evaluation,
       metadata: review.metadata,
-      annotations:review.annotations || [],
+      annotations: review.annotations || [],
       reviewRequestedAt: review.reviewRequestedAt,
       reviewAssignedAt: review.reviewAssignedAt,
       reviewCompletedAt: review.reviewCompletedAt,
     }));
 
-
     res.json({
       success: true,
-      message: 'Pending reviews retrieved successfully',
+      message: "Pending reviews retrieved successfully",
       data: {
         reviews: formattedReviews,
         pagination: {
@@ -1956,52 +1968,48 @@ router.get('/pending-reviews', verifyTokenforevaluator, async (req, res) => {
           totalPages: Math.ceil(total / limit),
           totalReviews: total,
           hasMore: skip + pendingReviews.length < total,
-          limit: parseInt(limit)
-        }
-      }
+          limit: parseInt(limit),
+        },
+      },
     });
-
   } catch (error) {
-    console.error('Error fetching pending reviews:', error);
+    console.error("Error fetching pending reviews:", error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message
+      message: "Internal server error",
+      error: error.message,
     });
   }
 });
 
 //evaluator accepted requests
-router.get('/accepted-reviews', verifyTokenforevaluator, async (req, res) => {
+router.get("/accepted-reviews", verifyTokenforevaluator, async (req, res) => {
   try {
     const evaluatorId = req.evaluator._id;
-    
+
     // Get evaluator to check client access
     const evaluator = await Evaluator.findById(evaluatorId);
     if (!evaluator) {
       return res.status(404).json({
         success: false,
-        message: 'Evaluator not found'
+        message: "Evaluator not found",
       });
     }
 
-    
     // Query parameters for pagination and filtering
     const { page = 1, limit = 10, clientId } = req.query;
     const skip = (page - 1) * limit;
 
     // Build filter object - filter by review_accepted status
     const filter = {
-      reviewStatus: 'review_accepted',
-      reviewedByEvaluator: evaluatorId
-
+      reviewStatus: "review_accepted",
+      reviewedByEvaluator: evaluatorId,
     };
-
 
     // Get accepted reviews with pagination
     const acceptedReviews = await UserAnswer.find(filter)
-      .populate('userId', 'mobile name')
-      .populate('setId', 'name')
+      .populate("userId", "mobile name")
+      .populate("setId", "name")
       .sort({ submittedAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
@@ -2010,24 +2018,33 @@ router.get('/accepted-reviews', verifyTokenforevaluator, async (req, res) => {
     // Attach question documents dynamically based on testType
     for (const review of acceptedReviews) {
       try {
-        if (review.testType === 'aiswb') {
+        if (review.testType === "aiswb") {
           const question = await AiswbQuestion.findById(review.questionId)
-            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .select(
+              "question detailedAnswer metadata languageMode evaluationMode evaluationType setId"
+            )
             .lean();
           if (question) review.questionId = question;
-        } else if (review.testType === 'subjective') {
-          const question = await SubjectiveTestQuestion.findById(review.questionId)
-            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+        } else if (review.testType === "subjective") {
+          const question = await SubjectiveTestQuestion.findById(
+            review.questionId
+          )
+            .select(
+              "question detailedAnswer metadata languageMode evaluationMode evaluationType setId"
+            )
+            .lean();
+          if (question) review.questionId = question;
+        } else {
+          const question = await AiswbQuestion.findById(review.questionId)
+            .select(
+              "question detailedAnswer metadata languageMode evaluationMode evaluationType setId"
+            )
             .lean();
           if (question) review.questionId = question;
         }
-        else{
-          const question = await AiswbQuestion.findById(review.questionId)
-            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
-            .lean();
-          if (question) review.questionId = question;
-        }
-      } catch (_) { /* ignore populate errors per item */ }
+      } catch (_) {
+        /* ignore populate errors per item */
+      }
     }
 
     // Get total count for pagination
@@ -2036,12 +2053,14 @@ router.get('/accepted-reviews', verifyTokenforevaluator, async (req, res) => {
       if (review.annotations && Array.isArray(review.annotations)) {
         for (const annotation of review.annotations) {
           if (annotation.s3Key) {
-            annotation.downloadUrl = await generateAnnotatedImageUrl(annotation.s3Key);
+            annotation.downloadUrl = await generateAnnotatedImageUrl(
+              annotation.s3Key
+            );
           }
         }
       }
     }
-    const formattedReviews = acceptedReviews.map(review => ({
+    const formattedReviews = acceptedReviews.map((review) => ({
       _id: review._id,
       userId: review.userId,
       questionId: review.questionId,
@@ -2056,14 +2075,14 @@ router.get('/accepted-reviews', verifyTokenforevaluator, async (req, res) => {
       requestnote: review.requestnote,
       evaluation: review.evaluation,
       metadata: review.metadata,
-      annotations:review.annotations || [],
+      annotations: review.annotations || [],
       reviewRequestedAt: review.reviewRequestedAt,
       reviewAssignedAt: review.reviewAssignedAt,
     }));
 
     res.json({
       success: true,
-      message: 'Accepted reviews retrieved successfully',
+      message: "Accepted reviews retrieved successfully",
       data: {
         reviews: formattedReviews,
         pagination: {
@@ -2071,50 +2090,47 @@ router.get('/accepted-reviews', verifyTokenforevaluator, async (req, res) => {
           totalPages: Math.ceil(total / limit),
           totalReviews: total,
           hasMore: skip + acceptedReviews.length < total,
-          limit: parseInt(limit)
-        }
-      }
+          limit: parseInt(limit),
+        },
+      },
     });
-
   } catch (error) {
-    console.error('Error fetching accepted reviews:', error);
+    console.error("Error fetching accepted reviews:", error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message
+      message: "Internal server error",
+      error: error.message,
     });
   }
 });
 
 //evaluator completed requests
-router.get('/completed-reviews', verifyTokenforevaluator, async (req, res) => {
+router.get("/completed-reviews", verifyTokenforevaluator, async (req, res) => {
   try {
     const evaluatorId = req.evaluator._id;
-    
+
     // Get evaluator to check client access
     const evaluator = await Evaluator.findById(evaluatorId);
     if (!evaluator) {
       return res.status(404).json({
         success: false,
-        message: 'Evaluator not found'
+        message: "Evaluator not found",
       });
     }
 
-    
     // Query parameters for pagination and filtering
     const { page = 1, limit = 10, clientId } = req.query;
     const skip = (page - 1) * limit;
 
     // Build filter object - filter by review_completed status
     const filter = {
-      reviewStatus: 'review_completed'
+      reviewStatus: "review_completed",
     };
-
 
     // Get completed reviews with pagination
     const completedReviews = await UserAnswer.find(filter)
-      .populate('userId', 'mobile name')
-      .populate('setId', 'name')
+      .populate("userId", "mobile name")
+      .populate("setId", "name")
       .sort({ submittedAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
@@ -2123,24 +2139,33 @@ router.get('/completed-reviews', verifyTokenforevaluator, async (req, res) => {
     // Attach question documents dynamically based on testType
     for (const review of completedReviews) {
       try {
-        if (review.testType === 'aiswb') {
+        if (review.testType === "aiswb") {
           const question = await AiswbQuestion.findById(review.questionId)
-            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+            .select(
+              "question detailedAnswer metadata languageMode evaluationMode evaluationType setId"
+            )
             .lean();
           if (question) review.questionId = question;
-        } else if (review.testType === 'subjective') {
-          const question = await SubjectiveTestQuestion.findById(review.questionId)
-            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
+        } else if (review.testType === "subjective") {
+          const question = await SubjectiveTestQuestion.findById(
+            review.questionId
+          )
+            .select(
+              "question detailedAnswer metadata languageMode evaluationMode evaluationType setId"
+            )
+            .lean();
+          if (question) review.questionId = question;
+        } else {
+          const question = await AiswbQuestion.findById(review.questionId)
+            .select(
+              "question detailedAnswer metadata languageMode evaluationMode evaluationType setId"
+            )
             .lean();
           if (question) review.questionId = question;
         }
-        else{
-          const question = await AiswbQuestion.findById(review.questionId)
-            .select('question detailedAnswer metadata languageMode evaluationMode evaluationType setId')
-            .lean();
-          if (question) review.questionId = question;
-        }
-      } catch (_) { /* ignore populate errors per item */ }
+      } catch (_) {
+        /* ignore populate errors per item */
+      }
     }
 
     // Get total count for pagination
@@ -2149,18 +2174,20 @@ router.get('/completed-reviews', verifyTokenforevaluator, async (req, res) => {
       if (review.annotations && Array.isArray(review.annotations)) {
         for (const annotation of review.annotations) {
           if (annotation.s3Key) {
-            annotation.downloadUrl = await generateAnnotatedImageUrl(annotation.s3Key);
+            annotation.downloadUrl = await generateAnnotatedImageUrl(
+              annotation.s3Key
+            );
           }
         }
       }
-      if(review.feedback.expertReview.annotatedImages){
-        for(const image of review.feedback.expertReview.annotatedImages){
+      if (review.feedback.expertReview.annotatedImages) {
+        for (const image of review.feedback.expertReview.annotatedImages) {
           image.downloadUrl = await generateAnnotatedImageUrl(image.s3Key);
         }
       }
     }
     // Format response data
-    const formattedReviews = completedReviews.map(review => ({
+    const formattedReviews = completedReviews.map((review) => ({
       _id: review._id,
       userId: review.userId,
       questionId: review.questionId,
@@ -2176,7 +2203,7 @@ router.get('/completed-reviews', verifyTokenforevaluator, async (req, res) => {
       evaluation: review.evaluation,
       metadata: review.metadata,
       feedback: review.feedback,
-      annotations:review.annotations,
+      annotations: review.annotations,
       reviewRequestedAt: review.reviewRequestedAt,
       reviewAssignedAt: review.reviewAssignedAt,
       reviewCompletedAt: review.reviewCompletedAt,
@@ -2184,7 +2211,7 @@ router.get('/completed-reviews', verifyTokenforevaluator, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Completed reviews retrieved successfully',
+      message: "Completed reviews retrieved successfully",
       data: {
         reviews: formattedReviews,
         pagination: {
@@ -2192,32 +2219,31 @@ router.get('/completed-reviews', verifyTokenforevaluator, async (req, res) => {
           totalPages: Math.ceil(total / limit),
           totalReviews: total,
           hasMore: skip + completedReviews.length < total,
-          limit: parseInt(limit)
-        }
-      }
+          limit: parseInt(limit),
+        },
+      },
     });
-
   } catch (error) {
-    console.error('Error fetching completed reviews:', error);
+    console.error("Error fetching completed reviews:", error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message
+      message: "Internal server error",
+      error: error.message,
     });
   }
 });
 
 // 2. ✅ Accept Review Request
-router.post('/:requestId/accept', verifyTokenforevaluator, async (req, res) => {
+router.post("/:requestId/accept", verifyTokenforevaluator, async (req, res) => {
   try {
     const evaluatorId = req.evaluator._id;
-    
+
     // Get evaluator to check client access
     const evaluator = await Evaluator.findById(evaluatorId);
     if (!evaluator) {
       return res.status(404).json({
         success: false,
-        message: 'Evaluator not found'
+        message: "Evaluator not found",
       });
     }
     const { requestId } = req.params;
@@ -2226,27 +2252,27 @@ router.post('/:requestId/accept', verifyTokenforevaluator, async (req, res) => {
     if (!request) {
       return res.status(404).json({
         success: false,
-        message: 'Review request not found'
+        message: "Review request not found",
       });
     }
 
     // Check if request is available
-    if (!['pending', 'assigned'].includes(request.requestStatus)) {
+    if (!["pending", "assigned"].includes(request.requestStatus)) {
       return res.status(400).json({
         success: false,
-        message: 'Request is not available for acceptance'
+        message: "Request is not available for acceptance",
       });
     }
 
     // Mark as assigned
-    request.requestStatus = 'assigned';
+    request.requestStatus = "assigned";
     request.assignedAt = new Date();
     await request.save();
 
     // Update answer status
     const answer = await UserAnswer.findById(request.answerId);
     if (answer) {
-      answer.reviewStatus = 'review_accepted';
+      answer.reviewStatus = "review_accepted";
       answer.reviewAssignedAt = request.assignedAt;
       // ensure evaluator-based filters work for pending/accepted lists
       answer.reviewedByEvaluator = evaluatorId;
@@ -2255,26 +2281,25 @@ router.post('/:requestId/accept', verifyTokenforevaluator, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Review request accepted successfully',
+      message: "Review request accepted successfully",
       data: {
         requestId: request._id,
         status: request.requestStatus,
-        assignedAt: request.assignedAt
-      }
+        assignedAt: request.assignedAt,
+      },
     });
-
   } catch (error) {
-    console.error('Error accepting review request:', error);
+    console.error("Error accepting review request:", error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message
+      message: "Internal server error",
+      error: error.message,
     });
   }
 });
 
 // Generate presigned URL for annotated image upload
-router.post('/annotated-image-upload-url', async (req, res) => {
+router.post("/annotated-image-upload-url", async (req, res) => {
   try {
     const { fileName, contentType, clientId, answerId } = req.body;
 
@@ -2282,7 +2307,7 @@ router.post('/annotated-image-upload-url', async (req, res) => {
     if (!fileName || !contentType || !clientId || !answerId) {
       return res.status(400).json({
         success: false,
-        message: 'fileName, contentType, clientId, and answerId are required'
+        message: "fileName, contentType, clientId, and answerId are required",
       });
     }
 
@@ -2297,108 +2322,198 @@ router.post('/annotated-image-upload-url', async (req, res) => {
       success: true,
       data: {
         uploadUrl,
-        key: s3Key
-      }
+        key: s3Key,
+      },
     });
   } catch (error) {
-    console.error('Error generating upload URL:', error);
+    console.error("Error generating upload URL:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to generate upload URL',
-      error: error.message
+      message: "Failed to generate upload URL",
+      error: error.message,
     });
   }
 });
 
-router.post('/publishwithannotation', async (req,res) => {
+router.post("/publishwithannotation", async (req, res) => {
   try {
     const { answerId, annotatedImageKey } = req.body;
-    console.log(req.body)
+    console.log(req.body);
     if (!answerId || !annotatedImageKey) {
       return res.status(400).json({
         success: false,
-        message: 'answerId, annotatedImageKey, feedback, and evaluation are required'
+        message:
+          "answerId, annotatedImageKey, feedback, and evaluation are required",
       });
     }
 
     const userAnswer = await UserAnswer.findById(answerId);
-    console.log(userAnswer)
+    console.log(userAnswer);
     if (!userAnswer) {
-      return res.status(404).json({ success: false, message: 'UserAnswer not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "UserAnswer not found" });
+    }
+
+    // Only process AISWB testType
+    if (userAnswer.testType !== "aiswb") {
+      return res.status(400).json({
+        success: false,
+        message: "This endpoint only supports AISWB testType",
+      });
     }
 
     // Dynamically populate question based on testType
     let question;
-    if(userAnswer.testType){
-      if (userAnswer.testType === 'aiswb') {
-        const AiswbQuestion = require('../models/AiswbQuestion');
+    if (userAnswer.testType) {
+      if (userAnswer.testType === "aiswb") {
+        const AiswbQuestion = require("../models/AiswbQuestion");
         question = await AiswbQuestion.findById(userAnswer.questionId);
-      } else if (userAnswer.testType === 'subjective') {
-        const SubjectiveTestQuestion = require('../models/SubjectiveTestQuestion');
+      } else if (userAnswer.testType === "subjective") {
+        const SubjectiveTestQuestion = require("../models/SubjectiveTestQuestion");
         question = await SubjectiveTestQuestion.findById(userAnswer.questionId);
       } else {
-        const AiswbQuestion = require('../models/AiswbQuestion');
+        const AiswbQuestion = require("../models/AiswbQuestion");
         question = await AiswbQuestion.findById(userAnswer.questionId);
       }
+    } else {
+      const AiswbQuestion = require("../models/AiswbQuestion");
+      question = await AiswbQuestion.findById(userAnswer.questionId);
     }
-    else
-    {
-      const AiswbQuestion = require('../models/AiswbQuestion');
-      question = await AiswbQuestion.findById(userAnswer.questionId); 
-    }
-    
 
-    console.log(question)
-    console.log(question.evaluationMode)
-    console.log(question.evaluationType)
-    if (!question || question.evaluationMode !== 'manual' || question.evaluationType !== 'with annotation') {
+    console.log(question.evaluationMode);
+    console.log(question.evaluationType);
+    if (
+      !question ||
+      question.evaluationMode !== "manual" ||
+      question.evaluationType !== "with annotation"
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'This answer cannot be published with an annotation.'
+        message: "This answer cannot be published with an annotation.",
       });
     }
 
     const downloadUrl = await generateAnnotatedImageUrl(annotatedImageKey);
-    console.log(downloadUrl)
+    console.log(downloadUrl);
     userAnswer.annotations.push({
       s3Key: annotatedImageKey,
       downloadUrl: downloadUrl,
-      uploadedAt: new Date()
+      uploadedAt: new Date(),
     });
 
-    userAnswer.publishStatus = 'published';
-    userAnswer.submissionStatus = 'evaluated'
-    userAnswer.evaluatedAt = new Date()
+    userAnswer.publishStatus = "published";
+    userAnswer.submissionStatus = "evaluated";
+    userAnswer.evaluatedAt = new Date();
 
-    await userAnswer.save();
+     await userAnswer.save();
+
+     // Check if evaluation already exists
+     const existingEvaluation = await Evaluation.findOne({
+       submissionId: answerId,
+     });
+
+     let evaluationRecord;
+     if (!existingEvaluation) {
+       // Create new evaluation record
+       const newEvaluation = new Evaluation({
+         submissionId: userAnswer._id,
+         questionId: userAnswer.questionId,
+         userId: userAnswer.userId,
+         clientId: userAnswer.clientId,
+         evaluatorId: userAnswer.reviewedByEvaluator,
+         evaluationMode: question.evaluationMode || "manual",
+         evaluation: userAnswer.evaluation || {},
+         hindiEvaluation: userAnswer.hindiEvaluation || {},
+         annotations: userAnswer.annotations || [],
+       });
+
+       await newEvaluation.save();
+       evaluationRecord = newEvaluation;
+       console.log(
+         "✅ Evaluation record created for AISWB submission:",
+         newEvaluation._id
+       );
+     } else {
+       // Update existing evaluation
+       existingEvaluation.evaluation = userAnswer.evaluation || {};
+       existingEvaluation.hindiEvaluation = userAnswer.hindiEvaluation || {};
+       existingEvaluation.annotations = userAnswer.annotations || [];
+       existingEvaluation.evaluationMode = question.evaluationMode || "manual";
+
+       await existingEvaluation.save();
+       evaluationRecord = existingEvaluation;
+       console.log(
+         "✅ Evaluation record updated for AISWB submission:",
+         existingEvaluation._id
+       );
+     }
+
+     // 🎉 Reward evaluator with 5 credits for completing evaluation
+     if (userAnswer.reviewedByEvaluator && evaluationRecord) {
+       
+       try {
+         const creditResult = await EvaluatorCreditService.awardCreditForEvaluation(
+           userAnswer.reviewedByEvaluator,
+           evaluationRecord._id,
+           answerId,
+           5 // 5 credits for each evaluation
+         );
+         
+       } catch (creditError) {
+         console.error("❌ [PUBLISH ENDPOINT] Credit error details:", {
+           evaluatorId: userAnswer.reviewedByEvaluator,
+           evaluationId: evaluationRecord._id,
+           error: creditError.message,
+           stack: creditError.stack
+         });
+         // Don't fail the entire request if credit awarding fails
+       }
+     } else {
+       console.log(`⚠️ [PUBLISH ENDPOINT] evaluationRecord: ${evaluationRecord ? 'exists' : 'missing'}`);
+     }
 
     res.json({
       success: true,
-      message: 'Annotation saved and answer published successfully.',
-      data: userAnswer
+      message:
+        "Annotation saved, evaluation data saved, and answer published successfully.",
+      data: {
+        userAnswer: {
+          _id: userAnswer._id,
+          publishStatus: userAnswer.publishStatus,
+          submissionStatus: userAnswer.submissionStatus,
+          evaluatedAt: userAnswer.evaluatedAt,
+          evaluation: userAnswer.evaluation,
+          hindiEvaluation: userAnswer.hindiEvaluation,
+          annotations: userAnswer.annotations,
+        },
+        creditsAwarded: userAnswer.reviewedByEvaluator ? 5 : 0,
+        message: userAnswer.reviewedByEvaluator 
+          ? "Evaluator rewarded with 5 credits for completing evaluation!" 
+          : "No evaluator assigned - no credits awarded"
+      },
     });
-
   } catch (error) {
-    console.error('Error in /publishwithannotation:', error);
+    console.error("Error in /publishwithannotation:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to publish annotation.',
-      error: error.message
+      message: "Failed to publish annotation.",
+      error: error.message,
     });
   }
 });
 
 // Edit evaluator profile
-router.patch('/profile', verifyTokenforevaluator, async (req, res) => {
+router.patch("/profile", verifyTokenforevaluator, async (req, res) => {
   try {
     const evaluatorId = req.evaluator._id;
     const allowedFields = [
-      'name',
-      'currentcity',
-      'subjectMatterExpert',
-      'instituteworkedwith',
-      'examFocus',
-      'experience',
+      "name",
+      "currentcity",
+      "subjectMatterExpert",
+      "instituteworkedwith",
+      "examFocus",
+      "experience",
     ];
     const updates = {};
     for (const field of allowedFields) {
@@ -2409,7 +2524,7 @@ router.patch('/profile', verifyTokenforevaluator, async (req, res) => {
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'No valid fields provided for update.'
+        message: "No valid fields provided for update.",
       });
     }
     const updatedEvaluator = await Evaluator.findByIdAndUpdate(
@@ -2420,20 +2535,20 @@ router.patch('/profile', verifyTokenforevaluator, async (req, res) => {
     if (!updatedEvaluator) {
       return res.status(404).json({
         success: false,
-        message: 'Evaluator not found.'
+        message: "Evaluator not found.",
       });
     }
     res.status(200).json({
       success: true,
-      message: 'Profile updated successfully.',
-      evaluator: updatedEvaluator
+      message: "Profile updated successfully.",
+      evaluator: updatedEvaluator,
     });
   } catch (error) {
-    console.error('Error updating evaluator profile:', error);
+    console.error("Error updating evaluator profile:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update profile.',
-      error: error.message
+      message: "Failed to update profile.",
+      error: error.message,
     });
   }
 });

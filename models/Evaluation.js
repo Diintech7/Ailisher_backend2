@@ -17,6 +17,11 @@ const evaluationSchema = new mongoose.Schema({
     ref: 'MobileUser',
     required: true
   },
+  evaluatorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Evaluator',
+    required: false
+  },
   clientId: {
     type: String,
     required: true
@@ -26,124 +31,139 @@ const evaluationSchema = new mongoose.Schema({
     enum: ['auto', 'manual'],
     default: 'auto'
   },
-  marks: {
-    type: Number,
-    min: 0,
-    max: 100,
-    default: 0
-  },
-  accuracy: {
-    type: Number,
-    min: 0,
-    max: 100,
-    default: 0
-  },
-  feedback: {
-    type: String,
-    trim: true,
-    default: ''
-  },
-  extractedTexts: [{
-    type: String,
-    trim: true
-  }],
-  geminiAnalysis: {
-    accuracy: {
+  evaluation: {
+    relevancy: {
       type: Number,
       min: 0,
       max: 100,
-      required: true,
       default: 0
     },
-    strengths: [{
+    extractedText: {
       type: String,
       trim: true
-    }],
-    weaknesses: [{
-      type: String,
-      trim: true
-    }],
-    suggestions: [{
-      type: String,
-      trim: true
-    }]
-  },
-  status: {
-    type: String,
-    enum: ['published', 'not_published', 'processing', 'review', 'rejected'],
-    default: 'not_published'
-  },
-  evaluatedAt: {
-    type: Date,
-    default: Date.now
-  },
-  evaluatedBy: {
-    type: String,
-    default: 'system'
-  },
-  publishHistory: [{
-    status: {
-      type: String,
-      enum: ['published', 'not_published', 'review', 'rejected']
     },
-    timestamp: {
+    score: {
+      type: Number,
+      min: 0
+    },
+    remark: {
+      type: String,
+      trim: true,
+      maxlength: 250
+    },
+    feedbackStatus: {
+      type: Boolean,
+      default: true
+    },
+    userFeedback: {
+      type: Object,
+      default: () => ({
+        message: '',
+        submittedAt: null
+      })
+    },
+    comments: [{
+      type: String,
+      trim: true,
+      maxlength: 800
+    }],
+    analysis: {
+      introduction: [{
+        type: String,
+        trim: true
+      }],
+      body: [{
+        type: String,
+        trim: true
+      }],
+      conclusion: [{
+        type: String,
+        trim: true
+      }],
+      strengths: [{
+        type: String,
+        trim: true
+      }],
+      weaknesses: [{
+        type: String,
+        trim: true
+      }],
+      suggestions: [{
+        type: String,
+        trim: true
+      }],
+      feedback: [{
+        type: String,
+        trim: true
+      }]
+    }
+  },
+  hindiEvaluation: {
+    relevancy: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0
+    },
+    score: {
+      type: Number,
+      min: 0
+    },
+    remark: {
+      type: String,
+      trim: true,
+      maxlength: 250
+    },
+    comments: [{
+      type: String,
+      trim: true,
+      maxlength: 800
+    }],
+    analysis: {
+      introduction: [{
+        type: String,
+        trim: true
+      }],
+      body: [{
+        type: String,
+        trim: true
+      }],
+      conclusion: [{
+        type: String,
+        trim: true
+      }],
+      strengths: [{
+        type: String,
+        trim: true
+      }],
+      weaknesses: [{
+        type: String,
+        trim: true
+      }],
+      suggestions: [{
+        type: String,
+        trim: true
+      }],
+      feedback: [{
+        type: String,
+        trim: true
+      }]
+    }
+  },
+  annotations: [{
+    s3Key: {
+      type: String,
+      required: true
+    },
+    downloadUrl: {
+      type: String,
+      required: true
+    },
+    uploadedAt: {
       type: Date,
       default: Date.now
-    },
-    changedBy: {
-      type: String,
-      default: 'system'
-    },
-    mode: {
-      type: String,
-      enum: ['auto', 'manual'],
-      default: 'auto'
-    },
-    reason: {
-      type: String,
-      trim: true
     }
   }],
-  autoEvaluationDetails: {
-    processingTime: {
-      type: Number,
-      default: 0
-    },
-    confidenceScore: {
-      type: Number,
-      min: 0,
-      max: 1,
-      default: 0
-    },
-    autoPublishReason: {
-      type: String,
-      trim: true
-    }
-  },
-  evaluationConfig: {
-    minAccuracyThreshold: {
-      type: Number,
-      min: 0,
-      max: 100,
-      default: 60
-    },
-    autoPublishThreshold: {
-      type: Number,
-      min: 0,
-      max: 100,
-      default: 80
-    },
-    reviewThreshold: {
-      type: Number,
-      min: 0,
-      max: 100,
-      default: 50
-    }
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
 }, {
   timestamps: true
 });
@@ -161,17 +181,6 @@ evaluationSchema.index({ evaluationMode: 1 });
 // Update timestamp on save
 evaluationSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
-  
-  // Sync accuracy with geminiAnalysis if available
-  if (this.geminiAnalysis && this.geminiAnalysis.accuracy) {
-    this.accuracy = this.geminiAnalysis.accuracy;
-  }
-  
-  // Set marks based on accuracy if not explicitly set
-  if (this.marks === 0 && this.accuracy > 0) {
-    this.marks = this.accuracy;
-  }
-  
   next();
 });
 
@@ -259,62 +268,6 @@ evaluationSchema.statics.getQuestionEvaluations = function(questionId, options =
       totalPages: Math.ceil(total / limit)
     }
   }));
-};
-
-// Method to start auto evaluation
-evaluationSchema.methods.startAutoEvaluation = function(config = {}) {
-  this.evaluationMode = 'auto';
-  this.status = 'processing';
-  
-  // Simulate processing time
-  const processingTime = Math.random() * 3 + 1; // 1-4 seconds
-  const confidenceScore = Math.random() * 0.3 + 0.7; // 0.7-1.0
-  
-  this.autoEvaluationDetails = {
-    processingTime,
-    confidenceScore,
-    autoPublishReason: config.autoPublish ? 'Auto-publish enabled' : 'Manual review required'
-  };
-  
-  // Mock analysis
-  const accuracy = Math.floor(Math.random() * 40) + 60; // 60-100
-  this.geminiAnalysis = {
-    accuracy,
-    strengths: ['Clear presentation', 'Good understanding of concepts'],
-    weaknesses: ['Could be more detailed', 'Missing some examples'],
-    suggestions: ['Add more examples', 'Elaborate on key points']
-  };
-  
-  this.extractedTexts = ['Sample extracted text from answer images'];
-  this.marks = accuracy;
-  this.accuracy = accuracy;
-  
-  // Auto-publish logic
-  if (config.autoPublish && accuracy >= (config.autoPublishThreshold || 80)) {
-    this.status = 'published';
-    this.publishHistory.push({
-      status: 'published',
-      timestamp: new Date(),
-      changedBy: 'system',
-      mode: 'auto',
-      reason: 'Auto-published based on accuracy threshold'
-    });
-  } else if (accuracy >= (config.reviewThreshold || 50)) {
-    this.status = 'not_published';
-  } else {
-    this.status = 'review';
-  }
-  
-  return this.save();
-};
-
-// Method to start manual evaluation
-evaluationSchema.methods.startManualEvaluation = function(evaluatorId) {
-  this.evaluationMode = 'manual';
-  this.status = 'review';
-  this.evaluatedBy = evaluatorId || 'manual_evaluator';
-  
-  return this.save();
 };
 
 // Method to publish evaluation

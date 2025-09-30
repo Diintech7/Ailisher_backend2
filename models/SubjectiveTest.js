@@ -34,6 +34,10 @@ const subjectiveTestSchema =  new mongoose.Schema({
         type:String,
         default:""
     },
+    videoUrl:{
+        type: String,
+        default: ''
+      },
     isTrending:{
         type:Boolean,
         default:false

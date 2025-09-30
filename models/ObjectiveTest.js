@@ -9,6 +9,10 @@ const objectiveTestSchema = new mongoose.Schema({
     Estimated_time: { type: String, default: "" },
     imageKey: { type: String, default: "" },
     imageUrl: { type: String, default: "" },
+    videoUrl:{
+      type: String,
+      default: ''
+    },
     isTrending: { type: Boolean, default: false },
     isHighlighted: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
