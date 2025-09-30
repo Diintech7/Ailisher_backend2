@@ -181,12 +181,27 @@ const validateTextRelevanceToQuestion = async (question, extractedTexts) => {
 };
 
 const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
+  const __traceId = `AGTC-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+  try {
+    console.log(
+      "[TextExtract][Agentic]",
+      __traceId,
+      "Start",
+      {
+        apiUrl: "https://api.va.landing.ai/v1/tools/agentic-document-analysis",
+        images: Array.isArray(imageUrls) ? imageUrls.length : 0,
+        includeMarginalia: serviceConfig?.serviceConfig?.includeMarginalia,
+        includeMetadataInMarkdown: serviceConfig?.serviceConfig?.includeMetadataInMarkdown,
+      }
+    );
+  } catch (_) {}
   const extractedTexts = [];
   for (let i = 0; i < imageUrls.length; i++) {
     const imageUrl = imageUrls[i];
     try {
       const formData = new FormData();
       if (imageUrl.startsWith("http")) {
+        try { console.log("[TextExtract][Agentic]", __traceId, "Fetching image", { image: i + 1, url: imageUrl }); } catch (_) {}
         const imageResponse = await axios.get(imageUrl, {
           responseType: "stream",
           timeout: 30000,
@@ -199,6 +214,7 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
         }
         let fileExtension = "jpg";
         const contentType = imageResponse.headers["content-type"];
+        try { console.log("[TextExtract][Agentic]", __traceId, "Fetched image", { image: i + 1, contentType }); } catch (_) {}
         if (contentType) {
           if (contentType.includes("png")) fileExtension = "png";
           else if (contentType.includes("pdf")) fileExtension = "pdf";
@@ -213,6 +229,7 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
           filename: `document_${i + 1}.jpg`,
           contentType: "image/jpeg",
         });
+        var fileExtension = "jpg";
       }
 
       if (serviceConfig.serviceConfig?.includeMarginalia !== undefined) {
@@ -231,14 +248,28 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
       }
 
       const queryParams = new URLSearchParams();
-      if (serviceConfig.serviceConfig?.pages) {
-        queryParams.append("pages", serviceConfig.serviceConfig.pages);
-      }
+      // Set a single, correct pages value based on file type to avoid duplicates like 0,1,2
+      try {
+        const isPdf = String(fileExtension).toLowerCase() === "pdf";
+        let pagesToUse = undefined;
+        if (isPdf) {
+          if (serviceConfig?.serviceConfig?.pages) {
+            pagesToUse = String(serviceConfig.serviceConfig.pages);
+          }
+        } else {
+          // For non-PDF (images), Landing AI expects page 0
+          pagesToUse = "0";
+        }
+        if (pagesToUse !== undefined && pagesToUse !== null && pagesToUse !== "") {
+          queryParams.append("pages", pagesToUse);
+        }
+      } catch (_) {}
       if (serviceConfig.serviceConfig?.timeout) {
         queryParams.append("timeout", serviceConfig.serviceConfig.timeout.toString());
       }
 
       const apiUrl = `https://api.va.landing.ai/v1/tools/agentic-document-analysis${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+      try { console.log("[TextExtract][Agentic]", __traceId, "Calling API", { image: i + 1, apiUrl }); } catch (_) {}
       const agenticResponse = await axios.post(apiUrl, formData, {
         headers: {
           ...formData.getHeaders(),
@@ -248,6 +279,14 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
       });
 
       const responseData = agenticResponse.data;
+      try {
+        console.log(
+          "[TextExtract][Agentic]",
+          __traceId,
+          "Response",
+          { image: i + 1, status: agenticResponse.status, hasData: Boolean(responseData && responseData.data) }
+        );
+      } catch (_) {}
       if (typeof responseData === "string" && responseData.includes("<!DOCTYPE html>")) {
         throw new Error("Authentication failed - received HTML redirect page instead of API response");
       }
@@ -271,6 +310,14 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
         } else {
           extractedTexts.push("No readable text found");
         }
+        try {
+          console.log(
+            "[TextExtract][Agentic]",
+            __traceId,
+            "Parsed text",
+            { image: i + 1, length: (extractedText || "").length }
+          );
+        } catch (_) {}
 
         if (responseData.errors && responseData.errors.length > 0) {
           console.warn(`Agentic API warnings for image ${i + 1}:`, responseData.errors);
@@ -282,6 +329,23 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
         throw new Error(`Unexpected response status or format: ${agenticResponse.status}`);
       }
     } catch (error) {
+      try {
+        const status = error.response && error.response.status;
+        const respData = error.response && error.response.data;
+        let bodySnippet = '';
+        if (respData) {
+          if (typeof respData === 'string') bodySnippet = respData.slice(0, 500);
+          else {
+            try { bodySnippet = JSON.stringify(respData).slice(0, 500); } catch (_) {}
+          }
+        }
+        console.error(
+          "[TextExtract][Agentic]",
+          __traceId,
+          `Image ${i + 1} error:`,
+          { status, message: error.message, body: bodySnippet }
+        );
+      } catch (_) {}
       let errorMessage = "Failed to extract text with Agentic API";
       if (error.code === "ECONNABORTED" || error.message.includes("timeout")) {
         errorMessage = "Agentic API extraction timed out - document may be too complex";
@@ -291,6 +355,8 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
         errorMessage = "Agentic API rate limit exceeded - please try again later";
       } else if (error.response?.status === 400) {
         errorMessage = "Invalid request to Agentic API - check document format";
+      } else if (error.response?.status === 422) {
+        errorMessage = "Agentic API could not process the document (422) - unsupported or malformed content";
       } else if (error.response?.status >= 500) {
         errorMessage = "Agentic API server error - please try again later";
       } else if (error.message.includes("content type")) {
@@ -299,6 +365,14 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
       extractedTexts.push(`${errorMessage}: ${error.message}`);
     }
   }
+  try {
+    console.log(
+      "[TextExtract][Agentic]",
+      __traceId,
+      "Done",
+      { images: Array.isArray(imageUrls) ? imageUrls.length : 0, results: extractedTexts.length }
+    );
+  } catch (_) {}
   return extractedTexts;
 };
 
@@ -324,13 +398,27 @@ const extractTextFromJsonStructure = (jsonData) => {
 
 const extractTextFromImages = async (imageUrls) => {
   try {
+    const __traceId = `TX-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
     const textExtractionService = await getServiceForTask("text_extraction");
+    try {
+      console.log(
+        "[TextExtract]",
+        __traceId,
+        "Selected service",
+        textExtractionService && textExtractionService.serviceName,
+        { images: Array.isArray(imageUrls) ? imageUrls.length : 0 }
+      );
+    } catch (_) {}
     if (textExtractionService.serviceName === "agentic") {
       return await extractTextFromImagesAgentic(imageUrls, textExtractionService);
     } else if (textExtractionService.serviceName === "openai") {
-      return await extractTextFromImagesOpenAI(imageUrls, textExtractionService);
+      const out = await extractTextFromImagesOpenAI(imageUrls, textExtractionService);
+      try { console.log("[TextExtract]", __traceId, "OpenAI outputs", out.map(t => (t||'').length)); } catch (_) {}
+      return out;
     } else if (textExtractionService.serviceName === "gemini") {
-      return await extractTextFromImagesGemini(imageUrls, textExtractionService);
+      const out = await extractTextFromImagesGemini(imageUrls, textExtractionService);
+      try { console.log("[TextExtract]", __traceId, "Gemini outputs", out.map(t => (t||'').length)); } catch (_) {}
+      return out;
     } else {
       throw new Error(`Unsupported service for text extraction: ${textExtractionService.serviceName}`);
     }
@@ -341,158 +429,146 @@ const extractTextFromImages = async (imageUrls) => {
 };
 
 const extractTextFromImagesOpenAI = async (imageUrls, serviceConfig) => {
-  const extractedTexts = [];
-  for (let i = 0; i < imageUrls.length; i++) {
-    const imageUrl = imageUrls[i];
-    try {
-      let processedImageUrl = imageUrl;
-      if (!imageUrl.includes("cloudinary.com")) {
-        const imageResponse = await axios.get(imageUrl, {
-          responseType: "arraybuffer",
-          timeout: 30000,
-          headers: {
-            "User-Agent": "Mozilla/5.0 (compatible; TextExtractor/1.0)",
-          },
-        });
-        if (imageResponse.status !== 200) {
-          throw new Error(`Failed to fetch image: ${imageResponse.status} ${imageResponse.statusText}`);
+  try {
+    if (!Array.isArray(imageUrls) || imageUrls.length === 0) return [];
+    // Prepare all images first (download/convert if not cloud-hosted)
+    const processed = [];
+    for (let i = 0; i < imageUrls.length; i++) {
+      try {
+        let url = imageUrls[i];
+        if (!url.includes("cloudinary.com")) {
+          const imageResponse = await axios.get(url, {
+            responseType: "arraybuffer",
+            timeout: 30000,
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; TextExtractor/1.0)" },
+          });
+          if (imageResponse.status !== 200) {
+            throw new Error(`Failed to fetch image: ${imageResponse.status} ${imageResponse.statusText}`);
+          }
+          const contentType = imageResponse.headers["content-type"];
+          if (!contentType || !contentType.startsWith("image/")) {
+            throw new Error(`Invalid content type: ${contentType}`);
+          }
+          const imageBuffer = Buffer.from(imageResponse.data);
+          const base64Image = imageBuffer.toString("base64");
+          let imageFormat = "jpeg";
+          if (contentType.includes("png")) imageFormat = "png";
+          else if (contentType.includes("webp")) imageFormat = "webp";
+          else if (contentType.includes("gif")) imageFormat = "gif";
+          url = `data:image/${imageFormat};base64,${base64Image}`;
         }
-        const contentType = imageResponse.headers["content-type"];
-        if (!contentType || !contentType.startsWith("image/")) {
-          throw new Error(`Invalid content type: ${contentType}`);
-        }
-        const imageBuffer = Buffer.from(imageResponse.data);
-        const base64Image = imageBuffer.toString("base64");
-        let imageFormat = "jpeg";
-        if (contentType.includes("png")) imageFormat = "png";
-        else if (contentType.includes("webp")) imageFormat = "webp";
-        else if (contentType.includes("gif")) imageFormat = "gif";
-        processedImageUrl = `data:image/${imageFormat};base64,${base64Image}`;
+        processed.push({ url, index: i + 1 });
+      } catch (e) {
+        processed.push({ error: e, index: i + 1 });
       }
-
-      const visionResponse = await axios.post(
-        serviceConfig.apiUrl,
-        {
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: `You are a precise OCR (Optical Character Recognition) system. Your task is to extract ALL text content from this image.
-Instructions:
-1. Extract ALL visible text exactly as it appears
-2. Maintain the original formatting, line breaks, and spacing
-3. Include mathematical equations, formulas, and symbols
-4. Include any handwritten text if clearly readable
-5. Do not add explanations, interpretations, or additional commentary
-6. If the text is in multiple languages, extract all of it
-7. If there are tables, preserve the table structure
-8. If no readable text is found, respond with exactly: "No readable text found"
-Return only the extracted text content:`,
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: processedImageUrl,
-                    detail: "high",
-                  },
-                },
-              ],
-            },
-          ],
-          max_tokens: 2000,
-          temperature: 0.1,
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${serviceConfig.apiKey}`,
-          },
-          timeout: 45000,
-        }
-      );
-
-      if (!visionResponse.data || !visionResponse.data.choices || visionResponse.data.choices.length === 0) {
-        throw new Error("Invalid response structure from OpenAI Vision API");
-      }
-      const choice = visionResponse.data.choices[0];
-      if (!choice.message || !choice.message.content) {
-        throw new Error("No content in OpenAI Vision API response");
-      }
-      const extractedText = choice.message.content.trim();
-      if (extractedText === "No readable text found" || extractedText.length === 0) {
-        extractedTexts.push("No readable text found");
-      } else {
-        extractedTexts.push(extractedText);
-      }
-    } catch (error) {
-      let errorMessage = "Failed to extract text";
-      if (error.message.includes("timeout")) {
-        errorMessage = "Text extraction timed out - image may be too large";
-      } else if (error.message.includes("API key")) {
-        errorMessage = "API authentication failed";
-      } else if (error.message.includes("rate limit")) {
-        errorMessage = "Rate limit exceeded - please try again later";
-      } else if (error.message.includes("content type")) {
-        errorMessage = "Invalid image format";
-      }
-      extractedTexts.push(`${errorMessage}: ${error.message}`);
     }
+
+    // Build a single multi-image prompt and request
+    const content = [
+      {
+        type: "text",
+        text:
+          "You are a precise OCR system. Extract ALL text from EACH image. Keep original formatting. Include formulas and handwritten text if legible. Output as blocks labeled exactly: 'Image 1:', 'Image 2:', ... in order. If an image has no readable text, write exactly 'No readable text found' for that image.",
+      },
+      // Append image parts
+      ...processed
+        .filter(p => !p.error)
+        .map(p => ({ type: "image_url", image_url: { url: p.url, detail: "high" } })),
+    ];
+
+    const visionResponse = await axios.post(
+      serviceConfig.apiUrl,
+      { model: "gpt-4o-mini", messages: [ { role: "user", content } ], max_tokens: 4000, temperature: 0.1 },
+      { headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceConfig.apiKey}` }, timeout: 60000 }
+    );
+
+    if (!visionResponse.data?.choices?.[0]?.message?.content) {
+      throw new Error("Invalid response structure from OpenAI Vision API");
+    }
+    const fullText = visionResponse.data.choices[0].message.content.trim();
+
+    // Parse back into per-image texts using the labels
+    const outputs = Array(imageUrls.length).fill("");
+    const blocks = fullText.split(/\n(?=Image\s+\d+\s*:\s*)/i);
+    for (const block of blocks) {
+      const m = block.match(/^Image\s+(\d+)\s*:\s*([\s\S]*)$/i);
+      if (!m) continue;
+      const idx = Math.max(1, Math.min(imageUrls.length, parseInt(m[1], 10))) - 1;
+      outputs[idx] = (m[2] || "").trim() || "No readable text found";
+    }
+
+    // Fill in any errors/timeouts captured during preprocessing
+    for (const p of processed) {
+      if (p.error) {
+        const i = p.index - 1;
+        let errorMessage = "Failed to extract text";
+        const msg = String(p.error?.message || "");
+        if (msg.includes("timeout")) errorMessage = "Text extraction timed out - image may be too large";
+        else if (msg.includes("API key")) errorMessage = "API authentication failed";
+        else if (msg.includes("rate limit")) errorMessage = "Rate limit exceeded - please try again later";
+        else if (msg.includes("content type")) errorMessage = "Invalid image format";
+        outputs[i] = `${errorMessage}: ${msg}`;
+      } else if (!outputs[p.index - 1]) {
+        outputs[p.index - 1] = "No readable text found";
+      }
+    }
+    return outputs.map(t => (t && t.length > 0 ? t : "No readable text found"));
+  } catch (error) {
+    // Fallback: return a single error item per image
+    return (Array.isArray(imageUrls) ? imageUrls : []).map(() => `Failed to extract text: ${error.message}`);
   }
-  return extractedTexts;
 };
 
 const extractTextFromImagesGemini = async (imageUrls, serviceConfig) => {
-  const extractedTexts = [];
-  for (const imageUrl of imageUrls) {
-    try {
-      const imageResponse = await axios.get(imageUrl, {
-        responseType: "arraybuffer",
-        timeout: 30000,
-      });
-      const imageBuffer = Buffer.from(imageResponse.data);
-      const base64Image = imageBuffer.toString("base64");
-      const contentType = imageResponse.headers["content-type"] || "image/jpeg";
-
-      const response = await axios.post(
-        `${serviceConfig.apiUrl}?key=${serviceConfig.apiKey}`,
-        {
-          contents: [
-            {
-              parts: [
-                {
-                  text: "Extract all text content from this image. Return only the text as it appears, maintaining original formatting. If no text is found, respond with 'No readable text found'.",
-                },
-                {
-                  inline_data: {
-                    mime_type: contentType,
-                    data: base64Image,
-                  },
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 1024,
-          },
-        },
-        {
-          headers: { "Content-Type": "application/json" },
-          timeout: 30000,
-        }
-      );
-
-      const extractedText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || "No readable text found";
-      extractedTexts.push(extractedText.trim());
-    } catch (error) {
-      console.error("Gemini extraction error:", error.message);
-      extractedTexts.push(`Failed to extract text: ${error.message}`);
+  try {
+    if (!Array.isArray(imageUrls) || imageUrls.length === 0) return [];
+    // Download all images and build a single parts array
+    const parts = [
+      { text: "Extract ALL text from EACH image. Maintain formatting. Output blocks labeled 'Image 1:', 'Image 2:', ... in order. If no text for an image, write exactly 'No readable text found' for that image." },
+    ];
+    const meta = [];
+    for (let i = 0; i < imageUrls.length; i++) {
+      try {
+        const imageResponse = await axios.get(imageUrls[i], { responseType: "arraybuffer", timeout: 30000 });
+        const base64Image = Buffer.from(imageResponse.data).toString("base64");
+        const contentType = imageResponse.headers["content-type"] || "image/jpeg";
+        parts.push({ inline_data: { mime_type: contentType, data: base64Image } });
+        meta.push({ index: i + 1, ok: true });
+      } catch (e) {
+        meta.push({ index: i + 1, ok: false, error: e });
+      }
     }
+
+    const response = await axios.post(
+      `${serviceConfig.apiUrl}?key=${serviceConfig.apiKey}`,
+      { contents: [ { parts } ], generationConfig: { temperature: 0.1, maxOutputTokens: 4096 } },
+      { headers: { "Content-Type": "application/json" }, timeout: 45000 }
+    );
+
+    const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const outputs = Array(imageUrls.length).fill("");
+    const blocks = String(text).split(/\n(?=Image\s+\d+\s*:\s*)/i);
+    for (const block of blocks) {
+      const m = block.match(/^Image\s+(\d+)\s*:\s*([\s\S]*)$/i);
+      if (!m) continue;
+      const idx = Math.max(1, Math.min(imageUrls.length, parseInt(m[1], 10))) - 1;
+      outputs[idx] = (m[2] || "").trim() || "No readable text found";
+    }
+
+    // Fill any failed downloads with error messages and empty blocks with default message
+    for (const m of meta) {
+      const i = m.index - 1;
+      if (!m.ok) {
+        outputs[i] = `Failed to extract text: ${m.error?.message || 'download error'}`;
+      } else if (!outputs[i]) {
+        outputs[i] = "No readable text found";
+      }
+    }
+
+    return outputs;
+  } catch (error) {
+    return (Array.isArray(imageUrls) ? imageUrls : []).map(() => `Failed to extract text: ${error.message}`);
   }
-  return extractedTexts;
 };
 
 const extractTextFromImagesWithFallback = async (imageUrls) => {
@@ -508,6 +584,14 @@ const extractTextFromImagesWithFallback = async (imageUrls) => {
         (service) => service.supportedTasks.includes("text_extraction") && !service.taskPreferences.text_extraction
       );
       if (fallbackService) {
+        try {
+          console.log(
+            "[TextExtract][Fallback]",
+            `FB-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+            "Using",
+            fallbackService.serviceName
+          );
+        } catch (_) {}
         if (fallbackService.serviceName === "agentic") {
           return await extractTextFromImagesAgentic(imageUrls, fallbackService);
         } else if (fallbackService.serviceName === "openai") {
@@ -1411,7 +1495,11 @@ Now translate this content: \n\n${englishBlock}`;
     }
 
     if (!aiText || typeof aiText !== 'string') return null;
-    return parseHindiEvaluationResponse(aiText, question);
+    // Parse Hindi text
+    const parsedHindi = parseHindiEvaluationResponse(aiText, question);
+    // Enrich any missing/placeholder sections from English
+    const enrichedHindi = await enrichHindiEvaluationFromEnglish(evaluation, parsedHindi);
+    return enrichedHindi || parsedHindi;
   } catch (e) {
     console.warn('translateEvaluationToHindi failed:', e.message);
     return null;
@@ -1424,13 +1512,60 @@ function enforceEvaluationLimits(evaluation, options = {}) {
     if (!evaluation || typeof evaluation !== 'object') return evaluation;
     const maxRemark = Number.isFinite(options.maxRemark) ? options.maxRemark : 250;
     const clamp = (s, n) => (typeof s === 'string' && s.length > n ? s.slice(0, n - 1) + '…' : s);
+    // Ensure a minimal, non-empty conclusion if parser/model omitted it
+    evaluation = ensureConclusionPresence(evaluation);
     evaluation.remark = clamp(evaluation.remark || '', maxRemark);
     if (evaluation.hindiEvaluation && typeof evaluation.hindiEvaluation === 'object') {
+      evaluation.hindiEvaluation = ensureConclusionPresence(evaluation.hindiEvaluation, 'hi');
       evaluation.hindiEvaluation.remark = clamp(evaluation.hindiEvaluation.remark || '', maxRemark);
     }
     return evaluation;
   } catch (_) {
     return evaluation;
+  }
+}
+
+// Ensure there is a usable conclusion text; if placeholder/missing, synthesize a concise one
+function ensureConclusionPresence(evalObj, lang = 'en') {
+  try {
+    const out = { ...(evalObj || {}) };
+    const analysis = out.analysis || {};
+    const conclusionArr = Array.isArray(analysis.conclusion) ? analysis.conclusion : [];
+    const hasRealConclusion = conclusionArr.some(line => {
+      const t = String(line || '').trim();
+      if (!t) return false;
+      if (/^no\s+conclusion\s+is\s+provided\.?/i.test(t)) return false;
+      if (/^कोई\s+निष्कर्ष\s+नहीं\s+दिया\s+गया\s+है।?$/i.test(t)) return false;
+      return true;
+    });
+    if (hasRealConclusion) return out;
+
+    const fb = Array.isArray(analysis.feedback) && analysis.feedback.length > 0 ? String(analysis.feedback[0]) : '';
+    const sug = Array.isArray(analysis.suggestions) && analysis.suggestions.length > 0 ? String(analysis.suggestions[0]) : '';
+
+    let generated = '';
+    if (lang === 'hi') {
+      if (fb) {
+        generated = `निष्कर्षतः, ${fb}`;
+      } else if (sug) {
+        generated = `निष्कर्षतः, ${sug}`;
+      } else {
+        generated = 'निष्कर्षतः, मुख्य बिंदुओं का संक्षिप्त सार प्रस्तुत करें और उत्तर का महत्व बतायें।';
+      }
+    } else {
+      if (fb) {
+        generated = `In conclusion, ${fb}`;
+      } else if (sug) {
+        generated = `In conclusion, ${sug}`;
+      } else {
+        generated = 'In conclusion, briefly synthesize the key points and state the answer’s significance.';
+      }
+    }
+
+    out.analysis = { ...analysis, conclusion: [generated] };
+    return out;
+  } catch (_) {
+    return evalObj;
   }
 }
 

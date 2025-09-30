@@ -394,8 +394,20 @@ router.post(
   validateAnswerSubmission,
   async (req, res, next) => {
     try {
+      const __traceId = `AISWB-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+      console.log(
+        "[AnswerUpload][AISWB]",
+        __traceId,
+        "Start",
+        {
+          userId: req.user && req.user.id,
+          questionId: req.params && req.params.questionId,
+          filesCount: (req.files || []).length,
+        }
+      );
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.log("[AnswerUpload][AISWB]", __traceId, "Validation errors", (errors.array() || []).length);
         if (req.files && req.files.length > 0) {
           for (const file of req.files) {
             try {
@@ -527,6 +539,14 @@ router.post(
           const imageUrls = answerImages.map((img) => img.imageUrl);
           extractedTexts = await extractTextFromImagesWithFallback(imageUrls);
           extractedTexts = cleanExtractedTexts(extractedTexts);
+          try {
+            console.log(
+              "[AnswerUpload][AISWB]",
+              __traceId,
+              "Extraction complete",
+              extractedTexts.map((t, i) => ({ idx: i, len: String(t || '').length }))
+            );
+          } catch (_) {}
 
           const relevanceValidation = await validateTextRelevanceToQuestion(
             question,
@@ -580,6 +600,12 @@ router.post(
 
           // Get evaluation service early so it's available for all evaluation scenarios
           const evaluationService = await getServiceForTask("evaluation");
+          console.log(
+            "[AnswerUpload][AISWB]",
+            __traceId,
+            "Evaluation service selected",
+            evaluationService && evaluationService.serviceName
+          );
 
           if (hasValidText) {
             try {
@@ -1457,6 +1483,14 @@ router.post(
           throw transactionError;
         }
       }
+      try {
+        console.log(
+          "[AnswerUpload][AISWB]",
+          __traceId,
+          "Answer saved",
+          { id: String(userAnswer && userAnswer._id), attempt: userAnswer && userAnswer.attemptNumber }
+        );
+      } catch (_) {}
 
       const responseData = {
         answerId: userAnswer._id,
@@ -1514,6 +1548,12 @@ router.post(
         successMessage = "Answer submitted and evaluated successfully";
       }
 
+      console.log(
+        "[AnswerUpload][AISWB]",
+        __traceId,
+        "Success response",
+        { answerId: String(responseData && responseData.answerId) }
+      );
       res.status(200).json({
         success: true,
         message: successMessage,
@@ -1521,6 +1561,7 @@ router.post(
         data: responseData,
       });
     } catch (error) {
+      console.error("[AnswerUpload][AISWB]", "Unhandled error", error && error.message);
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           try {
@@ -1607,8 +1648,21 @@ router.post(
   validateAnswerSubmission,
   async (req, res, next) => {
     try {
+      const __traceId = `SUBJ-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+      console.log(
+        "[AnswerUpload][SUBJ]",
+        __traceId,
+        "Start",
+        {
+          userId: req.user && req.user.id,
+          questionId: req.params && req.params.questionId,
+          testId: req.params && req.params.testId,
+          filesCount: (req.files || []).length,
+        }
+      );
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.log("[AnswerUpload][SUBJ]", __traceId, "Validation errors", (errors.array() || []).length);
         if (req.files && req.files.length > 0) {
           for (const file of req.files) {
             try {
@@ -1735,6 +1789,14 @@ router.post(
           const imageUrls = answerImages.map((img) => img.imageUrl);
           extractedTexts = await extractTextFromImagesWithFallback(imageUrls);
           extractedTexts = cleanExtractedTexts(extractedTexts);
+          try {
+            console.log(
+              "[AnswerUpload][SUBJ]",
+              __traceId,
+              "Extraction complete",
+              extractedTexts.map((t, i) => ({ idx: i, len: String(t || '').length }))
+            );
+          } catch (_) {}
 
           const relevanceValidation = await validateTextRelevanceToQuestion(
             question,
@@ -1788,6 +1850,12 @@ router.post(
 
           // Get evaluation service early so it's available for all evaluation scenarios
           const evaluationService = await getServiceForTask("evaluation");
+          console.log(
+            "[AnswerUpload][SUBJ]",
+            __traceId,
+            "Evaluation service selected",
+            evaluationService && evaluationService.serviceName
+          );
 
           if (hasValidText) {
             try {
@@ -2345,6 +2413,14 @@ router.post(
           throw transactionError;
         }
       }
+      try {
+        console.log(
+          "[AnswerUpload][SUBJ]",
+          __traceId,
+          "Answer saved",
+          { id: String(userAnswer && userAnswer._id), attempt: userAnswer && userAnswer.attemptNumber }
+        );
+      } catch (_) {}
 
       const responseData = {
         answerId: userAnswer._id,
@@ -2398,6 +2474,12 @@ router.post(
         successMessage = "Answer submitted and evaluated successfully";
       }
 
+      console.log(
+        "[AnswerUpload][SUBJ]",
+        __traceId,
+        "Success response",
+        { answerId: String(responseData && responseData.answerId) }
+      );
       res.status(200).json({
         success: true,
         message: successMessage,
@@ -2405,6 +2487,7 @@ router.post(
         data: responseData,
       });
     } catch (error) {
+      console.error("[AnswerUpload][SUBJ]", "Unhandled error", error && error.message);
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           try {
