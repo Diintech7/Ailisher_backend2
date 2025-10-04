@@ -120,7 +120,7 @@ const heartbeat = setInterval(() => {
 const externalRes = await axios.post(
   "https://vectrize.ailisher.com/api/v1/rag/process-document",
   payload,
-  { timeout: 300000, validateStatus: () => true }
+  { timeout: 900000, validateStatus: () => true }
 )
 
 const extData = externalRes.data || {}
