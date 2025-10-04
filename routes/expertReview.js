@@ -128,6 +128,24 @@ router.post('/:requestId/submit', async (req, res) => {
       });
     }
 
+    // Validate expert_score
+    if (expert_score === undefined || expert_score === null || expert_score === '') {
+      console.log('[Review Submit] Validation failed: expert_score is missing');
+      return res.status(400).json({
+        success: false,
+        message: 'Expert score is required'
+      });
+    }
+
+    const score = parseFloat(expert_score);
+    if (isNaN(score) || score < 0) {
+      console.log('[Review Submit] Validation failed: expert_score is invalid');
+      return res.status(400).json({
+        success: false,
+        message: 'Expert score must be a valid number greater than or equal to 0'
+      });
+    }
+
     // Find and validate request
     const request = await ReviewRequest.findById(requestId);
     if (!request) {
@@ -193,7 +211,7 @@ router.post('/:requestId/submit', async (req, res) => {
       ...existingFeedback,
       expertReview: {
         result: review_result,
-        score: expert_score,
+        score: score,
         remarks: expert_remarks,
         annotatedImages: processedImages,
         reviewedAt: new Date()
@@ -208,7 +226,7 @@ router.post('/:requestId/submit', async (req, res) => {
     request.requestStatus = 'completed';
     request.completedAt = new Date();
     request.reviewData = {
-      score: expert_score,
+      score: score,
       remarks: expert_remarks,
       result: review_result,
       annotatedImages: processedImages
