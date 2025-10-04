@@ -2355,14 +2355,6 @@ router.post("/publishwithannotation", async (req, res) => {
         .json({ success: false, message: "UserAnswer not found" });
     }
 
-    // Only process AISWB testType
-    if (userAnswer.testType !== "aiswb") {
-      return res.status(400).json({
-        success: false,
-        message: "This endpoint only supports AISWB testType",
-      });
-    }
-
     // Dynamically populate question based on testType
     let question;
     if (userAnswer.testType) {
@@ -2376,10 +2368,7 @@ router.post("/publishwithannotation", async (req, res) => {
         const AiswbQuestion = require("../models/AiswbQuestion");
         question = await AiswbQuestion.findById(userAnswer.questionId);
       }
-    } else {
-      const AiswbQuestion = require("../models/AiswbQuestion");
-      question = await AiswbQuestion.findById(userAnswer.questionId);
-    }
+    } 
 
     console.log(question.evaluationMode);
     console.log(question.evaluationType);

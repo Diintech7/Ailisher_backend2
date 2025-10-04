@@ -1973,7 +1973,7 @@ router.post(
                       );
                     }
                   }
-
+                  
                   evaluation.evaluationMethod = "gemini";
                 } else {
                   throw new Error("Invalid response from Gemini API");
@@ -2388,6 +2388,157 @@ router.post(
           userAnswerData.submissionStatus = "evaluated";
           userAnswerData.publishStatus = "published";
           userAnswerData.reviewStatus = null;
+          // Attempt to generate auto annotations via Cloudinary overlays (non-blocking)
+          try {
+            const includeImageAnnotations =
+              question.evaluationMode !== "manual";
+            if (
+              includeImageAnnotations &&
+              Array.isArray(answerImages) &&
+              answerImages.length > 0
+            ) {
+              const annotations = [];
+              // Prefer Hindi evaluation comments for annotations if available
+              const hindiEval = userAnswerData.hindiEvaluation;
+              const sourceCommentsAll = Array.isArray(hindiEval?.comments) && hindiEval.comments.length > 0
+                ? hindiEval.comments
+                : (evaluation.comments || []);
+              for (let i = 0; i < answerImages.length; i++) {
+                const img = answerImages[i];
+                // Use at most 4 evaluation comments overall
+                const evalComments = sourceCommentsAll.slice(0, 4);
+                let comments;
+                if (answerImages.length === 1) {
+                  // Single image: show all 4 comments regardless of perImageComments
+                  comments = evalComments;
+                } else {
+                  // Multiple images: prefer per-image mapping, else 2 per image
+                  if (Array.isArray(hindiEval?.comments) && hindiEval.comments.length > 0) {
+                    // Distribute Hindi comments sequentially, two per image
+                    comments = sourceCommentsAll.slice(i * 2, i * 2 + 2);
+                  } else {
+                    comments =
+                      Array.isArray(evaluation.perImageComments?.[i]) &&
+                      evaluation.perImageComments[i].length > 0
+                        ? evaluation.perImageComments[i]
+                        : evalComments.slice(0, 2);
+                  }
+                }
+                if (!img.cloudinaryPublicId) continue;
+                // Professional text wrapping for better readability and proper line breaks
+                const formatCommentsForDisplay = (comments) => {
+                  if (!Array.isArray(comments) || comments.length === 0)
+                    return "";
+                  return comments
+                    .map((c) => String(c).trim())
+                    .filter(Boolean)
+                    .join("\n\n"); // blank line separates comments for per-comment numbering/tick
+                };
+
+                const text = formatCommentsForDisplay(comments);
+                if (!text) continue;
+
+                // Generate S3 key for annotated image (following your pattern)
+                try {
+                  const fileExtension = ".png"; // Use PNG extension for annotated images
+                  const s3Key = `${
+                    req.clientInfo.businessName
+                  }/auto-annotated-images/${
+                    req.user.clientId
+                  }/${questionId}/${Date.now()}_${i}${fileExtension}`;
+                  console.log("userAnswerData", userAnswerData);
+
+                  // Create annotated image by overlaying text on the original image
+                  const mockReq = {
+                    body: {
+                      imageUrl: img.imageUrl,
+                      text: text,
+                      fontsize: 18,
+                      fontStyle: "handwritten",
+                      customFontPath: "./assets/fonts/Kalam-Regular.ttf",
+                      fontWeight: "bold",
+                      color: "#FF0000", // bright red text
+                      align: "left",
+                      numbered: true,
+                      withTicks: false,
+                      ticks: [
+                        { x: 0.22, y: 0.3, size: 80, color: "#FF0000" },
+                        { x: 0.10, y: 0.6, size: 80, color: "#FF0000" },
+                        { x: 0.40, y: 0.8, size: 80, color: "#FF0000" },
+                      ],
+
+                      xPadding: 24,
+                      sidebar: true,
+                      sidebarWidth: 480,
+                      sidebarColor: "#FFFFFF",
+                      padding: 10,
+                      borderRadius: 6,
+                      textShadow: "2px 2px 6px rgba(0,0,0,0.9)", // extra shadow to make red pop
+                      evaluation,
+                      hindiEvaluation: userAnswerData.hindiEvaluation || undefined,
+                      maxScore: question.metadata.maximumMarks || undefined
+                    },
+                    
+                  };
+
+                  let annotatedImageBase64 = null;
+                  console.log("mockReq", mockReq);
+                  const mockRes = {
+                    json: (data) => {
+                      if (data.success && data.image) {
+                        annotatedImageBase64 = data.image;
+                      } else {
+                        throw new Error("Failed to create annotated image");
+                      }
+                    },
+                  };
+                  console.log("mockRes", mockRes);
+                  // Call the overlayTextOnImage function
+                  await overlayTextOnImage(mockReq, mockRes);
+
+                  if (annotatedImageBase64) {
+                    // Convert base64 image to buffer
+                    const imageBuffer = Buffer.from(
+                      annotatedImageBase64,
+                      "base64"
+                    );
+
+                    // Upload the annotated image to S3
+                    const uploadedKey = await uploadFileToS3(
+                      imageBuffer,
+                      s3Key,
+                      "image/png"
+                    );
+
+                    // Generate download URL for the uploaded annotated image
+                    const downloadUrl = await generateAnnotatedImageUrl(
+                      uploadedKey
+                    );
+
+                    annotations.push({
+                      s3Key: uploadedKey,
+                      downloadUrl: downloadUrl,
+                      uploadedAt: new Date(),
+                    });
+                  }
+                } catch (s3Error) {
+                  console.warn(
+                    "Failed to create or upload annotated image:",
+                    s3Error.message
+                  );
+                }
+              }
+              if (annotations.length > 0) {
+                userAnswerData.annotations = annotations;
+              } else {
+                console.log(
+                  "[Annot] no annotations prepared (no comments or missing publicId)."
+                );
+              }
+            }
+          } catch (annErr) {
+            console.warn("Auto annotation (overlay) failed:", annErr.message);
+          }
         } else {
           userAnswerData.submissionStatus = "submitted";
           userAnswerData.reviewStatus = null;
@@ -2456,6 +2607,10 @@ router.post(
       }
       if (userAnswerData.hindiEvaluation) {
         responseData.hindiEvaluation = userAnswerData.hindiEvaluation;
+      }
+      if (userAnswerData.annotations && userAnswerData.annotations.length > 0) {
+        responseData.annotations = userAnswerData.annotations;
+        responseData.annotationsCount = userAnswerData.annotations.length;
       }
       if (extractedTexts.length > 0) {
         responseData.extractedTexts = extractedTexts;

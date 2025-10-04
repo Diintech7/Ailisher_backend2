@@ -124,7 +124,7 @@ router.post("/paytm/initiate", async (req, res) => {
       ORDER_ID: orderId,
       CUST_ID: customerEmail,
       TXN_AMOUNT: parseFloat(amount).toFixed(2),
-      CALLBACK_URL: "http://localhost:5000/api/admin/paytm/callback",
+      CALLBACK_URL: "https://test.ailisher.com/api/admin/paytm/callback",
       EMAIL: customerEmail,
       MOBILE_NO: customerPhone,
     };
@@ -465,7 +465,7 @@ router.get('/withdrawals', verifyAdminToken, async (req, res) => {
   }
 });
 
-router.get('/verified-requests', verifyAdminToken, async (req, res) => {
+router.get('/verified-kyc', verifyAdminToken, async (req, res) => {
   try {
     const evaluators = await Evaluator.find({ 'kycDetails.status': 'verified' });
     const count = evaluators.length;
@@ -475,7 +475,7 @@ router.get('/verified-requests', verifyAdminToken, async (req, res) => {
   }
 });
 
-router.get('/rejected-requests', verifyAdminToken, async (req, res) => {
+router.get('/rejected-kyc', verifyAdminToken, async (req, res) => {
   try {
     const evaluators = await Evaluator.find({ 'kycDetails.status': 'rejected' });
     const count = evaluators.length;

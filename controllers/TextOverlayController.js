@@ -262,6 +262,9 @@ const overlayTextOnImage = async (req, res) => {
     // Build layers per comment: number on first line only; one tick per comment
     let currentY = startY;
     const layers = [];
+    
+    // Track if score was added to adjust comment spacing
+    let scoreAdded = false;
 
     // Optional header for relevancy and score drawn above comments (no-op if not provided)
     try {
@@ -287,9 +290,15 @@ const overlayTextOnImage = async (req, res) => {
           ? `drawtext=text='${headerClean}':font='${fallbackFontFamily}':fontcolor=#16a34a:fontsize=30:x=${hx}:y=${hy}`
           : `drawtext=text='${headerClean}':fontcolor=#16a34a:fontsize=30:x=${hx}:y=${hy}`;
         layers.push(headerLayer);
+        scoreAdded = true;
       }
     } catch (_) {}
     if (totalWrappedLines.length > 0) {
+      // Add extra padding bottom for score if it was added
+      if (scoreAdded) {
+        currentY += Math.round(lineHeight * 1.5); // Add 1.5 line heights of space after score
+      }
+      
       wrappedComments.forEach((lines, commentIndex) => {
         const linesForThis = Array.isArray(lines) && lines.length > 0 ? lines : [''];
         linesForThis.forEach((line, lineIndex) => {

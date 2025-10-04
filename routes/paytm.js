@@ -88,7 +88,7 @@ router.post("/initiate", authenticateMobileUser, async (req, res) => {
       // Send Telegram alert for payment initiated
       try {
         await axios.post(
-          `http://localhost:5000/api/clients/${req.clientId}/telegram/send-text`,
+          `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
           {
             text: `🆕 <b>INITIATED PAYMENT</b>\n\n👤 ${customerPhone} (${customerName}) has initiated the process to purchase the plan:\n📦 <b>${
               plan.name
@@ -299,7 +299,7 @@ router.post("/callback", async (req, res) => {
                 if (req.clientId === "CLI147189HIGB") {
                   try {
                     await axios.post(
-                      `http://localhost:5000/api/clients/${req.clientId}/telegram/send-text`,
+                      `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
                       {
                         text: `✅ <b>Paid to Mobishaala</b>\n\n💰<b>Total Amount:</b> ₹${creditsToAdd}\n🏦 <b>Net Amount:</b> ₹${creditsToAdd}\n👤 <b>${paymentDoc.customerPhone}</b> (${paymentDoc.customerName})\n🆔 <b>Order No:</b> ${orderId}\n📦 <b>Plan:</b> ${plan.name}`,
                       }
