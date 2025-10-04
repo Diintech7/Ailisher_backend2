@@ -896,7 +896,7 @@ exports.startTest = async (req, res) => {
     if (existingTestResult) {
       return res.status(400).json({
         success: false,
-        message: "Test already started or completed",
+        message: "Test already started",
       });
     }
     // Create test result
