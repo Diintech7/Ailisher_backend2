@@ -36,67 +36,165 @@ chunkOverlap: process.env.CHUNK_OVERLAP || "30",
 maxContextChunks: process.env.MAX_CONTEXT_CHUNKS || "5",
 })
 
-// POST /api/v1/rag/create-embeddings/:itemId
 router.post("/create-embeddings/:itemId", optionalAuth, async (req, res) => {
-  try {
-    const { itemId } = req.params;
-    const userId = req.user?.id;
+const startTime = Date.now()
 
-    // Fetch the PDF item
-    let item = await DataStore.findOne({ _id: itemId, user: userId });
-    if (!item) return res.status(404).json({ success: false, message: "PDF not found" });
+try {
+const { itemId } = req.params
+const { forceReEmbed = false } = req.body
+const userId = req.user?.id
 
-    // Mark as "pending" embedding
-    item.embeddingStatus = "pending";
-    await item.save();
+let item
+if (userId) {
+  item = await DataStore.findOne({
+    _id: itemId,
+    user: userId,
+    $or: [{ fileType: "application/pdf" }, { itemType: "pdf" }],
+  }).populate("book")
+} else {
+  item = await DataStore.findOne({
+    _id: itemId,
+    $or: [{ fileType: "application/pdf" }, { itemType: "pdf" }],
+  }).populate("book")
+}
 
-    // Start async embedding
-    setImmediate(async () => {
-      try {
-        item.embeddingStatus = "processing";
-        await item.save();
+if (!item) {
+  return res.status(404).json({
+    success: false,
+    message: "PDF item not found or access denied",
+  })
+}
 
-        const payload = {
-          url: item.url,
-          book_name: item.book?._id?.toString() || "",
-          chapter_name: item._id.toString(),
-          client_id: item.book?.clientId || "",
-        };
+let bookId = null
+if (item.book) {
+  bookId = item.book._id.toString()
+} else if (item.workbook) {
+  bookId = item.workbook.toString()
+} else {
+  return res.status(400).json({
+    success: false,
+    message: "PDF item must be associated with a book",
+  })
+}
 
-        // Call external API (this may take long)
-        const axios = require("axios");
-        const extRes = await axios.post(
-          "https://vectrize.ailisher.com/api/v1/rag/process-document",
-          payload,
-          { timeout: 0, validateStatus: () => true } // No timeout
-        );
+// Build payload to call external embedding API
+const payload = {
+  url: item.url,
+  book_name: (item.book?._id || bookId || "").toString(),
+  chapter_name: (item._id || "").toString(),
+  client_id: (item.book?.clientId || "").toString() || "",
+}
 
-        if (extRes.data?.success) {
-          item.embeddingStatus = "completed";
-          item.embeddingCount = extRes.data.data?.processed_chunks || 0;
-        } else {
-          item.embeddingStatus = "failed";
-        }
-        await item.save();
-      } catch (err) {
-        console.error("Async embedding error:", err.message);
-        item.embeddingStatus = "failed";
-        await item.save();
-      }
-    });
+// Validate required payload fields
+const missing = []
+if (!payload.url) missing.push("url")
+if (!payload.book_name) missing.push("book_name (bookId)")
+if (!payload.chapter_name) missing.push("chapter_name (datastore item id)")
+if (!payload.client_id) missing.push("client_id")
 
-    // Immediately respond
-    return res.status(202).json({
-      success: true,
-      message: "Embedding started",
-      itemId: item._id,
-      embeddingStatus: item.embeddingStatus,
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+if (missing.length > 0) {
+  console.error("[Embedding] Missing required fields:", missing)
+  return res.status(400).json({
+    success: false,
+    message: `Missing required fields: ${missing.join(", ")}`,
+    payload,
+  })
+}
+
+// Quick preflight: check URL reachability
+try {
+  await axios.head(payload.url, { timeout: 2000000 })
+} catch (headErr) {
+  console.warn("[Embedding] Warning: PDF URL not reachable via HEAD:", headErr.message)
+}
+
+console.log("[Embedding] About to call external API with payload:", payload)
+console.time("[Embedding] External API duration")
+let waitStart = Date.now()
+let heartbeatCount = 0
+const heartbeat = setInterval(() => {
+  heartbeatCount += 1
+  const elapsed = Math.round((Date.now() - waitStart) / 1000)
+  console.log(`[Embedding] Waiting for external API response... ${elapsed}s elapsed (beat ${heartbeatCount})`)
+}, 2000000)
+const externalRes = await axios.post(
+  "https://vectrize.ailisher.com/api/v1/rag/process-document",
+  payload,
+  { timeout: 2000000, validateStatus: () => true }
+)
+
+const extData = externalRes.data || {}
+console.log("[Embedding] Request Payload:", payload)
+console.log("[Embedding] External API Status:", externalRes.status)
+console.log("[Embedding] External API Response:", JSON.stringify(extData))
+console.timeEnd("[Embedding] External API duration")
+clearInterval(heartbeat)
+if (!extData.success || !extData.data?.success) {
+  throw new Error(extData.data?.message || extData.message || "External embedding failed")
+}
+
+const processedChunks = Number(extData.data.processed_chunks || 0)
+
+// Update DataStore item flags
+item.isEmbedded = true
+item.embeddingCount = processedChunks
+item.embeddedAt = new Date()
+await item.save()
+
+// Update Book flags
+try {
+  const book = await Book.findById(bookId)
+  if (book) {
+    book.embedded = true
+    book.embeddedAt = new Date()
+    await book.save()
   }
-});
+} catch (bookUpdateError) {
+  console.error("Warning: Failed to update book embedding status:", bookUpdateError.message)
+}
 
+const totalTime = Date.now() - startTime
+res.json({
+  success: true,
+  embeddingCount: processedChunks,
+  result: {
+    message: extData.data.message,
+    total_batches: extData.data.total_batches,
+    processed_chunks: processedChunks,
+    total_latency: extData.data.total_latency,
+    chunking_latency: extData.data.chunking_latency,
+    embedding_latency: extData.data.embedding_latency,
+    embeddingCount: processedChunks,
+    timing: {
+      processing: extData.data.total_latency,
+      embedding: extData.data.embedding_latency,
+      chunking: extData.data.chunking_latency,
+      total: extData.data.total_latency,
+    },
+  },
+  timing: { total: totalTime + "ms" },
+})
+} catch (error) {
+  const totalTime = Date.now() - startTime
+  try { clearInterval(heartbeat) } catch (_) {}
+  if (error.response) {
+    console.error("[Embedding] External API Error Status:", error.response.status)
+    console.error("[Embedding] External API Error Data:", JSON.stringify(error.response.data))
+  } else {
+    console.error("[Embedding] Error message:", error.message)
+    if (error.code) console.error("[Embedding] Error code:", error.code)
+    if (error.stack) console.error("[Embedding] Stack:\n", error.stack)
+  }
+  res.status(500).json({
+  success: false,
+  message: error.message || "Failed to create embeddings",
+  timing: {
+  total: totalTime + "ms",
+  },
+  })
+  }
+  })
+  
   router.delete("/delete-embeddings/:itemId", optionalAuth, async (req, res) => {
   try {
   const { itemId } = req.params
