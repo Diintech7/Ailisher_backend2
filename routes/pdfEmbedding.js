@@ -103,7 +103,7 @@ if (missing.length > 0) {
 
 // Quick preflight: check URL reachability
 try {
-  await axios.head(payload.url, { timeout: 15000 })
+  await axios.head(payload.url, { timeout: 2000000 })
 } catch (headErr) {
   console.warn("[Embedding] Warning: PDF URL not reachable via HEAD:", headErr.message)
 }
@@ -116,7 +116,7 @@ const heartbeat = setInterval(() => {
   heartbeatCount += 1
   const elapsed = Math.round((Date.now() - waitStart) / 1000)
   console.log(`[Embedding] Waiting for external API response... ${elapsed}s elapsed (beat ${heartbeatCount})`)
-}, 15000)
+}, 2000000)
 const externalRes = await axios.post(
   "https://vectrize.ailisher.com/api/v1/rag/process-document",
   payload,
