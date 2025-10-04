@@ -91,6 +91,18 @@ const addQuestion = async (req, res) => {
 const getAllQuestionsByTest = async (req, res) => { 
   try {
     const testId = req.params.testId;
+    const test = await SubjectiveTest.findById(testId);
+    if (!test) {
+      return res.status(404).json({
+        success: false,
+        message: "Test not found",
+        error: {
+          code: "TEST_NOT_FOUND",
+          details: "The specified test does not exist"
+        }
+      });
+    }
+    const total_time = test.Estimated_time;
     const questions = await SubjectiveTestQuestion.find({ test: testId });
     if (!questions) {
       return res.status(404).json({
@@ -105,6 +117,7 @@ const getAllQuestionsByTest = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Questions fetched successfully",
+      total_time: total_time,
       questions
     });
   } catch (error) {
