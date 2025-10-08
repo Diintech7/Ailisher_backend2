@@ -11,14 +11,14 @@ const UserAnswer = require("../models/UserAnswer");
 const SubjectiveTestResult = require("../models/SubjectiveTestResult");
 
 // Helper function to calculate test status
-const calculateTestStatus = (questions, userAnswers) => {
+const calculateTestStatus = (questions, userAnswers, attempted) => {
   const totalQuestions = questions.length;
   const attemptedQuestions = userAnswers.length;
 
   if (attemptedQuestions === 0) {
     return {
       status: "not_attempted",
-      attempted: false,
+      attempted: attempted || false,
       progress: 0,
       totalQuestions: totalQuestions,
       attemptedQuestions: 0,
@@ -148,7 +148,7 @@ exports.createTest = async (req, res) => {
       isActive,
       instructions,
       startsAt,
-      endsAt
+      endsAt,
     } = req.body;
     console.log(req.user.userId);
     const clientId = req.user.userId;
@@ -184,10 +184,14 @@ exports.createTest = async (req, res) => {
       const start = new Date(startsAt);
       const end = new Date(endsAt);
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        return res.status(400).json({ success: false, message: "Invalid start/end datetime" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid start/end datetime" });
       }
       if (end <= start) {
-        return res.status(400).json({ success: false, message: "endsAt must be after startsAt" });
+        return res
+          .status(400)
+          .json({ success: false, message: "endsAt must be after startsAt" });
       }
     }
 
@@ -206,7 +210,7 @@ exports.createTest = async (req, res) => {
       isActive,
       instructions,
       startsAt,
-      endsAt
+      endsAt,
     });
 
     res.status(201).json({
@@ -244,7 +248,7 @@ exports.getTest = async (req, res) => {
     }
 
     const test = await Test.findById(id);
-
+    console.log(test);
     if (!test) {
       return res.status(404).json({
         success: false,
@@ -430,20 +434,35 @@ exports.getAllTestsForMobile = async (req, res) => {
         }, 0);
 
         // Calculate percentage
-        const percentage = testMaximumMarks > 0 ? (totalScore / testMaximumMarks) * 100 : 0;
+        const percentage =
+          testMaximumMarks > 0 ? (totalScore / testMaximumMarks) * 100 : 0;
 
         console.log(questions.length);
         console.log(userId);
         console.log(userAnswers);
         console.log(userAnswers.length);
-        // Calculate status
-        const testStatus = calculateTestStatus(questions, userAnswers);
+
+        const testResult =
+          (await SubjectiveTestResult.find({
+            testId: test._id,
+            userId,
+            clientId,
+            status: "completed",
+          })) || [];
+        const attempted = Array.isArray(testResult)
+          ? testResult.length > 0
+          : Boolean(testResult);
+        const testStatus = calculateTestStatus(
+          Array.isArray(questions) ? questions : [],
+          Array.isArray(userAnswers) ? userAnswers : [],
+          attempted
+        );
 
         return {
           ...test.toObject(),
           userTestStatus: testStatus,
           testMaximumMarks: testMaximumMarks,
-          totalScore:totalScore,
+          totalScore: totalScore,
           percentage: Math.round(percentage * 100) / 100, // Round to 2 decimal places
         };
       })
@@ -468,8 +487,8 @@ exports.getAllTestsForMobile = async (req, res) => {
         testMaximumMarks: test.testMaximumMarks,
         totalScore: test.totalScore,
         percentage: test.percentage,
-        startsAt:test.startsAt,
-        endsAt:test.endsAt,
+        startsAt: test.startsAt,
+        endsAt: test.endsAt,
         created_at: test.createdAt,
         updated_at: test.updatedAt,
         userTestStatus: test.userTestStatus, // Include user status
@@ -477,24 +496,26 @@ exports.getAllTestsForMobile = async (req, res) => {
 
       // Check if test is in any plan and get plan details
       try {
-        const PlanItem = require('../models/PlanItem');
-        const CreditRechargePlan = require('../models/CreditRechargePlan');
-        const UserPlan = require('../models/UserPlan');
-        
+        const PlanItem = require("../models/PlanItem");
+        const CreditRechargePlan = require("../models/CreditRechargePlan");
+        const UserPlan = require("../models/UserPlan");
+
         // Find plan items that reference this test
         const planItems = await PlanItem.find({
-          itemType: { $in: ['subjective-test', 'subjective-tests'] },
+          itemType: { $in: ["subjective-test", "subjective-tests"] },
           referenceId: test._id.toString(),
-          clientId: test.clientId
+          clientId: test.clientId,
         });
 
         if (planItems.length > 0) {
           // Get all plans that contain these plan items
           const plans = await CreditRechargePlan.find({
-            items: { $in: planItems.map(item => item._id) },
+            items: { $in: planItems.map((item) => item._id) },
             clientId: clientId,
-            status: 'active'
-          }).select('_id name description MRP offerPrice category duration status');
+            status: "active",
+          }).select(
+            "_id name description MRP offerPrice category duration status"
+          );
 
           // Determine if current user is enrolled in any of these plans
           let isEnrolled = false;
@@ -503,21 +524,24 @@ exports.getAllTestsForMobile = async (req, res) => {
             const enrolled = await UserPlan.findOne({
               userId: req.user?.id,
               clientId: clientId,
-              planId: { $in: plans.map(plan => plan._id) },
-              status: 'active',
+              planId: { $in: plans.map((plan) => plan._id) },
+              status: "active",
               startDate: { $lte: now },
-              endDate: { $gte: now }
-            }).select('_id');
+              endDate: { $gte: now },
+            }).select("_id");
             isEnrolled = Boolean(enrolled);
           } catch (enrollErr) {
-            console.error('Error checking enrollment for subjective test:', enrollErr);
+            console.error(
+              "Error checking enrollment for subjective test:",
+              enrollErr
+            );
           }
 
           return {
             ...baseFormat,
             isPaid: true,
             isEnrolled,
-            planDetails: plans.map(plan => ({
+            planDetails: plans.map((plan) => ({
               id: plan._id,
               name: plan.name,
               description: plan.description,
@@ -525,24 +549,24 @@ exports.getAllTestsForMobile = async (req, res) => {
               offerPrice: plan.offerPrice,
               category: plan.category,
               duration: plan.duration,
-              status: plan.status
-            }))
+              status: plan.status,
+            })),
           };
         } else {
           return {
             ...baseFormat,
             isPaid: test.isPaid || false,
             isEnrolled: false,
-            planDetails: []
+            planDetails: [],
           };
         }
       } catch (error) {
-        console.error('Error fetching plan details for test:', error);
+        console.error("Error fetching plan details for test:", error);
         return {
           ...baseFormat,
           isPaid: test.isPaid || false,
           isEnrolled: false,
-          planDetails: []
+          planDetails: [],
         };
       }
     };
@@ -552,7 +576,7 @@ exports.getAllTestsForMobile = async (req, res) => {
 
     // Process all tests with plan details
     const formattedTests = await Promise.all(
-      testsWithUserStatus.map(test => formatTestForMobile(test))
+      testsWithUserStatus.map((test) => formatTestForMobile(test))
     );
 
     formattedTests.forEach((test) => {
@@ -656,7 +680,7 @@ exports.updateTest = async (req, res) => {
       category,
       subcategory,
       startsAt,
-      endsAt
+      endsAt,
     } = req.body;
 
     if (!id) {
@@ -704,10 +728,14 @@ exports.updateTest = async (req, res) => {
       const start = new Date(startsAt);
       const end = new Date(endsAt);
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        return res.status(400).json({ success: false, message: "Invalid start/end datetime" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid start/end datetime" });
       }
       if (end <= start) {
-        return res.status(400).json({ success: false, message: "endsAt must be after startsAt" });
+        return res
+          .status(400)
+          .json({ success: false, message: "endsAt must be after startsAt" });
       }
     }
 
@@ -727,7 +755,7 @@ exports.updateTest = async (req, res) => {
         category,
         subcategory,
         startsAt,
-        endsAt
+        endsAt,
       },
       { new: true }
     );
@@ -746,7 +774,6 @@ exports.updateTest = async (req, res) => {
     });
   }
 };
-
 
 exports.deleteTest = async (req, res) => {
   try {
@@ -807,20 +834,25 @@ exports.toggleIsEnabled = async (req, res) => {
     const { isEnabled } = req.body || {};
 
     if (!id) {
-      return res.status(400).json({ success: false, message: 'Test ID is required' });
+      return res
+        .status(400)
+        .json({ success: false, message: "Test ID is required" });
     }
 
     const test = await Test.findById(id);
     if (!test) {
-      return res.status(404).json({ success: false, message: 'Test not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Test not found" });
     }
 
     if (test.clientId !== clientId) {
-      return res.status(403).json({ success: false, message: 'Unauthorized' });
+      return res.status(403).json({ success: false, message: "Unauthorized" });
     }
 
     // If body provides isEnabled, use it; otherwise toggle
-    const newValue = typeof isEnabled === 'boolean' ? isEnabled : !test.isEnabled;
+    const newValue =
+      typeof isEnabled === "boolean" ? isEnabled : !test.isEnabled;
     test.isEnabled = newValue;
 
     await test.save();
@@ -828,17 +860,28 @@ exports.toggleIsEnabled = async (req, res) => {
     // Refresh image URL if present
     if (test.imageKey) {
       try {
-        const freshImageUrl = await generateGetPresignedUrl(test.imageKey, 604800);
+        const freshImageUrl = await generateGetPresignedUrl(
+          test.imageKey,
+          604800
+        );
         test.imageUrl = freshImageUrl;
       } catch (e) {
         // ignore URL refresh errors
       }
     }
 
-    return res.status(200).json({ success: true, message: 'Test isEnabled updated', test });
+    return res
+      .status(200)
+      .json({ success: true, message: "Test isEnabled updated", test });
   } catch (error) {
-    console.error('Toggle isEnabled error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to update isEnabled', error: error.message });
+    console.error("Toggle isEnabled error:", error);
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to update isEnabled",
+        error: error.message,
+      });
   }
 };
 
@@ -850,26 +893,38 @@ exports.toggleTestStatus = async (req, res) => {
     const { isActive } = req.body || {};
 
     if (!id) {
-      return res.status(400).json({ success: false, message: 'Test ID is required' });
+      return res
+        .status(400)
+        .json({ success: false, message: "Test ID is required" });
     }
 
     const test = await Test.findById(id);
     if (!test) {
-      return res.status(404).json({ success: false, message: 'Test not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Test not found" });
     }
 
     if (test.clientId !== clientId) {
-      return res.status(403).json({ success: false, message: 'Unauthorized' });
+      return res.status(403).json({ success: false, message: "Unauthorized" });
     }
 
-    const newActive = typeof isActive === 'boolean' ? isActive : !test.isActive;
+    const newActive = typeof isActive === "boolean" ? isActive : !test.isActive;
     test.isActive = newActive;
     await test.save();
 
-    return res.status(200).json({ success: true, message: 'Test active status updated', test });
+    return res
+      .status(200)
+      .json({ success: true, message: "Test active status updated", test });
   } catch (error) {
-    console.error('Toggle isActive error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to update isActive', error: error.message });
+    console.error("Toggle isActive error:", error);
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to update isActive",
+        error: error.message,
+      });
   }
 };
 
@@ -1005,7 +1060,7 @@ exports.copyTest = async (req, res) => {
     if (!originalTest) {
       return res.status(404).json({
         success: false,
-        message: "Test not found"
+        message: "Test not found",
       });
     }
 
@@ -1034,22 +1089,21 @@ exports.copyTest = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Test copied successfully",
-      test: savedTest
+      test: savedTest,
     });
-
   } catch (error) {
-    console.error('Error copying test:', error);
+    console.error("Error copying test:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
 exports.endTest = async (req, res) => {
   try {
-    const {testId} = req.params;
+    const { testId } = req.params;
     const userId = req.user.id;
     const clientId = req.clientId;
     const testResult = await SubjectiveTestResult.findOne({
@@ -1065,7 +1119,9 @@ exports.endTest = async (req, res) => {
       });
     }
     testResult.endTime = new Date();
-    testResult.completionTime = Math.floor((testResult.endTime - testResult.startTime) / 1000);
+    testResult.completionTime = Math.floor(
+      (testResult.endTime - testResult.startTime) / 1000
+    );
     testResult.status = "completed";
     await testResult.save();
     res.status(200).json({
@@ -1073,12 +1129,11 @@ exports.endTest = async (req, res) => {
       message: "Test ended successfully",
       data: testResult,
     });
-  } 
-  catch (error) {
+  } catch (error) {
     res.status(500).json({
       success: false,
       message: "Failed to end test",
       error: error.message,
     });
   }
-}
+};

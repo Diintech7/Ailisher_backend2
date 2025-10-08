@@ -40,9 +40,9 @@ const evaluatorWithdrawalRequestSchema = new mongoose.Schema(
     adminNotes: {
       type: String,
     },
-    transactionId: {
-      type: String,
-    },
+    // transactionId: {
+    //   type: String,
+    // },
     kycVerified: {
       type: Boolean,
       default: false
@@ -60,7 +60,9 @@ const evaluatorWithdrawalRequestSchema = new mongoose.Schema(
       trim: true
     },
     screenshot: {
-      type: String,
+      s3Key: String,
+      downloadUrl: String,
+      uploadedAt: Date
     },
   },
   {

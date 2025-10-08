@@ -21,6 +21,8 @@ const {
   validateAdminWithdrawalAction,
   validateCreditAdjustment,
 } = require("../middleware/withdrawalValidation");
+const { generatePresignedUrl } = require("../utils/r2");
+const { withdrawalRequests } = require("../controllers/evaluatorCredit");
 
 // Auth routes
 router.post("/register", adminController.register);
@@ -699,6 +701,7 @@ router.post(
   }
 );
 
+
 // 1. Initialize Payment
 router.post("/:requestId/initiate",verifyAdminToken, async (req, res) => {
   try {
@@ -757,7 +760,7 @@ router.post("/:requestId/initiate",verifyAdminToken, async (req, res) => {
       ORDER_ID: String(orderId),
       CUST_ID: String(evaluator._id || customerEmail),
       TXN_AMOUNT: String(parseFloat(amount).toFixed(2)),
-      CALLBACK_URL: String("https://test.ailisher.com/api/admin/paytm/callback"),
+      CALLBACK_URL: String("https://test.ailisher.com/api/admin/callback"),
       EMAIL: String(customerEmail),
       MOBILE_NO: String(customerPhone),
     };
@@ -806,13 +809,15 @@ router.post("/:requestId/initiate",verifyAdminToken, async (req, res) => {
   }
 });
 
-// 2. Payment Callback Handler
-router.post("/:requestId/callback", async (req, res) => {
+// 2. Payment Callback Handler (fixed path matching CALLBACK_URL)
+router.post("/callback", async (req, res) => {
   try {
     const paytmResponse = req.body;
-    const orderId = paytmResponse.ORDERID;
-    const requestId = req.params;
-
+    const orderId = paytmResponse.ORDERID || paytmResponse.ORDER_ID;
+    if (!orderId) {
+      return res.status(400).json({ success: false, message: "Missing ORDERID/ORDER_ID" });
+    }
+    
     console.log("Received Paytm callback:", paytmResponse);
 
     // Verify checksum using official Paytm package
@@ -880,55 +885,6 @@ router.post("/:requestId/callback", async (req, res) => {
       responseCode: paytmResponse.RESPCODE,
       checksumValid: isValidChecksum,
     });
-    
-    try {
-      const request = await EvaluatorWithdrawalRequest.findById(
-        requestId
-      ).populate("evaluatorId");
-      if (!request) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Withdrawal request not found" });
-      }
-
-      // Deduct credits from evaluator balance
-      const evaluator = request.evaluatorId;
-
-      // Update evaluator credits
-      evaluator.creditBalance -= request.amount;
-      evaluator.totalCreditsWithdrawn += request.amount;
-      evaluator.lastCreditActivity = new Date();
-      await evaluator.save();
-
-      // Create withdrawal transaction record
-      const EvaluatorCreditTransaction = require("../models/EvaluatorCreditTransaction");
-      const withdrawalTransaction = new EvaluatorCreditTransaction({
-        evaluatorId: evaluator._id,
-        type: "withdrawn",
-        amount: request.amount,
-        balanceBefore: evaluator.creditBalance + request.amount,
-        balanceAfter: evaluator.creditBalance,
-        category: "withdrawal",
-        description: `Withdrawal processed - ${request.amount} credits`,
-        withdrawalRequestId: request._id,
-        status: "completed",
-      });
-      await withdrawalTransaction.save();
-
-      // Update withdrawal request
-      request.status = "processed";
-      request.transactionId = transactionId || request.transactionId;
-      request.adminNotes = adminNotes || request.adminNotes;
-    request.processedAt = new Date();
-    request.processedBy = req.admin._id;
-      request.screenshot = screenshot || request.screenshot;
-      await request.save();
-    } 
-    catch (error) {
-      
-    }
-    
-
     // Return JSON response with payment details
     res.json({
       success: true,
@@ -956,6 +912,26 @@ router.post("/:requestId/callback", async (req, res) => {
   }
 });
 
+router.post('/:requestId/upload-screenshot',verifyAdminToken, async(req,res) => {
+  try {
+    const adminId = req.admin.id;
+    const requestId = req.params;
+    const { fileName, contentType } =req.body;
+    const request = await EvaluatorWithdrawalRequest.findById(requestId);
+    const key = `admin/${adminId}/payment-screenshot/${fileName}`;
+    const uploadUrl = await generatePresignedUrl(key, contentType);
+    request.screenshot= {
+      s3Key: key,
+      downloadUrl: uploadUrl,
+      uploadedAt: new Date()
+    };
+    await request.save();
+    res.json({ success: true, message: "Document uploaded successfully", data: request.screenshot});
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+})
+
 // Admin: mark a withdrawal as processed (paid) - only for approved requests
 router.post(
   "/withdrawals/:requestId/process",
@@ -964,7 +940,7 @@ router.post(
   async (req, res) => {
     try {
       const { requestId } = req.params;
-      const { transactionId, adminNotes, screenshot } = req.body;
+      const { adminNotes } = req.body;
 
       const request = await EvaluatorWithdrawalRequest.findById(
         requestId
@@ -1015,11 +991,9 @@ router.post(
 
       // Update withdrawal request
       request.status = "processed";
-      request.transactionId = transactionId || request.transactionId;
       request.adminNotes = adminNotes || request.adminNotes;
     request.processedAt = new Date();
     request.processedBy = req.admin._id;
-      request.screenshot = screenshot || request.screenshot;
       await request.save();
 
       return res.json({
