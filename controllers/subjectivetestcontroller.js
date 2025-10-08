@@ -1046,3 +1046,39 @@ exports.copyTest = async (req, res) => {
     });
   }
 };
+
+exports.endTest = async (req, res) => {
+  try {
+    const {testId} = req.params;
+    const userId = req.user.id;
+    const clientId = req.clientId;
+    const testResult = await SubjectiveTestResult.findOne({
+      userId: userId,
+      testId: testId,
+      clientId: clientId,
+      status: "started",
+    });
+    if (!testResult) {
+      return res.status(404).json({
+        success: false,
+        message: "Test not started",
+      });
+    }
+    testResult.endTime = new Date();
+    testResult.completionTime = Math.floor((testResult.endTime - testResult.startTime) / 1000);
+    testResult.status = "unattempted";
+    await testResult.save();
+    res.status(200).json({
+      success: true,
+      message: "Test ended successfully",
+      data: testResult,
+    });
+  } 
+  catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to end test",
+      error: error.message,
+    });
+  }
+}

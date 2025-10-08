@@ -8,12 +8,91 @@ const { verifyAdminToken, verifyTokenforevaluator } = require('../middleware/aut
 const User = require('../models/User');
 const ReviewRequest = require('../models/ReviewRequest');
 const { registerEvaluator, loginEvaluator} = require('../controllers/evaluatorController');
+const { generateGetPresignedUrl } = require('../utils/r2');
 
 // Public routes (no authentication required)
 router.post('/register', registerEvaluator);
 router.post('/login', loginEvaluator);
+
+// // 2. GET SINGLE EVALUATOR
+// router.get('/:id',verifyTokenforevaluator, async (req, res) => {
+//   try {
+//     const { id } = req.params;
+    
+//     const evaluator = await Evaluator.findById(id);
+//     console.log(evaluator)
+//     if (!evaluator) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Evaluator not found'
+//       });
+//     }
+
+//     if(evaluator.kycDetails.status === "pending") 
+//     {
+//       if(evaluator.kycDetails.documents.panDocument.s3Key)
+//       {
+//         evaluator.kycDetails.documents.panDocument.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.panDocument.s3Key);
+//       }
+//       if(evaluator.kycDetails.documents.aadharFront.s3Key)
+//       {
+//         evaluator.kycDetails.documents.aadharFront.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.aadharFront.s3Key);
+//       }
+//       if(evaluator.kycDetails.documents.aadharBack.s3Key)
+//       {
+//         evaluator.kycDetails.documents.aadharBack.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.aadharBack.s3Key);
+//       }
+//       if(evaluator.kycDetails.documents.bankPassbook.s3Key)
+//       {
+//         evaluator.kycDetails.documents.bankPassbook.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.bankPassbook.s3Key);
+//       }
+//     }
+    
+//     res.json({
+//       success: true,
+//       evaluator
+//     });
+//   } catch (error) {
+//     console.error('Get single evaluator error:', error);
+    
+//     // Handle invalid ObjectId
+//     if (error.name === 'CastError') {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Evaluator not found'
+//       });
+//     }
+    
+//     res.status(500).json({
+//       success: false,
+//       message: 'Internal server error'
+//     });
+//   }
+// });
+
+// Apply admin authentication to all other routes
+router.use(verifyAdminToken);
+
+// 1. GET ALL EVALUATORS
+router.get('/', async (req, res) => {
+  try {
+    const evaluators = await Evaluator.find().sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      evaluators
+    });
+  } catch (error) {
+    console.error('Get all evaluators error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
 // 2. GET SINGLE EVALUATOR
-router.get('/:id',verifyTokenforevaluator, async (req, res) => {
+router.get('/:id',async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -24,6 +103,36 @@ router.get('/:id',verifyTokenforevaluator, async (req, res) => {
         success: false,
         message: 'Evaluator not found'
       });
+    }
+
+    // Generate presigned URLs for KYC documents regardless of status
+    if(evaluator.kycDetails && evaluator.kycDetails.documents) 
+    {
+      console.log('KYC Details found, generating presigned URLs...');
+      if(evaluator.kycDetails.documents.panDocument && evaluator.kycDetails.documents.panDocument.s3Key)
+      {
+        console.log('Generating presigned URL for PAN document:', evaluator.kycDetails.documents.panDocument.s3Key);
+        evaluator.kycDetails.documents.panDocument.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.panDocument.s3Key);
+        console.log('PAN document URL generated:', evaluator.kycDetails.documents.panDocument.downloadUrl);
+      }
+      if(evaluator.kycDetails.documents.aadharFront && evaluator.kycDetails.documents.aadharFront.s3Key)
+      {
+        console.log('Generating presigned URL for Aadhar Front:', evaluator.kycDetails.documents.aadharFront.s3Key);
+        evaluator.kycDetails.documents.aadharFront.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.aadharFront.s3Key);
+        console.log('Aadhar Front URL generated:', evaluator.kycDetails.documents.aadharFront.downloadUrl);
+      }
+      if(evaluator.kycDetails.documents.aadharBack && evaluator.kycDetails.documents.aadharBack.s3Key)
+      {
+        console.log('Generating presigned URL for Aadhar Back:', evaluator.kycDetails.documents.aadharBack.s3Key);
+        evaluator.kycDetails.documents.aadharBack.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.aadharBack.s3Key);
+        console.log('Aadhar Back URL generated:', evaluator.kycDetails.documents.aadharBack.downloadUrl);
+      }
+      if(evaluator.kycDetails.documents.bankPassbook && evaluator.kycDetails.documents.bankPassbook.s3Key)
+      {
+        console.log('Generating presigned URL for Bank Passbook:', evaluator.kycDetails.documents.bankPassbook.s3Key);
+        evaluator.kycDetails.documents.bankPassbook.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.bankPassbook.s3Key);
+        console.log('Bank Passbook URL generated:', evaluator.kycDetails.documents.bankPassbook.downloadUrl);
+      }
     }
     
     res.json({
@@ -47,29 +156,6 @@ router.get('/:id',verifyTokenforevaluator, async (req, res) => {
     });
   }
 });
-
-// Apply admin authentication to all other routes
-router.use(verifyAdminToken);
-
-// 1. GET ALL EVALUATORS
-router.get('/', async (req, res) => {
-  try {
-    const evaluators = await Evaluator.find().sort({ createdAt: -1 });
-    
-    res.json({
-      success: true,
-      evaluators
-    });
-  } catch (error) {
-    console.error('Get all evaluators error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
-  }
-});
-
-
 
 // 3. CREATE EVALUATOR
 router.post('/', async (req, res) => {

@@ -50,7 +50,7 @@ const subjectiveTestResultSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['started', 'completed'],
+        enum: ['started', 'completed', 'unattempted'],
         default: 'started'
     }
 }, {

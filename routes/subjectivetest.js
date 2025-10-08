@@ -38,5 +38,7 @@ router.post('/tests/:testId/start', authenticateMobileUser, testController.start
 
 router.post('/tests/:testId/submit', authenticateMobileUser, testController.submitTest);
 
+router.post('/tests/:testId/end', authenticateMobileUser, testController.endTest);
+
 module.exports = router;
 

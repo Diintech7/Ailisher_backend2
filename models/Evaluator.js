@@ -236,8 +236,8 @@ const evaluatorSchema = new mongoose.Schema({
   withdrawalSettings: {
     minimumWithdrawalAmount: {
       type: Number,
-      default: 100,
-      min: 50
+      default: 5,
+      min: 5
     },
     maximumWithdrawalAmount: {
       type: Number,

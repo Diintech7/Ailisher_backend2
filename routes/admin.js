@@ -458,7 +458,6 @@ router.post('/evaluators/:id/kyc/reject',verifyAdminToken, async (req, res) => {
 router.get('/withdrawals', verifyAdminToken, async (req, res) => {
   try {
     const withdrawals = await EvaluatorWithdrawalRequest.find().populate('evaluatorId');
-    console.log(withdrawals);
     const count = withdrawals.length;
     return res.json({ success: true, data: withdrawals , count});
   } catch (error) {

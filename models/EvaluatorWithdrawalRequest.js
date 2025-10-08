@@ -58,7 +58,10 @@ const evaluatorWithdrawalRequestSchema = new mongoose.Schema(
     adminComments: {
       type: String,
       trim: true
-    }
+    },
+    screenshot: {
+      type: String,
+    },
   },
   {
     timestamps: true,
