@@ -138,6 +138,7 @@ exports.ensureBankDetailsComplete = async (req, res, next) => {
 
 exports.ensureWithdrawalEligibility = async (req, res, next) => {
   try {
+    console.log(req.evaluator)
     const eligibility = req.evaluator.getWithdrawalEligibility();
     if (!eligibility.canWithdraw) {
       return res.status(400).json({

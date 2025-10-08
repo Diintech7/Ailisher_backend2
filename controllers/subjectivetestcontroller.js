@@ -1066,7 +1066,7 @@ exports.endTest = async (req, res) => {
     }
     testResult.endTime = new Date();
     testResult.completionTime = Math.floor((testResult.endTime - testResult.startTime) / 1000);
-    testResult.status = "unattempted";
+    testResult.status = "completed";
     await testResult.save();
     res.status(200).json({
       success: true,

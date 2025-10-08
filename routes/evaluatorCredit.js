@@ -1,6 +1,7 @@
 const express = require('express');
 const { getFinanceStatus, withdrawalRequests, getCreditBalance, getCreditHistory, evaluatorBankDetails, evaluatorKYCDetails, uploadDocuments, getWithdrawalRequests } = require('../controllers/evaluatorCredit');
 const { verifyTokenforevaluator, ensureBankDetailsComplete, ensureWithdrawalEligibility } = require('../middleware/auth');
+const { validateWithdrawalRequest } = require('../middleware/withdrawalValidation');
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ router.post('/kyc-details',verifyTokenforevaluator,evaluatorKYCDetails);
 
 router.get('/profile/finance/status',verifyTokenforevaluator,getFinanceStatus);
 
-router.post('/withdrawal',verifyTokenforevaluator,ensureBankDetailsComplete,ensureWithdrawalEligibility,withdrawalRequests);
+router.post('/withdrawal',verifyTokenforevaluator,ensureBankDetailsComplete,ensureWithdrawalEligibility,validateWithdrawalRequest,withdrawalRequests);
 
 router.get('/withdrawals', verifyTokenforevaluator, getWithdrawalRequests);
 

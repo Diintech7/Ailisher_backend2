@@ -236,13 +236,13 @@ const evaluatorSchema = new mongoose.Schema({
   withdrawalSettings: {
     minimumWithdrawalAmount: {
       type: Number,
-      default: 5,
-      min: 5
+      default: 1,
+      min: 1
     },
     maximumWithdrawalAmount: {
       type: Number,
-      default: 1000,
-      min: 100
+      default: 1,
+      min: 1
     },
     withdrawalEnabled: {
       type: Boolean,
@@ -345,7 +345,7 @@ evaluatorSchema.statics.findEligibleForWithdrawal = function() {
     'kycDetails.status': 'verified',
     'withdrawalSettings.withdrawalEnabled': true,
     'creditStatus': 'active',
-    'creditBalance': { $gte: 100 } // minimum withdrawal amount
+    'creditBalance': { $gte: 1 } // minimum withdrawal amount
   });
 };
 

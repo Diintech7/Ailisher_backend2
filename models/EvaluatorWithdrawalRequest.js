@@ -95,7 +95,7 @@ evaluatorWithdrawalRequestSchema.pre('save', async function(next) {
     
     // Set verification flags
     this.kycVerified = true;
-    this.bankDetailsVerified = evaluator.bankDetails.accountNumber ? true : false;
+    this.bankDetailsVerified = (evaluator.bankDetails.accountNumber || evaluator.bankDetails.upiId) ? true : false;
     
     next();
   } catch (error) {

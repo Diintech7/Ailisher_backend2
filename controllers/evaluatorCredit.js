@@ -197,6 +197,8 @@ exports.withdrawalRequests = async (req, res) => {
   try {
     const evaluatorId = req.evaluator._id;
     const amount = Number(req.body.amount);
+    console.log(amount);
+    console.log(evaluatorId);
 
     if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ success: false, code: 'INVALID_AMOUNT', message: 'Amount must be a positive number' });
