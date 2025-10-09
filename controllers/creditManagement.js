@@ -508,10 +508,22 @@ exports.getCreditRechargePlanById = async (req, res) => {
 
 exports.getOrdersForUser = async (req, res) => {
   try {
+    const clientId = req.clientId;
     const { status, planId, page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
     
     // Build query object
-    const query = { userId: req.user.id };
+    const query = { userId: req.user.id, clientId: clientId };
+
+    // Expire overdue active plans for this user before fetching
+    await UserPlan.updateMany(
+      {
+        userId: req.user.id,
+        clientId: clientId,
+        endDate: { $ne: null, $lte: new Date() },
+        status: { $ne: 'expired' }
+      },
+      { $set: { status: 'expired', updatedAt: new Date() } }
+    );
     
     // Add status filter if provided
     if (status) {
@@ -554,7 +566,8 @@ exports.getOrdersForUser = async (req, res) => {
     // Get payment details for each order
     const ordersWithPayments = await Promise.all(
       orders.map(async (order) => {
-        const payment = await Payment.findOne({ orderId: order.orderId });
+        const payment = await Payment.findOne({ orderId: order.orderId })
+        .select('status amount createdAt');
         return {
           ...order.toObject(),
           payment: payment

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateMobileUser } = require('../middleware/mobileAuth');
+const { authenticateMobileUser, ensureUserBelongsToClient } = require('../middleware/mobileAuth');
 const { getCreditAccount, getCreditTransactions, getCreditRechargePlans, getCreditRechargePlanById, getCreditRechargePlansWithItems, getCreditRechargePlansWithoutItems, getOrders, getOrderDetails, getPaymentByOrderId, getOrderWithPayment, getOrdersByPlan, getOrdersByPlanAdmin, getUserOrders, getOrdersForUser, getSucessOrdersByPlan, getPendingOrdersByPlan, getFailedPaymentsByPlan, getPendingPaymentsByPlan, getPaymentsByPlanAndStatus, getPlanPaymentOverview, togglePlanStatus, togglePlanEnabled} = require('../controllers/creditManagement');
 
 router.get('/account',authenticateMobileUser, getCreditAccount );
@@ -16,7 +16,7 @@ router.get('/plans/without-items', authenticateMobileUser, getCreditRechargePlan
 router.get('/plan/:id',authenticateMobileUser, getCreditRechargePlanById);
 
 // orders for a user
-router.get('/orders', authenticateMobileUser,getOrdersForUser);
+router.get('/orders', authenticateMobileUser,ensureUserBelongsToClient,getOrdersForUser);
 
 // details of an order
 router.get('/order/:orderId', authenticateMobileUser, getOrderDetails);
