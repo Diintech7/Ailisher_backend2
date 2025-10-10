@@ -696,9 +696,9 @@ exports.deleteWorkbook = async (req, res) => {
 exports.getWorkbooksformobile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const user = req.clientInfo.id.toString();
+    const clientId = req.user.clientId;
     const { category, subcategory, trending, highlighted, search, limit, page = 1 } = req.query;
-    let filter = { user };
+    let filter = { clientId };
     if (category) filter.mainCategory = category;
     if (subcategory) filter.subCategory = subcategory;
     if (trending === 'true') {
