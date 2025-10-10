@@ -9,6 +9,7 @@ const User = require("../models/User");
 const SubjectiveTestQuestion = require("../models/SubjectiveTestQuestion");
 const UserAnswer = require("../models/UserAnswer");
 const SubjectiveTestResult = require("../models/SubjectiveTestResult");
+const { default: mongoose } = require("mongoose");
 
 // Helper function to calculate test status
 const calculateTestStatus = (questions, userAnswers, attempted) => {
@@ -496,52 +497,86 @@ exports.getAllTestsForMobile = async (req, res) => {
 
       // Check if test is in any plan and get plan details
       try {
-        const PlanItem = require("../models/PlanItem");
-        const CreditRechargePlan = require("../models/CreditRechargePlan");
-        const UserPlan = require("../models/UserPlan");
-
+        const PlanItem = require('../models/PlanItem');
+        const CreditRechargePlan = require('../models/CreditRechargePlan');
+        const UserPlan = require('../models/UserPlan');
+        
         // Find plan items that reference this test
         const planItems = await PlanItem.find({
-          itemType: { $in: ["subjective-test", "subjective-tests"] },
+          itemType: { $in: ['subjective-test', 'subjective-tests'] },
           referenceId: test._id.toString(),
-          clientId: test.clientId,
+          clientId: test.clientId
         });
 
         if (planItems.length > 0) {
           // Get all plans that contain these plan items
           const plans = await CreditRechargePlan.find({
-            items: { $in: planItems.map((item) => item._id) },
+            items: { $in: planItems.map(item => new mongoose.Types.ObjectId(item._id)) },
             clientId: clientId,
-            status: "active",
-          }).select(
-            "_id name description MRP offerPrice category duration status"
-          );
-
+            status: 'active'
+          }).select('_id name description MRP offerPrice category duration status');
+          
+          
+          console.log("plans",plans)
           // Determine if current user is enrolled in any of these plans
           let isEnrolled = false;
+          let enrollmentStatus = 'not_enrolled';
           try {
             const now = new Date();
+            
+            // First, check for any expired plans and update their status
+            await UserPlan.updateMany(
+              {
+                userId: req.user?.id,
+                clientId: clientId,
+                planId: { $in: plans.map(plan => plan._id) },
+                status: 'active',
+                endDate: { $lt: now }
+              },
+              { 
+                $set: { 
+                  status: 'expired',
+                  updatedAt: now
+                } 
+              }
+            );
+            
+            // Now check for active enrollment
             const enrolled = await UserPlan.findOne({
               userId: req.user?.id,
               clientId: clientId,
-              planId: { $in: plans.map((plan) => plan._id) },
-              status: "active",
+              planId: { $in: plans.map(plan => plan._id) },
+              status: 'active',
               startDate: { $lte: now },
-              endDate: { $gte: now },
-            }).select("_id");
-            isEnrolled = Boolean(enrolled);
+              endDate: { $gte: now }
+            }).select('_id status startDate endDate');
+            
+            if (enrolled) {
+              isEnrolled = true;
+              enrollmentStatus = 'enrolled';
+            } else {
+              // Check if user has expired plans for this test
+              const expiredPlan = await UserPlan.findOne({
+                userId: req.user?.id,
+                clientId: clientId,
+                planId: { $in: plans.map(plan => plan._id) },
+                status: 'expired'
+              }).select('_id endDate');
+              
+              if (expiredPlan) {
+                enrollmentStatus = 'expired';
+              }
+            }
           } catch (enrollErr) {
-            console.error(
-              "Error checking enrollment for subjective test:",
-              enrollErr
-            );
+            console.error('Error checking enrollment for objective test:', enrollErr);
           }
-
+          console.log("isEnrolled", isEnrolled, "status:", enrollmentStatus)
           return {
             ...baseFormat,
             isPaid: true,
             isEnrolled,
-            planDetails: plans.map((plan) => ({
+            enrollmentStatus,
+            planDetails: plans.map(plan => ({
               id: plan._id,
               name: plan.name,
               description: plan.description,
@@ -549,24 +584,24 @@ exports.getAllTestsForMobile = async (req, res) => {
               offerPrice: plan.offerPrice,
               category: plan.category,
               duration: plan.duration,
-              status: plan.status,
-            })),
+              status: plan.status
+            }))
           };
         } else {
           return {
             ...baseFormat,
             isPaid: test.isPaid || false,
             isEnrolled: false,
-            planDetails: [],
+            planDetails: []
           };
         }
       } catch (error) {
-        console.error("Error fetching plan details for test:", error);
+        console.error('Error fetching plan details for test:', error);
         return {
           ...baseFormat,
           isPaid: test.isPaid || false,
           isEnrolled: false,
-          planDetails: [],
+          planDetails: []
         };
       }
     };
