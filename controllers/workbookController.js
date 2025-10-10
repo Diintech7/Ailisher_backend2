@@ -386,7 +386,7 @@ exports.getWorkbooks = async (req, res) => {
         { tags: { $regex: search, $options: 'i' } }
       ];
     }
-    let query = Workbook.find({ user: req.user.id })
+    let query = Workbook.find({ clientId })
       .populate('user', 'name email userId')
       .populate('highlightedBy', 'name email userId')
       .populate('trendingBy', 'name email userId')
