@@ -22,6 +22,7 @@ const {
   validateCreditAdjustment,
 } = require("../middleware/withdrawalValidation");
 const { generatePresignedUrl } = require("../utils/r2");
+const QRCodeService = require("../services/qrCodeService");
 const { withdrawalRequests } = require("../controllers/evaluatorCredit");
 
 // Auth routes
@@ -413,27 +414,27 @@ router.post(
   "/evaluators/:id/kyc/verify",
   verifyAdminToken,
   async (req, res) => {
-  try {
-    const evaluatorId = req.params.id;
-    const evaluator = await Evaluator.findByIdAndUpdate(evaluatorId);
+    try {
+      const evaluatorId = req.params.id;
+      const evaluator = await Evaluator.findByIdAndUpdate(evaluatorId);
       if (!evaluator) {
-      return res.status(404).json({
+        return res.status(404).json({
           success: false,
           message: "evaluator not found",
         });
       }
       evaluator.kycDetails.status = "verified";
-    evaluator.kycDetails.verifiedAt = new Date();
-    evaluator.kycDetails.verifiedBy = req.admin._id;
-    evaluator.withdrawalSettings.withdrawalEnabled = true;
+      evaluator.kycDetails.verifiedAt = new Date();
+      evaluator.kycDetails.verifiedBy = req.admin._id;
+      evaluator.withdrawalSettings.withdrawalEnabled = true;
 
-    await evaluator.save();
-    return res.json({
+      await evaluator.save();
+      return res.json({
         success: true,
         message: "kyc verified",
       });
     } catch (error) {
-    return res.status(400).json({
+      return res.status(400).json({
         success: false,
         message: error.message,
       });
@@ -445,21 +446,21 @@ router.post(
   "/evaluators/:id/kyc/reject",
   verifyAdminToken,
   async (req, res) => {
-  try {
-    const evaluatorId = req.params.id;
+    try {
+      const evaluatorId = req.params.id;
       const { reason } = req.body;
-    const evaluator = await Evaluator.findById(evaluatorId);
+      const evaluator = await Evaluator.findById(evaluatorId);
       (evaluator.kycDetails.status = "rejected"),
         (evaluator.kycDetails.rejectionReason = reason);
-    evaluator.withdrawalSettings.withdrawalEnabled = false;
+      evaluator.withdrawalSettings.withdrawalEnabled = false;
 
-    await evaluator.save();
-    return res.json({
+      await evaluator.save();
+      return res.json({
         success: true,
         message: "kyc rejected",
       });
     } catch (error) {
-    return res.status(400).json({
+      return res.status(400).json({
         success: false,
         message: error.message,
       });
@@ -475,7 +476,7 @@ router.get("/withdrawals", verifyAdminToken, async (req, res) => {
     if (status) filter.status = status;
 
     const withdrawals = await EvaluatorWithdrawalRequest.find(filter)
-      .populate("evaluatorId", "name email phoneNumber")
+      .populate("evaluatorId", "name email phoneNumber creditBalance")
       .populate("processedBy", "name email")
       .sort({ createdAt: -1 })
       .limit(limit * 1)
@@ -510,6 +511,63 @@ router.get("/withdrawals/:requestId", verifyAdminToken, async (req, res) => {
     }
 
     return res.json({ success: true, data: withdrawal });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// Generate QR code for withdrawal request
+router.get(
+  "/withdrawals/:requestId/qr-code",
+  verifyAdminToken,
+  async (req, res) => {
+    try {
+      const { requestId } = req.params;
+      const withdrawal = await EvaluatorWithdrawalRequest.findById(
+        requestId
+      ).populate(
+        "evaluatorId",
+        "name email phoneNumber bankDetails kycDetails"
+      );
+
+      if (!withdrawal) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Withdrawal request not found" });
+      }
+
+      // Generate QR code
+      const qrCode = await QRCodeService.generateWithdrawalQR(withdrawal);
+
+      // Update withdrawal request with QR code
+      // withdrawal.qrCode = qrCode;
+      // await withdrawal.save();
+
+      return res.json({
+        success: true,
+        data: {
+          qrCode,
+          withdrawalDetails: {
+            amount: withdrawal.amount,
+            method: withdrawal.withdrawalMethod,
+            accountDetails: withdrawal.accountDetails,
+            evaluatorName: withdrawal.evaluatorId?.name,
+          },
+        },
+      });
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  }
+);
+
+router.get("/submitted-kyc", verifyAdminToken, async (req, res) => {
+  try {
+    const evaluators = await Evaluator.find({
+      "kycDetails.status": "submitted",
+    });
+    const count = evaluators.length;
+    return res.json({ success: true, data: evaluators, count });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -612,41 +670,39 @@ router.post(
   verifyAdminToken,
   validateAdminWithdrawalAction,
   async (req, res) => {
-  try {
-    const { requestId } = req.params;
+    try {
+      const { requestId } = req.params;
       const { adminComments } = req.body;
 
       const request = await EvaluatorWithdrawalRequest.findById(
         requestId
       ).populate("evaluatorId");
-    if (!request) {
+      if (!request) {
         return res
           .status(404)
           .json({ success: false, message: "Withdrawal request not found" });
       }
 
       if (request.status !== "pending") {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "Request is not in pending status",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "Request is not in pending status",
+        });
       }
 
       request.status = "approved";
       request.adminComments = adminComments || request.adminComments;
-    request.processedBy = req.admin._id;
-    await request.save();
+      request.processedBy = req.admin._id;
+      await request.save();
 
       return res.json({
         success: true,
         message: "Withdrawal request approved",
         data: request,
       });
-  } catch (error) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
   }
 );
 
@@ -676,12 +732,10 @@ router.post(
       }
 
       if (request.status !== "pending") {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "Request is not in pending status",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "Request is not in pending status",
+        });
       }
 
       request.status = "rejected";
@@ -701,299 +755,147 @@ router.post(
   }
 );
 
-
-// 1. Initialize Payment
-router.post("/:requestId/initiate",verifyAdminToken, async (req, res) => {
-  try {
-    const { requestId } = req.params;
-    const adminId = req.admin.id;
-    const request = await EvaluatorWithdrawalRequest.findById(
-      requestId
-    ).populate("evaluatorId");
-    console.log(request);
-    if (!request) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Withdrawal request not found" });
-    }
-    const amount = Number(request.amount) || 0;
-    const evaluator = request.evaluatorId || {};
-    const customerEmail = evaluator.email || "unknown@example.com";
-    const customerName = evaluator.name || "Unknown";
-    const customerPhone = (evaluator.phoneNumber || "").toString();
-    
-    // // Validate required fields
-    // if (!amount || !customerEmail || !customerPhone || !customerName) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message:
-    //       "Missing required fields: amount, customerEmail, customerPhone, customerName",
-    //   });
-    // }
-    
-    // Generate unique order ID
-    const orderId = `ORDER_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-
-    // Create payment record in database
-    const payment = new Payment({
-      orderId,
-      amount: parseFloat(amount),
-      // userId: userId || null,
-      adminId: adminId, // Use provided adminId or current admin
-      customerEmail: String(customerEmail),
-      customerPhone: String(customerPhone),
-      customerName: String(customerName),
-      projectId: "ailisher",
-      status: "PENDING",
-    });
-
-    await payment.save();
-
-    // Prepare Paytm parameters
-    const paytmParams = {
-      MID: String(PaytmConfig.MID),
-      WEBSITE: String(PaytmConfig.WEBSITE),
-      CHANNEL_ID: String(PaytmConfig.CHANNEL_ID),
-      INDUSTRY_TYPE_ID: String(PaytmConfig.INDUSTRY_TYPE_ID),
-      ORDER_ID: String(orderId),
-      CUST_ID: String(evaluator._id || customerEmail),
-      TXN_AMOUNT: String(parseFloat(amount).toFixed(2)),
-      CALLBACK_URL: String("https://test.ailisher.com/api/admin/callback"),
-      EMAIL: String(customerEmail),
-      MOBILE_NO: String(customerPhone),
-    };
-
-    console.log("Paytm Parameters before checksum:", paytmParams);
-
-    // Generate checksum using official Paytm package
-    const checksum = await PaytmChecksum.generateSignature(
-      paytmParams,
-      PaytmConfig.MERCHANT_KEY
-    );
-    paytmParams.CHECKSUMHASH = checksum;
-
-    console.log("Generated Checksum:", checksum);
-
-    // Update payment record with checksum
-    await Payment.findOneAndUpdate(
-      { orderId },
-      {
-        checksumHash: checksum,
-        paytmOrderId: orderId,
-        updatedAt: new Date(),
-      }
-    );
-
-    console.log("Payment initiated successfully:", {
-      orderId,
-      amount: paytmParams.TXN_AMOUNT,
-      customerEmail,
-      checksum,
-    });
-
-    res.json({
-      success: true,
-      orderId,
-      paytmParams,
-      paytmUrl: PaytmConfig.PAYTM_URL,
-    });
-  } catch (error) {
-    console.error("Payment initiation error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Payment initiation failed",
-      error: error.message,
-    });
-  }
-});
-
-// 2. Payment Callback Handler (fixed path matching CALLBACK_URL)
-router.post("/callback", async (req, res) => {
-  try {
-    const paytmResponse = req.body;
-    const orderId = paytmResponse.ORDERID || paytmResponse.ORDER_ID;
-    if (!orderId) {
-      return res.status(400).json({ success: false, message: "Missing ORDERID/ORDER_ID" });
-    }
-    
-    console.log("Received Paytm callback:", paytmResponse);
-
-    // Verify checksum using official Paytm package
-    let isValidChecksum = true;
-
-    if (paytmResponse.CHECKSUMHASH) {
-      isValidChecksum = PaytmChecksum.verifySignature(
-        paytmResponse,
-        PaytmConfig.MERCHANT_KEY,
-        paytmResponse.CHECKSUMHASH
-      );
-      console.log("Checksum validation result:", isValidChecksum);
-    } else {
-      console.log("No checksum in response - staging environment behavior");
-    }
-
-    // Log checksum validation for debugging
-    if (!isValidChecksum) {
-      console.warn(
-        "⚠️  Checksum validation failed, but proceeding for staging environment"
-      );
-    }
-
-    // Determine payment status
-    let paymentStatus = "FAILED";
-    if (paytmResponse.STATUS === "TXN_SUCCESS") {
-      paymentStatus = "SUCCESS";
-    } else if (paytmResponse.STATUS === "TXN_FAILURE") {
-      paymentStatus = "FAILED";
-    } else if (paytmResponse.STATUS === "PENDING") {
-      paymentStatus = "PENDING";
-    }
-
-    // Update payment status in database
-    const updateData = {
-      status: paymentStatus,
-      transactionId: paytmResponse.TXNID || paytmResponse.ORDERID,
-      paytmTxnId: paytmResponse.TXNID,
-      paytmResponse: paytmResponse,
-      paymentMode: paytmResponse.PAYMENTMODE,
-      bankName: paytmResponse.BANKNAME,
-      bankTxnId: paytmResponse.BANKTXNID,
-      responseCode: paytmResponse.RESPCODE,
-      responseMsg: paytmResponse.RESPMSG,
-      updatedAt: new Date(),
-    };
-
-    const payment = await Payment.findOneAndUpdate({ orderId }, updateData, {
-      new: true,
-    });
-
-    if (!payment) {
-      console.error("Payment record not found for orderId:", orderId);
-      return res.status(404).json({
-        success: false,
-        message: "Payment record not found",
-        orderId,
-      });
-    }
-
-    console.log("Payment updated successfully:", {
-      orderId,
-      status: paymentStatus,
-      transactionId: updateData.transactionId,
-      responseCode: paytmResponse.RESPCODE,
-      checksumValid: isValidChecksum,
-    });
-    // Return JSON response with payment details
-    res.json({
-      success: true,
-      message: "Payment processed successfully",
-      orderId,
-      status: paymentStatus,
-      transactionId: updateData.transactionId,
-      responseCode: paytmResponse.RESPCODE,
-      responseMsg: paytmResponse.RESPMSG,
-      paymentMode: paytmResponse.PAYMENTMODE,
-      bankName: paytmResponse.BANKNAME,
-      amount: payment.amount,
-      customerEmail: payment.customerEmail,
-      customerName: payment.customerName,
-      projectId: payment.projectId,
-      // redirectUrl: `${process.env.FRONTEND_URL}/orderId=${orderId}&status=${paymentStatus}`
-    });
-  } catch (error) {
-    console.error("Payment callback error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Payment processing error",
-      error: error.message,
-    });
-  }
-});
-
-router.post('/:requestId/upload-screenshot',verifyAdminToken, async(req,res) => {
-  try {
-    const adminId = req.admin.id;
-    const requestId = req.params;
-    const { fileName, contentType } =req.body;
-    const request = await EvaluatorWithdrawalRequest.findById(requestId);
-    const key = `admin/${adminId}/payment-screenshot/${fileName}`;
-    const uploadUrl = await generatePresignedUrl(key, contentType);
-    request.screenshot= {
-      s3Key: key,
-      downloadUrl: uploadUrl,
-      uploadedAt: new Date()
-    };
-    await request.save();
-    res.json({ success: true, message: "Document uploaded successfully", data: request.screenshot});
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-})
-
-// Admin: mark a withdrawal as processed (paid) - only for approved requests
 router.post(
-  "/withdrawals/:requestId/process",
+  "/withdrawals/:requestId/upload-screenshot",
   verifyAdminToken,
-  validateAdminWithdrawalAction,
+  async (req, res) => {
+    try {
+      const adminId = req.admin.id;
+      const { requestId } = req.params;
+      const { fileName, contentType } = req.body;
+      if (!fileName || !contentType) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "fileName and contentType are required",
+          });
+      }
+      const request = await EvaluatorWithdrawalRequest.findById(requestId);
+      if (!request) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Withdrawal request not found" });
+      }
+      const key = `admin/${adminId}/payment-screenshot/${fileName}`;
+      const uploadUrl = await generatePresignedUrl(key, contentType);
+      request.paymentScreenshot = {
+        s3Key: key,
+        downloadUrl: uploadUrl,
+        uploadedAt: new Date(),
+      };
+      await request.save();
+      res.json({
+        success: true,
+        message: "Upload URL generated",
+        data: request.paymentScreenshot,
+      });
+    } catch (error) {
+      res.status(400).json({ success: false, message: error.message });
+    }
+  }
+);
+
+// Admin: mark a withdrawal as manually processed (paid) - simple manual payment
+router.post(
+  "/withdrawals/:requestId/manual-process",
+  verifyAdminToken,
   async (req, res) => {
     try {
       const { requestId } = req.params;
-      const { adminNotes } = req.body;
-
+      const { paymentMethod, paymentReference, adminNotes } = req.body;
+      console.log(req.body);
       const request = await EvaluatorWithdrawalRequest.findById(
         requestId
-      ).populate("evaluatorId");
+      ).populate("evaluatorId", "creditBalance name email");
+
       if (!request) {
         return res
           .status(404)
           .json({ success: false, message: "Withdrawal request not found" });
       }
 
-      if (request.status !== "approved") {
+      // Validate status: allow pending/approved only
+      if (request.status === "rejected") {
         return res
           .status(400)
           .json({
             success: false,
-            message: "Request must be approved before processing",
+            message: "Rejected requests cannot be processed",
           });
       }
+      if (request.status === "processed") {
+        return res
+          .status(400)
+          .json({ success: false, message: "Request already processed" });
+      }
 
-      // Deduct credits from evaluator balance
+      // Require a reference for manual payouts
+      if (!paymentReference || !String(paymentReference).trim()) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Payment reference is required" });
+      }
+
+      // // Allow processing if pending by auto-approving first
+      // if (request.status === 'pending') {
+      //   request.status = 'approved';
+      //   request.adminComments = [request.adminComments, 'Auto-approved during manual processing'].filter(Boolean).join(' | ');
+      //   await request.save();
+      // } else if (request.status !== 'approved') {
+      //   return res.status(400).json({ success: false, message: 'Only pending/approved requests can be processed' });
+      // }
+
       const evaluator = request.evaluatorId;
-      if (evaluator.creditBalance < request.amount) {
+      const amountNum = Number(request.amount) || 0;
+      const balanceBefore = Number(evaluator.creditBalance) || 0;
+
+      if (amountNum <= 0) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid withdrawal amount" });
+      }
+      if (balanceBefore < amountNum) {
         return res
           .status(400)
           .json({ success: false, message: "Insufficient evaluator balance" });
       }
 
-      // Update evaluator credits
-      evaluator.creditBalance -= request.amount;
-      evaluator.totalCreditsWithdrawn += request.amount;
+      // Deduct credits
+      evaluator.creditBalance = balanceBefore - amountNum;
+      evaluator.totalCreditsWithdrawn =
+        (Number(evaluator.totalCreditsWithdrawn) || 0) + amountNum;
       evaluator.lastCreditActivity = new Date();
       await evaluator.save();
 
-      // Create withdrawal transaction record
+      // Create transaction record
       const EvaluatorCreditTransaction = require("../models/EvaluatorCreditTransaction");
       const withdrawalTransaction = new EvaluatorCreditTransaction({
         evaluatorId: evaluator._id,
         type: "withdrawn",
-        amount: request.amount,
-        balanceBefore: evaluator.creditBalance + request.amount,
+        amount: amountNum,
+        balanceBefore,
         balanceAfter: evaluator.creditBalance,
         category: "withdrawal",
-        description: `Withdrawal processed - ${request.amount} credits`,
+        description: `Manual withdrawal processed - ${amountNum} credits`,
         withdrawalRequestId: request._id,
         status: "completed",
+        metadata: {
+          paymentMethod,
+          paymentReference,
+          processedBy: req.admin._id,
+          processedAt: new Date(),
+        },
       });
       await withdrawalTransaction.save();
 
       // Update withdrawal request
       request.status = "processed";
-      request.adminNotes = adminNotes || request.adminNotes;
-    request.processedAt = new Date();
-    request.processedBy = req.admin._id;
+      request.processedAt = new Date();
+      request.processedBy = req.admin._id;
+      request.paymentMethod = paymentMethod || "manual";
+      request.paymentReference = paymentReference;
+      request.adminComments = adminNotes;
       await request.save();
 
       return res.json({
@@ -1011,101 +913,240 @@ router.post(
   }
 );
 
-// Admin: adjust evaluator credits
-router.post(
-  "/evaluators/:evaluatorId/adjust-credits",
-  verifyAdminToken,
-  validateCreditAdjustment,
-  async (req, res) => {
-    try {
-      const { evaluatorId } = req.params;
-      const { amount, reason } = req.body;
+// // Admin: mark a withdrawal as processed (paid) - only for approved requests
+// router.post(
+//   "/withdrawals/:requestId/process",
+//   verifyAdminToken,
+//   validateAdminWithdrawalAction,
+//   async (req, res) => {
+//     try {
+//       const { requestId } = req.params;
+//       const { adminNotes } = req.body;
 
-      if (!amount || !reason) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Amount and reason are required" });
-      }
+//       const request = await EvaluatorWithdrawalRequest.findById(
+//         requestId
+//       ).populate("evaluatorId");
+//       if (!request) {
+//         return res
+//           .status(404)
+//           .json({ success: false, message: "Withdrawal request not found" });
+//       }
 
-      const EvaluatorCreditService = require("../services/evaluatorCreditService");
-      const result = await EvaluatorCreditService.adjustCredits(
-        evaluatorId,
-        Number(amount),
-        reason,
-        req.admin._id
-      );
+//       if (request.status !== "approved") {
+//         return res.status(400).json({
+//           success: false,
+//           message: "Request must be approved before processing",
+//         });
+//       }
 
-      return res.json({
-        success: true,
-        message: "Credits adjusted successfully",
-        data: result,
-      });
-    } catch (error) {
-      return res.status(400).json({ success: false, message: error.message });
-    }
-  }
-);
+//       // Payout branching
+//       const evaluator = request.evaluatorId;
+//       const payoutProvider = require("../services/payoutProvider");
+//       const referenceId = String(request._id);
+//       let payoutResult = {
+//         success: false,
+//         message: "Payout provider not configured",
+//       };
 
-// Get evaluator credit summary
-router.get(
-  "/evaluators/:evaluatorId/credits",
-  verifyAdminToken,
-  async (req, res) => {
-    try {
-      const { evaluatorId } = req.params;
-      const EvaluatorCreditService = require("../services/evaluatorCreditService");
-      const summary = await EvaluatorCreditService.getEvaluatorCreditSummary(
-        evaluatorId
-      );
+//       if (request.withdrawalMethod === "upi") {
+//         const upiId =
+//           request.accountDetails?.upiId || evaluator.bankDetails?.upiId;
+//         if (!upiId) {
+//           return res
+//             .status(400)
+//             .json({ success: false, message: "UPI ID not available" });
+//         }
+//         payoutResult = await payoutProvider.payUPI({
+//           upiId,
+//           amount: request.amount,
+//           referenceId,
+//         });
+//       } else if (request.withdrawalMethod === "bank_transfer") {
+//         const accountNumber =
+//           request.accountDetails?.accountNumber ||
+//           evaluator.bankDetails?.accountNumber;
+//         const ifscCode =
+//           request.accountDetails?.ifscCode || evaluator.bankDetails?.ifscCode;
+//         const accountHolderName =
+//           request.accountDetails?.accountHolderName ||
+//           evaluator.bankDetails?.accountHolderName;
+//         if (!accountNumber || !ifscCode) {
+//           return res
+//             .status(400)
+//             .json({ success: false, message: "Bank details not available" });
+//         }
+//         payoutResult = await payoutProvider.payBank({
+//           accountNumber,
+//           ifscCode,
+//           accountHolderName,
+//           amount: request.amount,
+//           referenceId,
+//         });
+//       } else {
+//         // manual or unsupported → require admin to process manually
+//         payoutResult = {
+//           success: true,
+//           transactionId: req.body.transactionId || `MANUAL_${Date.now()}`,
+//         };
+//       }
 
-      return res.json({ success: true, data: summary });
-    } catch (error) {
-      return res.status(400).json({ success: false, message: error.message });
-    }
-  }
-);
+//       if (!payoutResult.success) {
+//         return res
+//           .status(502)
+//           .json({
+//             success: false,
+//             message: payoutResult.message || "Payout failed",
+//             provider: payoutResult.rawResponse,
+//           });
+//       }
 
-// Bulk approve withdrawals
-router.post("/withdrawals/bulk-approve", verifyAdminToken, async (req, res) => {
-  try {
-    const { requestIds, adminComments } = req.body;
+//       // Deduct credits only after payout success
+//       if (evaluator.creditBalance < request.amount) {
+//         return res
+//           .status(400)
+//           .json({ success: false, message: "Insufficient evaluator balance" });
+//       }
+//       const balanceBefore = evaluator.creditBalance;
+//       evaluator.creditBalance = balanceBefore - request.amount;
+//       evaluator.totalCreditsWithdrawn += request.amount;
+//       evaluator.lastCreditActivity = new Date();
+//       await evaluator.save();
 
-    if (!Array.isArray(requestIds) || requestIds.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Request IDs array is required" });
-    }
+//       const EvaluatorCreditTransaction = require("../models/EvaluatorCreditTransaction");
+//       const withdrawalTransaction = new EvaluatorCreditTransaction({
+//         evaluatorId: evaluator._id,
+//         type: "withdrawn",
+//         amount: request.amount,
+//         balanceBefore,
+//         balanceAfter: evaluator.creditBalance,
+//         category: "withdrawal",
+//         description: `Withdrawal processed - ${request.amount} credits`,
+//         withdrawalRequestId: request._id,
+//         status: "completed",
+//         metadata: { payout: payoutResult },
+//       });
+//       await withdrawalTransaction.save();
 
-    const results = [];
-    for (const requestId of requestIds) {
-      try {
-        const request = await EvaluatorWithdrawalRequest.findById(requestId);
-        if (request && request.status === "pending") {
-          request.status = "approved";
-          request.adminComments = adminComments || request.adminComments;
-          request.processedBy = req.admin._id;
-    await request.save();
-          results.push({ requestId, status: "approved" });
-        } else {
-          results.push({
-            requestId,
-            status: "skipped",
-            reason: "Not in pending status",
-          });
-        }
-      } catch (error) {
-        results.push({ requestId, status: "error", error: error.message });
-      }
-    }
+//       request.status = "processed";
+//       request.transactionId =
+//         payoutResult.transactionId ||
+//         payoutResult.providerRef ||
+//         request.transactionId;
+//       request.adminNotes = adminNotes || request.adminNotes;
+//       request.processedAt = new Date();
+//       request.processedBy = req.admin._id;
+//       await request.save();
 
-    return res.json({
-      success: true,
-      message: "Bulk approval completed",
-      data: results,
-    });
-  } catch (error) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-});
+//       return res.json({
+//         success: true,
+//         message: "Withdrawal processed successfully",
+//         data: {
+//           request,
+//           newBalance: evaluator.creditBalance,
+//           transaction: withdrawalTransaction,
+//         },
+//       });
+//     } catch (error) {
+//       return res.status(400).json({ success: false, message: error.message });
+//     }
+//   }
+// );
+
+// // Admin: adjust evaluator credits
+// router.post(
+//   "/evaluators/:evaluatorId/adjust-credits",
+//   verifyAdminToken,
+//   validateCreditAdjustment,
+//   async (req, res) => {
+//     try {
+//       const { evaluatorId } = req.params;
+//       const { amount, reason } = req.body;
+
+//       if (!amount || !reason) {
+//         return res
+//           .status(400)
+//           .json({ success: false, message: "Amount and reason are required" });
+//       }
+
+//       const EvaluatorCreditService = require("../services/evaluatorCreditService");
+//       const result = await EvaluatorCreditService.adjustCredits(
+//         evaluatorId,
+//         Number(amount),
+//         reason,
+//         req.admin._id
+//       );
+
+//       return res.json({
+//         success: true,
+//         message: "Credits adjusted successfully",
+//         data: result,
+//       });
+//     } catch (error) {
+//       return res.status(400).json({ success: false, message: error.message });
+//     }
+//   }
+// );
+
+// // Get evaluator credit summary
+// router.get(
+//   "/evaluators/:evaluatorId/credits",
+//   verifyAdminToken,
+//   async (req, res) => {
+//     try {
+//       const { evaluatorId } = req.params;
+//       const EvaluatorCreditService = require("../services/evaluatorCreditService");
+//       const summary = await EvaluatorCreditService.getEvaluatorCreditSummary(
+//         evaluatorId
+//       );
+
+//       return res.json({ success: true, data: summary });
+//     } catch (error) {
+//       return res.status(400).json({ success: false, message: error.message });
+//     }
+//   }
+// );
+
+// // Bulk approve withdrawals
+// router.post("/withdrawals/bulk-approve", verifyAdminToken, async (req, res) => {
+//   try {
+//     const { requestIds, adminComments } = req.body;
+
+//     if (!Array.isArray(requestIds) || requestIds.length === 0) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Request IDs array is required" });
+//     }
+
+//     const results = [];
+//     for (const requestId of requestIds) {
+//       try {
+//         const request = await EvaluatorWithdrawalRequest.findById(requestId);
+//         if (request && request.status === "pending") {
+//           request.status = "approved";
+//           request.adminComments = adminComments || request.adminComments;
+//           request.processedBy = req.admin._id;
+//           await request.save();
+//           results.push({ requestId, status: "approved" });
+//         } else {
+//           results.push({
+//             requestId,
+//             status: "skipped",
+//             reason: "Not in pending status",
+//           });
+//         }
+//       } catch (error) {
+//         results.push({ requestId, status: "error", error: error.message });
+//       }
+//     }
+
+//     return res.json({
+//       success: true,
+//       message: "Bulk approval completed",
+//       data: results,
+//     });
+//   } catch (error) {
+//     return res.status(400).json({ success: false, message: error.message });
+//   }
+// });
 
 module.exports = router;

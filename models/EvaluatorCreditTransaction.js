@@ -70,4 +70,10 @@ const evaluatorCreditTransactionSchema = new mongoose.Schema(
   }
 );
 
+// Ensure one evaluation_completion per evaluator+submission
+evaluatorCreditTransactionSchema.index(
+  { evaluatorId: 1, submissionId: 1, category: 1 },
+  { unique: true, partialFilterExpression: { category: 'evaluation_completion' } }
+);
+
 module.exports = mongoose.model('EvaluatorCreditTransaction', evaluatorCreditTransactionSchema);

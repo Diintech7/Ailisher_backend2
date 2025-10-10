@@ -2438,29 +2438,35 @@ router.post("/publishwithannotation", async (req, res) => {
        );
      }
 
-     // 🎉 Reward evaluator with 5 credits for completing evaluation
-     if (userAnswer.reviewedByEvaluator && evaluationRecord) {
-       
-       try {
-         const creditResult = await EvaluatorCreditService.awardCreditForEvaluation(
-           userAnswer.reviewedByEvaluator,
-           evaluationRecord._id,
-           answerId,
-           5 // 5 credits for each evaluation
-         );
-         
-       } catch (creditError) {
-         console.error("❌ [PUBLISH ENDPOINT] Credit error details:", {
-           evaluatorId: userAnswer.reviewedByEvaluator,
-           evaluationId: evaluationRecord._id,
-           error: creditError.message,
-           stack: creditError.stack
-         });
-         // Don't fail the entire request if credit awarding fails
-       }
-     } else {
-       console.log(`⚠️ [PUBLISH ENDPOINT] evaluationRecord: ${evaluationRecord ? 'exists' : 'missing'}`);
-     }
+    // 🎉 Reward evaluator with 5 credits for completing evaluation (idempotent)
+    if (userAnswer.reviewedByEvaluator && evaluationRecord) {
+      try {
+        const creditResult = await EvaluatorCreditService.awardCreditForEvaluation(
+          userAnswer.reviewedByEvaluator,
+          evaluationRecord._id,
+          answerId,
+          5
+        );
+        if (creditResult?.alreadyAwarded) {
+          console.log("ℹ️ [PUBLISH ENDPOINT] Credit already awarded for this submission; skipping duplicate award.");
+        }
+      } catch (creditError) {
+        // If unique index prevents duplicate, log and continue
+        const dup = /duplicate key/i.test(creditError?.message || '');
+        if (dup) {
+          console.log("ℹ️ [PUBLISH ENDPOINT] Duplicate credit prevented by unique index.");
+        } else {
+          console.error("❌ [PUBLISH ENDPOINT] Credit error details:", {
+            evaluatorId: userAnswer.reviewedByEvaluator,
+            evaluationId: evaluationRecord._id,
+            error: creditError.message,
+            stack: creditError.stack
+          });
+        }
+      }
+    } else {
+      console.log(`⚠️ [PUBLISH ENDPOINT] evaluationRecord: ${evaluationRecord ? 'exists' : 'missing'}`);
+    }
 
     res.json({
       success: true,

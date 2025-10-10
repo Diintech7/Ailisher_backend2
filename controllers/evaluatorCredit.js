@@ -196,11 +196,12 @@ exports.getFinanceStatus = async (req, res) => {
 exports.withdrawalRequests = async (req, res) => {
   try {
     const evaluatorId = req.evaluator._id;
-    const amount = Number(req.body.amount);
-    console.log(amount);
+    const { amount, withdrawalMethod = "upi", paymentMethod = "upi" } = req.body;
+    const amountNum = Number(amount);
+    console.log(amountNum);
     console.log(evaluatorId);
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
       return res.status(400).json({ success: false, code: 'INVALID_AMOUNT', message: 'Amount must be a positive number' });
     }
 
@@ -209,15 +210,31 @@ exports.withdrawalRequests = async (req, res) => {
       return res.status(404).json({ success: false, message: "Evaluator not found" });
     }
 
-    const { isValid, errors } = evaluator.validateWithdrawalAmount(amount);
+    const { isValid, errors } = evaluator.validateWithdrawalAmount(amountNum);
     if (!isValid) {
       return res.status(400).json({ success: false, code: 'INVALID_AMOUNT', errors });
     }
 
+    // Validate bank details based on withdrawal method
+    if (withdrawalMethod === "upi" && !evaluator.bankDetails?.upiId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "UPI ID is required for UPI withdrawal. Please update your bank details." 
+      });
+    }
+
+    if (withdrawalMethod === "bank_transfer" && (!evaluator.bankDetails?.accountNumber || !evaluator.bankDetails?.ifscCode)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Bank account details are required for bank transfer. Please update your bank details." 
+      });
+    }
+
     const withdrawalRequest = await EvaluatorWithdrawalRequest.create({
       evaluatorId,
-      amount,
-      withdrawalMethod: "bank_transfer",
+      amount: amountNum,
+      withdrawalMethod,
+      paymentMethod,
       accountDetails: evaluator.bankDetails
       // status defaults to 'pending' per your model
     });

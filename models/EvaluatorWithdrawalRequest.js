@@ -24,6 +24,8 @@ const evaluatorWithdrawalRequestSchema = new mongoose.Schema(
       paytmNumber: String,
       bankName: String,
       accountHolderName: String,
+      branchName: String,
+      accountType: String,
     },
     status: {
       type: String,
@@ -63,6 +65,24 @@ const evaluatorWithdrawalRequestSchema = new mongoose.Schema(
       s3Key: String,
       downloadUrl: String,
       uploadedAt: Date
+    },
+    // Manual payment fields
+    paymentMethod: {
+      type: String,
+      enum: ["upi", "bank_transfer", "cash", "other"],
+      default: "upi"
+    },
+    paymentReference: {
+      type: String,
+      trim: true
+    },
+    paymentScreenshot: {
+      s3Key: String,
+      downloadUrl: String,
+      uploadedAt: Date
+    },
+    qrCode: {
+      type: String, // Base64 QR code for UPI payment
     },
   },
   {

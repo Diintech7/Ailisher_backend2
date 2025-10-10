@@ -4,7 +4,7 @@ const EvaluatorCreditTransaction = require("../models/EvaluatorCreditTransaction
 const EvaluatorWithdrawalRequest = require("../models/EvaluatorWithdrawalRequest");
 
 const EvaluatorCreditService = {
-    // Award credit for evaluation completion
+    // Award credit for evaluation completion (idempotent per evaluator+submission)
     awardCreditForEvaluation: async (evaluatorId, evaluationId, answerId, credits = 5) => {
       try {
         const evaluator = await Evaluator.findById(evaluatorId);
@@ -17,6 +17,17 @@ const EvaluatorCreditService = {
         if (evaluator.creditStatus !== 'active') {
           console.warn(`⚠️ [CREDIT SERVICE] Evaluator ${evaluatorId} is not active, skipping credit award`);
           return { evaluator, transaction: null };
+        }
+
+        // Idempotency guard: has this evaluator already been awarded for this submission?
+        const existingTx = await EvaluatorCreditTransaction.findOne({
+          evaluatorId,
+          submissionId: answerId,
+          category: 'evaluation_completion',
+        });
+        if (existingTx) {
+          console.log(`ℹ️ [CREDIT SERVICE] Credit already awarded for evaluator ${evaluatorId} on submission ${answerId}. Skipping.`);
+          return { evaluator, transaction: existingTx, alreadyAwarded: true };
         }
 
         const balanceBefore = evaluator.creditBalance;
@@ -46,7 +57,7 @@ const EvaluatorCreditService = {
         await transaction.save();
 
         console.log(`✅ [CREDIT SERVICE] Awarded ${credits} credits to evaluator ${evaluatorId}. New balance: ${balanceAfter}`);
-        return { evaluator, transaction };
+        return { evaluator, transaction, alreadyAwarded: false };
       } catch (error) {
         console.error(`❌ [CREDIT SERVICE] Error in awardCreditForEvaluation:`, error);
         throw error;
