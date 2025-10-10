@@ -163,7 +163,6 @@ exports.getAllEvaluators = async (req, res) => {
 exports.getEvaluator = async (req, res) => {
   try {
     const evaluator = await Evaluator.findById(req.params.id).select('-__v');
-    
     if (!evaluator) {
       return res.status(404).json({
         success: false,

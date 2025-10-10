@@ -9,66 +9,67 @@ const User = require('../models/User');
 const ReviewRequest = require('../models/ReviewRequest');
 const { registerEvaluator, loginEvaluator} = require('../controllers/evaluatorController');
 const { generateGetPresignedUrl } = require('../utils/r2');
+const { default: mongoose } = require('mongoose');
 
 // Public routes (no authentication required)
 router.post('/register', registerEvaluator);
 router.post('/login', loginEvaluator);
 
-// // 2. GET SINGLE EVALUATOR
-// router.get('/:id',verifyTokenforevaluator, async (req, res) => {
-//   try {
-//     const { id } = req.params;
-    
-//     const evaluator = await Evaluator.findById(id);
-//     console.log(evaluator)
-//     if (!evaluator) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'Evaluator not found'
-//       });
-//     }
+// 2. GET SINGLE EVALUATOR
+router.get('/get',verifyTokenforevaluator, async (req, res) => {
+  try {
+    const id =req.evaluator._id;
+    console.log("id",id)
+    const evaluator = await Evaluator.findById(id);
+    console.log(evaluator)
+    if (!evaluator) {
+      return res.status(404).json({
+        success: false,
+        message: 'Evaluator not found'
+      });
+    }
 
-//     if(evaluator.kycDetails.status === "pending") 
-//     {
-//       if(evaluator.kycDetails.documents.panDocument.s3Key)
-//       {
-//         evaluator.kycDetails.documents.panDocument.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.panDocument.s3Key);
-//       }
-//       if(evaluator.kycDetails.documents.aadharFront.s3Key)
-//       {
-//         evaluator.kycDetails.documents.aadharFront.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.aadharFront.s3Key);
-//       }
-//       if(evaluator.kycDetails.documents.aadharBack.s3Key)
-//       {
-//         evaluator.kycDetails.documents.aadharBack.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.aadharBack.s3Key);
-//       }
-//       if(evaluator.kycDetails.documents.bankPassbook.s3Key)
-//       {
-//         evaluator.kycDetails.documents.bankPassbook.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.bankPassbook.s3Key);
-//       }
-//     }
+    if(evaluator.kycDetails.status === "pending") 
+    {
+      if(evaluator.kycDetails.documents.panDocument.s3Key)
+      {
+        evaluator.kycDetails.documents.panDocument.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.panDocument.s3Key);
+      }
+      if(evaluator.kycDetails.documents.aadharFront.s3Key)
+      {
+        evaluator.kycDetails.documents.aadharFront.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.aadharFront.s3Key);
+      }
+      if(evaluator.kycDetails.documents.aadharBack.s3Key)
+      {
+        evaluator.kycDetails.documents.aadharBack.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.aadharBack.s3Key);
+      }
+      if(evaluator.kycDetails.documents.bankPassbook.s3Key)
+      {
+        evaluator.kycDetails.documents.bankPassbook.downloadUrl = await generateGetPresignedUrl(evaluator.kycDetails.documents.bankPassbook.s3Key);
+      }
+    }
     
-//     res.json({
-//       success: true,
-//       evaluator
-//     });
-//   } catch (error) {
-//     console.error('Get single evaluator error:', error);
+    res.json({
+      success: true,
+      evaluator
+    });
+  } catch (error) {
+    console.error('Get single evaluator error:', error);
     
-//     // Handle invalid ObjectId
-//     if (error.name === 'CastError') {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'Evaluator not found'
-//       });
-//     }
+    // Handle invalid ObjectId
+    if (error.name === 'CastError') {
+      return res.status(404).json({
+        success: false,
+        message: 'Evaluator not found'
+      });
+    }
     
-//     res.status(500).json({
-//       success: false,
-//       message: 'Internal server error'
-//     });
-//   }
-// });
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
 
 // Apply admin authentication to all other routes
 router.use(verifyAdminToken);
