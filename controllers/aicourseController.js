@@ -196,12 +196,16 @@ exports.getAICourse = async (req, res) => {
 exports.getAICoursesForMobile = async (req, res) => {
   try {
     const clientId = req.user.clientId;
-    const { category, subcategory, search, limit, page = 1, isPublic } = req.query;
+    const { category, subcategory, search, limit, page = 1, isPublic, trending, highlighted } = req.query;
 
     const filter = { clientId };
     if (category) filter.mainCategory = category;
     if (subcategory) filter.subCategory = subcategory;
     if (isPublic !== undefined) filter.isPublic = isPublic === 'true' || isPublic === true;
+    if (trending === 'true') {
+      filter.isTrending = true;
+    }
+    if (highlighted === 'true') filter.isHighlighted = true;
     if (search) {
       filter.$or = [
         { title: { $regex: search, $options: 'i' } },
@@ -217,27 +221,54 @@ exports.getAICoursesForMobile = async (req, res) => {
       query = query.skip(skip).limit(parseInt(limit));
     }
 
+    // Get highlighted courses
+    const highlightedCourses = await AICourse.find({
+      ...filter,
+      isHighlighted: true
+    }).sort({ highlightOrder: 1, highlightedAt: -1 });
+
+    // Get trending courses
+    const trendingCourses = await AICourse.find({
+      ...filter,
+      isTrending: true
+    }).sort({ trendingScore: -1 });
+
     const [items, total] = await Promise.all([query, AICourse.countDocuments(filter)]);
-    for(const item of items)
-    {
-      if(item.coverImageKey)
-      {
-        item.coverImageUrl = await generateGetPresignedUrl(item.coverImageKey);
+
+    // Helper function to generate URLs for courses
+    const generateUrlsForCourses = async (courses) => {
+      for (const item of courses) {
+        if (item.coverImageKey) {
+          item.coverImageUrl = await generateGetPresignedUrl(item.coverImageKey);
+        }
+        if (Array.isArray(item.faculty) && item.faculty.length) {
+          item.faculty = await Promise.all(
+            item.faculty.map(async (fac) => {
+              if (fac && fac.facultyImageKey) {
+                fac.facultyImageUrl = await generateGetPresignedUrl(fac.facultyImageKey);
+              }
+              return fac;
+            })
+          );
+        }
       }
-    }
-    for (const item of items) {
-      if (Array.isArray(item.faculty) && item.faculty.length) {
-        item.faculty = await Promise.all(
-          item.faculty.map(async (fac) => {
-            if (fac && fac.facultyImageKey) {
-              fac.facultyImageUrl = await generateGetPresignedUrl(fac.facultyImageKey);
-            }
-            return fac;
-          })
-        );
-      }
-    }
-    return res.status(200).json({ success: true, total, courses: items });
+      return courses;
+    };
+
+    // Generate URLs for all course lists
+    const [coursesWithUrls, highlightedWithUrls, trendingWithUrls] = await Promise.all([
+      generateUrlsForCourses(items),
+      generateUrlsForCourses(highlightedCourses),
+      generateUrlsForCourses(trendingCourses)
+    ]);
+
+    return res.status(200).json({ 
+      success: true, 
+      total, 
+      highlighted: highlightedWithUrls || [],
+      trending: trendingWithUrls || [],
+      courses: coursesWithUrls 
+    });
   } catch (error) {
     console.error('Get AICourses error:', error);
     return res.status(500).json({ success: false, message: 'Server Error' });
