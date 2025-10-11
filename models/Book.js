@@ -313,9 +313,37 @@ const BookSchema = new mongoose.Schema({
       }
     ]
   },
-  isPaid:{
+  isForSale:{
     type:Boolean,
     default:false
+  },
+  MRP: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  offerPrice: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  GST:{
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  currency: {
+    type: String,
+    default: 'INR'
+  },
+  validityDays: {
+    type: Number,
+    default: 0, // 0 or null means lifetime access
+    min: 0
+  },
+  details: {
+    type: String,
+    default: ''
   },
   createdAt: {
     type: Date,

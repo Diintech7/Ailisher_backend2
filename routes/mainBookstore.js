@@ -11,6 +11,26 @@ const {
 } = require("../middleware/mobileAuth");
 const CreditRechargePlan = require("../models/CreditRechargePlan");
 
+// Helper function to format duration
+const formatDuration = (seconds) => {
+  if (seconds <= 0) return 'Expired';
+  
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  
+  if (days > 0) {
+    return `${days}d ${hours}h ${minutes}m`;
+  } else if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${remainingSeconds}s`;
+  } else {
+    return `${remainingSeconds}s`;
+  }
+};
+
 // 1. HOME PAGE API
 // Endpoint: /api/clients/:clientId/homepage
 // Method: GET (to fetch homepage content) or POST (to update homepage content)
@@ -83,101 +103,169 @@ router.get("/", authenticateMobileUser, async (req, res) => {
       created_at: reel.createdAt,
     });
 
+    const formatDuration = (seconds) => {
+      if (seconds == null) return 'Lifetime access';
+      if (seconds <= 0) return 'Expired';
+      const d = Math.floor(seconds / 86400);
+      const h = Math.floor((seconds % 86400) / 3600);
+      return d > 0 ? `${d}d ${h}h left` : `${h}h left`;
+    };
+
     // Format response for homepage
     const formatBookForHomepage = async (book) => {
+      const userId = req.user?.id;
+      
       const baseFormat = {
-      book_id: book._id.toString(),
-      title: book.title,
-      category: book.mainCategory,
-      sub_category: book.effectiveSubCategory,
-      image: book.coverImage || "",
-      image_url: book.coverImageUrl || "",
-      highlight: book.isHighlighted,
-      trending: book.isCurrentlyTrending,
-      isEnabled:book.isEnabled,
-      author: book.author,
-      publisher: book.publisher,
-      description: book.description,
-      rating: book.rating,
-      rating_count: book.ratingCount,
-      conversations: book.conversations,
-      users: book.users,
-      summary: book.summary,
-      viewCount: book.viewCount,
-      exam_name: book.exam || "",
-      paper_name: book.paper || "",
-      subject_name: book.subject || "",
-    }
-    // Check if book is in any plan and get plan details
-  try {
-    const PlanItem = require('../models/PlanItem');
-    const CreditRechargePlan = require('../models/CreditRechargePlan');
-    const UserPlan = require('../models/UserPlan');
-    
-    // Find plan items that reference this workbook
-    const planItems = await PlanItem.find({
-      itemType: { $in: ['book', 'books'] },
-      referenceId: book._id.toString(),
-      clientId: clientId
-    });
+        book_id: book._id.toString(),
+        title: book.title,
+        category: book.mainCategory,
+        sub_category: book.effectiveSubCategory,
+        image: book.coverImage || "",
+        image_url: book.coverImageUrl || "",
+        highlight: book.isHighlighted,
+        trending: book.isCurrentlyTrending,
+        isEnabled: book.isEnabled,
+        author: book.author,
+        publisher: book.publisher,
+        description: book.description,
+        rating: book.rating,
+        rating_count: book.ratingCount,
+        conversations: book.conversations,
+        users: book.users,
+        summary: book.summary,
+        viewCount: book.viewCount,
+        exam_name: book.exam || "",
+        paper_name: book.paper || "",
+        subject_name: book.subject || "",
+      };
 
-    if (planItems.length > 0) {
-      // Get all plans that contain these plan items
-      const plans = await CreditRechargePlan.find({
-        items: { $in: planItems.map(item => item._id) },
-        clientId: clientId,
-        status: 'active'
-      }).select('_id name description MRP offerPrice category duration status');
-
-      // Determine if current user is enrolled in any of these plans
-      let isEnrolled = false;
+      // Add pricing information if book is for sale
+      if (book.isForSale) {
+        baseFormat.isForSale = true;
+        baseFormat.MRP = book.MRP || 0;
+        baseFormat.offerPrice = book.offerPrice || 0;
+        baseFormat.currency = book.currency || 'INR';
+        baseFormat.validityDays = book.validityDays || 0;
+        baseFormat.details = book.details || '';
+        baseFormat.GST = book.GST || 0;
+      } else {
+        baseFormat.isForSale = false;
+      }
+      
+      // Calculate purchase status for this user and book
+      let isPurchased = false;
+      let expiresIn = null;
+      
       try {
-        const now = new Date();
-        const enrolled = await UserPlan.findOne({
-          userId: req.user?.id,
-          clientId: clientId,
-          planId: { $in: plans.map(plan => plan._id) },
-          status: 'active',
-          startDate: { $lte: now },
-          endDate: { $gte: now }
-        }).select('_id');
-        isEnrolled = Boolean(enrolled);
-      } catch (enrollErr) {
-        console.error('Error checking enrollment for book:', enrollErr);
+        if (userId && book._id) {
+          const UserPlan = require('../models/UserPlan');
+          const now = new Date();
+          const plan = await UserPlan
+            .findOne({ userId: userId, bookId: book._id, startDate: { $lte: now } })
+            .active()
+            .select('endDate');
+          if (plan) {
+            isPurchased = true;
+            if (plan.endDate) {
+              const msLeft = new Date(plan.endDate).getTime() - now.getTime();
+              const secondsLeft = msLeft > 0 ? Math.ceil(msLeft / 1000) : 0; // seconds
+              expiresIn = formatDuration(secondsLeft);
+            } else {
+              expiresIn = null; // lifetime
+            }
+          } else {
+            isPurchased = false;
+            // If there was a plan that expired in the past, surface 'Expired'
+            const expiredPlan = await UserPlan
+              .findOne({ userId: userId, bookId: book._id, endDate: { $ne: null, $lt: now } })
+              .sort({ endDate: -1 })
+              .select('endDate');
+            expiresIn = expiredPlan ? 'Expired' : null;
+          }
+        } else {
+          isPurchased = false;
+          expiresIn = null;
+        }
+      } catch (purchaseErr) {
+        console.error('Error checking purchase status for book:', purchaseErr);
+        isPurchased = false;
+        expiresIn = null;
       }
 
-      return {
-        ...baseFormat,
-        isPaid: true,
-        isEnrolled,
-        planDetails: plans.map(plan => ({
-          id: plan._id,
-          name: plan.name,
-          description: plan.description,
-          mrp: plan.MRP,
-          offerPrice: plan.offerPrice,
-          category: plan.category,
-          duration: plan.duration,
-          status: plan.status
-        }))
-      };
-    } else {
-      return {
-        ...baseFormat,
-        isPaid: book.isPaid || false,
-        isEnrolled: false,
-        planDetails: []
-      };
-    }
-  } catch (error) {
-    console.error('Error fetching plan details for book:', error);
-    return {
-      ...baseFormat,
-      isPaid: book.isPaid || false,
-      isEnrolled: false,
-      planDetails: []
-    };
-  }
+      // Add purchase status to base format
+      baseFormat.isPurchased = isPurchased;
+      baseFormat.expiresIn = expiresIn;
+
+      // Check if book is in any plan and get plan details
+      try {
+        const PlanItem = require('../models/PlanItem');
+        const CreditRechargePlan = require('../models/CreditRechargePlan');
+        const UserPlan = require('../models/UserPlan');
+        
+        // Find plan items that reference this book
+        const planItems = await PlanItem.find({
+          itemType: { $in: ['book', 'books'] },
+          referenceId: book._id.toString(),
+          clientId: clientId
+        });
+
+        if (planItems.length > 0) {
+          // Get all plans that contain these plan items
+          const plans = await CreditRechargePlan.find({
+            items: { $in: planItems.map(item => item._id) },
+            clientId: clientId,
+            status: 'active'
+          }).select('_id name description MRP offerPrice category duration status');
+
+          // Determine if current user is enrolled in any of these plans
+          let isEnrolled = false;
+          try {
+            const now = new Date();
+            const enrolled = await UserPlan.findOne({
+              userId: req.user?.id,
+              clientId: clientId,
+              planId: { $in: plans.map(plan => plan._id) },
+              status: 'active',
+              startDate: { $lte: now },
+              endDate: { $gte: now }
+            }).select('_id');
+            isEnrolled = Boolean(enrolled);
+          } catch (enrollErr) {
+            console.error('Error checking enrollment for book:', enrollErr);
+          }
+
+          return {
+            ...baseFormat,
+            isPaid: true,
+            isEnrolled,
+            planDetails: plans.map(plan => ({
+              id: plan._id,
+              name: plan.name,
+              description: plan.description,
+              mrp: plan.MRP,
+              offerPrice: plan.offerPrice,
+              category: plan.category,
+              duration: plan.duration,
+              status: plan.status
+            }))
+          };
+        } else {
+          return {
+            ...baseFormat,
+            isPaid: book.isForSale || false,
+            isEnrolled: false,
+            planDetails: []
+          };
+        }
+      } catch (error) {
+        console.error('Error fetching plan details for book:', error);
+        return {
+          ...baseFormat,
+          isPaid: book.isForSale || false,
+          isEnrolled: false,
+          planDetails: []
+        };
+      }
     };
     // Get categories with paginated books
     const categories = await getAvailableCategories(clientId);
@@ -497,7 +585,7 @@ router.get("/book/details", authenticateMobileUser, async (req, res) => {
 
     // Get plan details for the book
     let planInfo = {
-      isPaid: book.isPaid || false,
+      isPaid: book.isForSale || false,
       isEnrolled: false,
       planDetails: []
     };
@@ -561,6 +649,46 @@ router.get("/book/details", authenticateMobileUser, async (req, res) => {
     // Increment view count
     await book.incrementView();
 
+    // Calculate purchase status for this user and book
+    let isPurchased = false;
+    let expiresIn = null;
+    
+    try {
+      if (req.user?.id && book._id) {
+        const UserPlan = require('../models/UserPlan');
+        const now = new Date();
+        const plan = await UserPlan
+          .findOne({ userId: req.user.id, bookId: book._id, startDate: { $lte: now } })
+          .active()
+          .select('endDate');
+        if (plan) {
+          isPurchased = true;
+          if (plan.endDate) {
+            const msLeft = new Date(plan.endDate).getTime() - now.getTime();
+            const secondsLeft = msLeft > 0 ? Math.ceil(msLeft / 1000) : 0; // seconds
+            expiresIn = formatDuration(secondsLeft);
+          } else {
+            expiresIn = null; // lifetime
+          }
+        } else {
+          isPurchased = false;
+          // If there was a plan that expired in the past, surface 'Expired'
+          const expiredPlan = await UserPlan
+            .findOne({ userId: req.user.id, bookId: book._id, endDate: { $ne: null, $lt: now } })
+            .sort({ endDate: -1 })
+            .select('endDate');
+          expiresIn = expiredPlan ? 'Expired' : null;
+        }
+      } else {
+        isPurchased = false;
+        expiresIn = null;
+      }
+    } catch (purchaseErr) {
+      console.error('Error checking purchase status for book (details):', purchaseErr);
+      isPurchased = false;
+      expiresIn = null;
+    }
+
     // Build the response according to the specified format
     const bookDetails = {
       success: true,
@@ -614,6 +742,19 @@ router.get("/book/details", authenticateMobileUser, async (req, res) => {
           canUseAI: book.embedded || false,
           requiresEmbedding: !book.embedded
         },
+        // Pricing information for paid books
+        isForSale: book.isForSale || false,
+        ...(book.isForSale && {
+          MRP: book.MRP || 0,
+          offerPrice: book.offerPrice || 0,
+          currency: book.currency || 'INR',
+          validityDays: book.validityDays || 0,
+          details: book.details || '',
+          GST: book.GST || 0,
+        }),
+        // Purchase status
+        isPurchased: isPurchased,
+        expiresIn: expiresIn,
         // Plan information
         isPaid: planInfo.isPaid,
         isEnrolled: planInfo.isEnrolled,
