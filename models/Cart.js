@@ -4,8 +4,14 @@ const CartItemSchema = new mongoose.Schema({
     workbookId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Workbook',
-        required: true,
-        index: true
+        // required: true,
+        // index: true
+    },
+    bookId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Book',
+        // required: true,
+        // index: true
     },
     title: {
         type: String,

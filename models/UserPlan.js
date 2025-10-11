@@ -19,6 +19,12 @@ const UserPlanSchema = new mongoose.Schema({
     // required: true,
     // index: true
   },
+  bookId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Book',
+    // required: true,
+    // index: true
+  },
   clientId: {
     type: String,
     default: null,
