@@ -9,6 +9,7 @@ const AISWBSet = require('../models/AISWBSet');
 const { validationResult, param, body, query } = require('express-validator');
 const { authenticateMobileUser } = require('../middleware/mobileAuth');
 const axios = require('axios');
+const SubjectiveTestQuestion = require('../models/SubjectiveTestQuestion');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
@@ -982,10 +983,14 @@ router.get('/questions/:questionId/answers/:answerId/evaluation',
         }
         console.log(answerBefore)
         let questionData = answerBefore.questionId;
+        let testType = answerBefore.testType;
         // Fallback: fetch question if not populated
         if (!questionData || !questionData.metadata) {
           try {
+            if(testType === 'aiswb')
             questionData = await AiswbQuestion.findById(answerBefore.questionId).select('question metadata');
+            if(testType === 'subjective')
+            questionData = await SubjectiveTestQuestion.findById(answerBefore.questionId).select('question metadata');
           } catch (_) {
             // ignore and handle below if still missing
           }
