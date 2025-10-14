@@ -59,6 +59,8 @@ const CreditRechargePlan = require('./models/CreditRechargePlan')
 const telegramRoutes = require('./routes/telegramroutes')
 const whatsappOtpRoutes = require('./routes/whatsappOtp')
 const notificationsRoutes = require('./routes/notifications')
+const organizationRoutes = require('./routes/organizations')
+const superadminRoutes = require('./routes/superadminroutes')
 
 app.use(cors())
 app.use(express.json({ limit: "50mb" }))
@@ -131,6 +133,8 @@ app.use('/api/credit', creditManagementRoutes);
 app.use('/api/evaluator',require("./routes/evaluatorCredit"))
 app.use('/api/whatsapp', whatsappOtpRoutes)
 app.use('/api/notifications', notificationsRoutes)
+app.use('/api/organizations', organizationRoutes)
+app.use('/api/superadmin', superadminRoutes)
 
 // Enhanced PDF processing routes with clustering and optional auth
 app.use("/api/enhanced-pdf-embedding", require("./routes/pdfEmbedding"))

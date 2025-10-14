@@ -99,7 +99,10 @@ const UserSchema = new mongoose.Schema({
     sparse: true // Only unique if not null
   },
   
-
+  organization: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization'
+  }],
   
   createdAt: {
     type: Date,

@@ -42,7 +42,8 @@ const ClientSchema = new mongoose.Schema({
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Admin'
-  }
+  },
+
 });
 
 // Hash password before saving

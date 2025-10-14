@@ -1,0 +1,448 @@
+const mongoose = require('mongoose');
+const Organization = require('../models/Organization');
+const Client = require('../models/Client'); // legacy Client model (not used for membership)
+const User = require('../models/User');
+
+// Helpers
+function slugify(name) {
+	return String(name)
+		.toLowerCase()
+		.trim()
+		.replace(/[^a-z0-9\s-]/g, '')
+		.replace(/\s+/g, '-')
+		.replace(/-+/g, '-');
+}
+
+// Create organization
+exports.createOrganization = async (req, res) => {
+	try {
+		const { name, authEmail, authPassword} = req.body;
+		if (!name) return res.status(400).json({ success: false, message: 'name is required' });
+
+		const finalSlug = slugify(name);
+		const exists = await Organization.findOne({authEmail});
+		if (exists) return res.status(400).json({ success: false, message: 'org already exists' });
+
+		const org = new Organization({
+			name,
+			authEmail,
+            authPassword,
+			slug: finalSlug,
+			status: 'active',
+			isDeleted: false,
+			createdBy: req.superadmin?._id,
+		});
+		await org.save();
+		return res.status(201).json({ success: true, data: org });
+	} catch (error) {
+		return res.status(error.statusCode || 400).json({ success: false, message: error.message });
+	}
+};
+
+// List organizations
+exports.listOrganizations = async (req, res) => {
+	try {
+		const { status, q, page = 1, limit = 20 } = req.query;
+		const filter = {};
+		if (status) filter.status = status;
+		if (q) filter.$or = [{ name: new RegExp(q, 'i') }, { slug: new RegExp(q, 'i') }];
+		const docs = await Organization.find(filter)
+			.sort({ createdAt: -1 })
+			.limit(Number(limit))
+			.skip((Number(page) - 1) * Number(limit));
+		const count = await Organization.countDocuments(filter);
+		return res.json({ success: true, data: docs, count, page: Number(page), totalPages: Math.ceil(count / Number(limit)) });
+	} catch (error) {
+		return res.status(400).json({ success: false, message: error.message });
+	}
+};
+
+// Get organization details
+exports.getOrganization = async (req, res) => {
+	try {
+		const { id } = req.params;
+		const org = await Organization.findById(id);
+		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+		return res.json({ success: true, data: org });
+	} catch (error) {
+		return res.status(400).json({ success: false, message: error.message });
+	}
+};
+
+// Update organization
+exports.updateOrganization = async (req, res) => {
+	try {
+		const { id } = req.params;
+		const { name, slug, status, metadata } = req.body;
+		const set = {};
+		if (name) set.name = name;
+		if (typeof status !== 'undefined') set.status = status;
+		if (typeof metadata !== 'undefined') set.metadata = metadata;
+		if (slug) set.slug = slugify(slug);
+		if (set.slug) {
+			const dup = await Organization.findOne({ slug: set.slug, _id: { $ne: id } });
+			if (dup) return res.status(400).json({ success: false, message: 'slug already exists' });
+		}
+		const org = await Organization.findByIdAndUpdate(id, { $set: set }, { new: true });
+		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+		return res.json({ success: true, data: org });
+	} catch (error) {
+		return res.status(400).json({ success: false, message: error.message });
+	}
+};
+
+// Suspend/restore
+exports.suspendOrganization = async (req, res) => {
+	try {
+		const { id } = req.params;
+		const org = await Organization.findByIdAndUpdate(id, { $set: { status: 'suspended' } }, { new: true });
+		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+		return res.json({ success: true, data: org });
+	} catch (error) {
+		return res.status(400).json({ success: false, message: error.message });
+	}
+};
+
+exports.restoreOrganization = async (req, res) => {
+	try {
+		const { id } = req.params;
+		const org = await Organization.findByIdAndUpdate(id, { $set: { status: 'active' } }, { new: true });
+		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+		return res.json({ success: true, data: org });
+	} catch (error) {
+		return res.status(400).json({ success: false, message: error.message });
+	}
+};
+
+// exports.uploadLogo = async (req,res) => {
+// 	try
+// 	{
+//     const {fileName, contentType} = req.body;
+
+// 	}
+// 	catch
+// 	{
+
+// 	}
+// }
+
+// Create new client
+exports.createClient = async (req, res) => {
+    try {
+        const id = req.org && (req.org._id || req.org.id); // org id
+        if (!id) return res.status(400).json({ success: false, message: 'Organization context missing' });
+      const {
+        businessName,
+        businessOwnerName,
+        email,
+        businessNumber,
+        businessGSTNumber,
+        businessPANNumber,
+        businessMobileNumber,
+        businessCategory,
+        businessAddress,
+        city,
+        pinCode,
+        businessLogo,
+        businessWebsite,
+        businessYoutubeChannel,
+        turnOverRange
+      } = req.body;
+  
+	  const organization = await Organization.findById(id);
+	  if (!organization) return res.status(404).json({ success: false, message: 'Organization not found' });
+
+      // Validate required fields
+      const requiredFields = {
+        businessName,
+        businessOwnerName,
+        email,
+        businessNumber,
+        businessGSTNumber,
+        businessPANNumber,
+        businessMobileNumber,
+        businessCategory,
+        businessAddress,
+        city,
+        pinCode
+      };
+  
+      for (const [field, value] of Object.entries(requiredFields)) {
+        if (!value || !value.toString().trim()) {
+          return res.status(400).json({ 
+            success: false, 
+            message: `${field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())} is required` 
+          });
+        }
+      }
+  
+      // Check if client already exists
+      const existingClient = await User.findOne({ email: email.toLowerCase().trim() });
+      if (existingClient) {
+		console.log(existingClient)
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Client with this email already exists' 
+        });
+      }
+  
+      // Generate a secure temporary password
+      const tempPassword = generateTempPassword();
+  
+      // Create new client
+      const client = await User.create({
+        name: businessOwnerName.trim(),
+        email: email.toLowerCase().trim(),
+        password: tempPassword,
+        role: 'client',
+        status: 'pending',
+        businessName: businessName.trim(),
+        businessOwnerName: businessOwnerName.trim(),
+        businessNumber: businessNumber.trim(),
+        businessGSTNumber: businessGSTNumber.trim(),
+        businessPANNumber: businessPANNumber.trim(),
+        businessMobileNumber: businessMobileNumber.trim(),
+        businessCategory: businessCategory.trim(),
+        businessAddress: businessAddress.trim(),
+        city: city.trim(),
+        pinCode: pinCode.trim(),
+        businessLogo: businessLogo || null,
+        businessWebsite: businessWebsite ? businessWebsite.trim() : null,
+        businessYoutubeChannel: businessYoutubeChannel ? businessYoutubeChannel.trim() : null,
+        turnOverRange: turnOverRange || null,
+      });
+      client.organization.push(id);
+      await client.save();
+      
+	  organization.clients.push({ client: client._id, role: 'member', status: 'active', joinedAt: new Date() });
+	  await organization.save();
+      // Ensure user ID is generated (fallback if pre-save hook fails)
+      if (!client.userId) {
+        await client.generateUserId();
+      }
+  
+      console.log('Client created successfully:', {
+        id: client._id,
+        userId: client.userId,
+        email: client.email,
+        businessName: client.businessName
+      });
+  
+      // Return client data with generated user ID
+      res.status(201).json({
+        success: true,
+        message: 'Client created successfully',
+        client: {
+          id: client._id,
+          userId: client.userId,
+          name: client.name,
+          email: client.email,
+          businessName: client.businessName,
+          businessOwnerName: client.businessOwnerName,
+          businessCategory: client.businessCategory,
+          city: client.city,
+          status: client.status,
+          createdAt: client.createdAt,
+          tempPassword: tempPassword // Only show once for setup
+        }
+      });
+    } catch (error) {
+      console.error('Create client error:', error);
+      
+      // Handle specific MongoDB errors
+      if (error.code === 11000) {
+        const field = Object.keys(error.keyPattern)[0];
+        return res.status(400).json({ 
+          success: false, 
+          message: `${field === 'email' ? 'Email' : 'User ID'} already exists` 
+        });
+      }
+      
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to create client. Please try again.' 
+      });
+    }
+};
+  
+  // Helper function to generate secure temporary password
+  function generateTempPassword() {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    const symbols = '!@#$%&*';
+    let password = '';
+    
+    // Ensure at least one uppercase, one lowercase, one number, and one symbol
+    password += chars.charAt(Math.floor(Math.random() * 25)); // Uppercase
+    password += chars.charAt(Math.floor(Math.random() * 25) + 25); // Lowercase
+    password += chars.charAt(Math.floor(Math.random() * 8) + 50); // Number
+    password += symbols.charAt(Math.floor(Math.random() * symbols.length)); // Symbol
+    
+    // Fill the rest randomly
+    for (let i = 4; i < 12; i++) {
+      const allChars = chars + symbols;
+      password += allChars.charAt(Math.floor(Math.random() * allChars.length));
+    }
+    
+    // Shuffle the password
+    return password.split('').sort(() => Math.random() - 0.5).join('');
+  }
+
+// Add client membership
+exports.addClient = async (req, res) => {
+	try {
+		const { id } = req.org._id; // org id
+		const { clientId, role = 'member', status = 'active', settings } = req.body;
+		if (!clientId) return res.status(400).json({ success: false, message: 'clientId is required' });
+		const org = await Organization.findById(id);
+		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+		if (org.status === 'suspended') return res.status(400).json({ success: false, message: 'Organization is suspended' });
+        // Membership must point to User, not Client
+        const existsClient = await User.findById(clientId).select('_id');
+		if (!existsClient) return res.status(404).json({ success: false, message: 'Client not found' });
+		const already = (org.clients || []).some(m => String(m.client) === String(clientId));
+		if (already) return res.status(400).json({ success: false, message: 'Client already in organization' });
+		org.clients.push({
+			client: clientId,
+			role,
+			status,
+			joinedAt: status === 'active' ? new Date() : undefined,
+			settings: settings || {}
+		});
+		await org.save();
+		return res.status(201).json({ success: true, data: org });
+	} catch (error) {
+		return res.status(400).json({ success: false, message: error.message });
+	}
+};
+
+// Update client role/status
+exports.updateClient = async (req, res) => {
+	try {
+		const { id } = req.org._id; // org id
+		const { clientId } = req.params; // client id
+		const { role, status, settings } = req.body;
+		const org = await Organization.findById(id);
+		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+		const membership = (org.clients || []).find(m => String(m.client) === String(clientId));
+		if (!membership) return res.status(404).json({ success: false, message: 'Client not in organization' });
+		if (typeof role !== 'undefined') membership.role = role;
+		if (typeof status !== 'undefined') membership.status = status;
+		if (typeof settings !== 'undefined') membership.settings = settings;
+		if (membership.status === 'active' && !membership.joinedAt) membership.joinedAt = new Date();
+		await org.save();
+		return res.json({ success: true, data: org });
+	} catch (error) {
+		return res.status(400).json({ success: false, message: error.message });
+	}
+};
+
+// Remove client membership
+exports.removeClient = async (req, res) => {
+	try {
+        const { id } = req.org._id; // org id
+		const { clientId } = req.params; // client id		
+        const org = await Organization.findById(id);
+		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+		org.clients = (org.clients || []).filter(m => String(m.client) !== String(clientId));
+		await org.save();
+		return res.json({ success: true, data: org });
+	} catch (error) {
+		return res.status(error.statusCode || 400).json({ success: false, message: error.message });
+	}
+};
+
+// List clients in an organization (for authenticated organization)
+exports.listClients = async (req, res) => {
+	try {
+        // Prefer org context; fallback to optional slug param if you decide to expose one
+        const slug = (req.org && req.org.slug) || (req.params && req.params.slug);
+        if (!slug) return res.status(400).json({ success: false, message: 'Organization context missing' });
+
+		const org = await Organization.findOne({ slug })
+			.populate({
+				path: 'clients.client',
+				select: 'name email businessName businessMobileNumber businessAddress city pinCode status createdAt'
+			});
+		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+
+		const members = (org.clients || []).map(m => ({
+			clientId: m.client?._id,
+			name: m.client?.name,
+			email: m.client?.email,
+			businessName: m.client?.businessName,
+			businessMobileNumber: m.client?.businessMobileNumber,
+			businessAddress: m.client?.businessAddress,
+			city: m.client?.city,
+			pinCode: m.client?.pinCode,
+			status: m.status,
+			role: m.role,
+			joinedAt: m.joinedAt,
+			createdAt: m.client?.createdAt
+		}));
+
+		return res.json({ success: true, data: members });
+	} catch (error) {
+		return res.status(400).json({ success: false, message: error.message });
+	}
+};
+
+// Public: List clients by organization identifier (slug or name)
+exports.listClientsByIdentifier = async (req, res) => {
+	try {
+		const { name, q, page = 1, limit = 20 } = req.body;
+		if (!name) {
+			return res.status(400).json({ success: false, message: 'Provide name' });
+		}
+
+		const filter = {};
+        const slug = slugify(name)
+		filter.slug = slug;
+
+		const org = await Organization.findOne(filter)
+			.populate({
+				path: 'clients.client',
+				select: 'name email businessName businessMobileNumber businessAddress businessLogo city pinCode status createdAt'
+			});
+		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+
+		let members = (org.clients || []).map(m => ({
+			clientId: m.client?._id,
+			name: m.client?.name,
+			email: m.client?.email,
+			businessName: m.client?.businessName,
+			businessMobileNumber: m.client?.businessMobileNumber,
+			businessAddress: m.client?.businessAddress,
+			businessLogo: m.client?.businessLogo,
+			city: m.client?.city,
+			pinCode: m.client?.pinCode,
+			status: m.status,
+			role: m.role,
+			joinedAt: m.joinedAt,
+			createdAt: m.client?.createdAt
+		}));
+
+		// Optional filter by client query
+		if (q) {
+			const regex = new RegExp(String(q).trim(), 'i');
+			members = members.filter(m =>
+				regex.test(m.name || '') ||
+				regex.test(m.email || '') ||
+				regex.test(m.businessName || '') ||
+				regex.test(m.businessMobileNumber || '') ||
+				regex.test(m.city || '')
+			);
+		}
+
+		const total = members.length;
+		const p = Math.max(1, Number(page));
+		const l = Math.max(1, Math.min(100, Number(limit)));
+		const start = (p - 1) * l;
+		const end = start + l;
+		const pageData = members.slice(start, end);
+
+		return res.json({ success: true, data: pageData, count: total, page: p, totalPages: Math.ceil(total / l) });
+	} catch (error) {
+		return res.status(400).json({ success: false, message: error.message });
+	}
+};
+

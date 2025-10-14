@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Admin = require('../models/Admin');
 const Evaluator = require('../models/Evaluator');
+const Superadmin = require('../models/Superadmin');
 
 // Verify evaluator token
 exports.verifyTokenforevaluator = async (req, res, next) => {
@@ -86,6 +87,35 @@ exports.verifyAdminToken = async (req, res, next) => {
     next();
   } catch (error) {
     console.error('Admin token verification error:', error);
+    return res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+};
+
+// Verify admin token
+exports.verifySuperadminToken = async (req, res, next) => {
+  try {
+    // Get token from header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+    
+    const token = authHeader.split(' ')[1];
+    
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Find admin by id
+    const superadmin = await Superadmin.findById(decoded.id).select('-password');
+    if (!superadmin) {
+      return res.status(401).json({ success: false, message: 'Invalid token' });
+    }
+    
+    // Add admin to request object
+    req.superadmin = superadmin;
+    next();
+  } catch (error) {
+    console.error('Superadmin token verification error:', error);
     return res.status(401).json({ success: false, message: 'Invalid token' });
   }
 };

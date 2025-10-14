@@ -342,28 +342,30 @@ exports.getCreditRechargePlansWithItems = async (req, res) => {
             
             switch(item.itemType.toLowerCase()) {
               case 'book':
-                referencedItem = await Book.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                referencedItem = await Book.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl ');
                 break;
               case 'workbook':
-                referencedItem = await Workbook.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                referencedItem = await Workbook.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl ');
                 break;
               case 'objective-test':
-                referencedItem = await ObjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                referencedItem = await ObjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl startsAt endsAt');
+                console.log(referencedItem)
                 break;
               case 'subjective-test':
-                referencedItem = await SubjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                referencedItem = await SubjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl startsAt endsAt');
                 break;
               default:
                 console.log(`Unknown item type: ${item.itemType}`);
             }
             
             if(referencedItem) {
-              // Store the referenced item with image URLs
+              // Store selected fields from the referenced item including scheduling
               item.referencedItem = {
                 category: referencedItem.category || referencedItem.mainCategory,
                 subCategory: referencedItem.subCategory || referencedItem.subcategory,
+                startsAt: referencedItem.startsAt || null,
+                endsAt: referencedItem.endsAt || null
               };
-              console.log('Referenced item:', item.referencedItem);
             }
           } catch(refError) {
             console.error(`Error fetching referenced item ${item.referenceId}:`, refError);
@@ -380,7 +382,9 @@ exports.getCreditRechargePlansWithItems = async (req, res) => {
         items: plan.items.map(item => ({
           ...item.toObject(),
           category: item.referencedItem ? item.referencedItem.category : null,
-          subCategory: item.referencedItem ? item.referencedItem.subCategory : null
+          subCategory: item.referencedItem ? item.referencedItem.subCategory : null,
+          startsAt: item.referencedItem ? item.referencedItem.startsAt : null,
+          endsAt: item.referencedItem ? item.referencedItem.endsAt : null
         }))
       }))
     });
