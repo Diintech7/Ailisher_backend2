@@ -14,14 +14,20 @@ router.get('/public/clients', async (req, res) => {
   return organizationController.listClientsByIdentifier(req, res);
 });
 
+router.post('/clients', verifyOrganizationToken, async (req, res) => {
+	return organizationController.addClient(req, res);
+});
+
+
 // Self-serve membership management for the authenticated organization
 router.get('/clients', verifyOrganizationToken, async (req, res) => {
 	return organizationController.listClients(req, res);
 });
 
-router.post('/clients', verifyOrganizationToken, async (req, res) => {
-	return organizationController.addClient(req, res);
-});
+// // Create a brand new Client and attach to this organization
+// router.post('/upload-logo', verifyOrganizationToken, async (req, res) => {
+// 	return organizationController.uploadLogo(req,res);
+// });
 
 // Create a brand new Client and attach to this organization
 router.post('/clients/create', verifyOrganizationToken, async (req, res) => {

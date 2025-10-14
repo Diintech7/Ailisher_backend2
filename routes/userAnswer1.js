@@ -980,8 +980,29 @@ router.get('/questions/:questionId/answers/:answerId/evaluation',
             }
           });
         }
-        const questionData = answerBefore.questionId;
+        console.log(answerBefore)
+        let questionData = answerBefore.questionId;
+        // Fallback: fetch question if not populated
+        if (!questionData || !questionData.metadata) {
+          try {
+            questionData = await AiswbQuestion.findById(answerBefore.questionId).select('question metadata');
+          } catch (_) {
+            // ignore and handle below if still missing
+          }
+        }
+        if (!questionData || !questionData.metadata) {
+          return res.status(500).json({
+            success: false,
+            message: "Question metadata not available",
+            error: {
+              code: "QUESTION_METADATA_MISSING",
+              details: "Unable to load question or its metadata for maximumMarks"
+            }
+          });
+        }
+        console.log(questionData)
         const maxMarks = questionData.metadata?.maximumMarks || 10;
+        console.log(maxMarks)
         if (marks !== undefined && marks > maxMarks) {
           return res.status(400).json({
             success: false,

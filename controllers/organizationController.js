@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 const Organization = require('../models/Organization');
 const Client = require('../models/Client'); // legacy Client model (not used for membership)
 const User = require('../models/User');
+const { path } = require('@ffmpeg-installer/ffmpeg');
+const { generatePresignedUrl } = require('../utils/r2');
 
 // Helpers
 function slugify(name) {
@@ -114,17 +116,34 @@ exports.restoreOrganization = async (req, res) => {
 	}
 };
 
-// exports.uploadLogo = async (req,res) => {
-// 	try
-// 	{
-//     const {fileName, contentType} = req.body;
+exports.uploadLogo = async (req,res) => {
+	try
+	{
+	const {id} = req.org._id;
+    const {fileName, contentType} = req.body;
+	if(!fileName || !contentType)
+	{
+		return res.status(400).json({
+			success:false,
+			message:'file name and content type are required'
+		})
+	}
+	const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+	const ext = path.extname(fileName);
+    const Key = `/organization/${id}/logo/${uniqueSuffix}${ext}`;
 
-// 	}
-// 	catch
-// 	{
+	const uploadUrl = await generatePresignedUrl(key);
 
-// 	}
-// }
+	return res.status(200).json({
+		success: true,
+		uploadUrl,
+		key,
+	  });
+	} catch (error) {
+	  console.error("Get cover image upload URL error:", error);
+	  return res.status(500).json({ success: false, message: "Server Error" });
+	}
+  };
 
 // Create new client
 exports.createClient = async (req, res) => {
