@@ -456,10 +456,10 @@ exports.getCreditRechargePlanById = async (req, res) => {
                 referencedItem = await Workbook.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
                 break;
               case 'objective-test':
-                referencedItem = await ObjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                referencedItem = await ObjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl startsAt endsAt');
                 break;
               case 'subjective-test':
-                referencedItem = await SubjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl');
+                referencedItem = await SubjectiveTest.findById(item.referenceId).select('title name description category mainCategory subCategory subcategory coverImageKey coverImageUrl imageKey imageUrl startsAt endsAt');
                 break;
               default:
                 console.log(`Unknown item type: ${item.itemType}`);
@@ -482,6 +482,8 @@ exports.getCreditRechargePlanById = async (req, res) => {
                 category: referencedItem.category || referencedItem.mainCategory,
                 subCategory: referencedItem.subCategory || referencedItem.subcategory,
                 coverImageUrl: referencedItem.coverImageUrl || referencedItem.imageUrl,
+                startsAt: referencedItem.startsAt || null,
+                endsAt: referencedItem.endsAt || null,
                 // imageUrl: referencedItem.imageUrl
               };
               // console.log('Referenced item:', item.referencedItem);

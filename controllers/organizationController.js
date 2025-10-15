@@ -468,10 +468,11 @@ exports.generateClientLoginToken = async (req, res) => {
 	  
 	  // Find client by ID
 	  const client = await OrgClient.findById(clientId);
+	  console.log(client);
 	  if (!client || client.role !== 'client') {
 		return res.status(404).json({ success: false, message: 'Client not found' });
 	  }
-	  
+
 	  // Generate a short-lived token for this client (e.g., 1 hour)
 	  const token = jwt.sign({ 
 		id: client._id,
@@ -490,7 +491,10 @@ exports.generateClientLoginToken = async (req, res) => {
 		  email: client.email,
 		  role: client.role
 		}
+
 	  });
+	  console.log(token);
+
 	} catch (error) {
 	  console.error('Generate client login token error:', error);
 	  res.status(500).json({ success: false, message: 'Server error' });
