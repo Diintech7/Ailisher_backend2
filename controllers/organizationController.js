@@ -4,6 +4,7 @@ const Client = require('../models/Client'); // legacy Client model (not used for
 const User = require('../models/User');
 const { path } = require('@ffmpeg-installer/ffmpeg');
 const { generatePresignedUrl } = require('../utils/r2');
+const OrgClient = require('../models/OrgClient');
 
 // Helpers
 function slugify(name) {
@@ -196,7 +197,7 @@ exports.createClient = async (req, res) => {
       }
   
       // Check if client already exists
-      const existingClient = await User.findOne({ email: email.toLowerCase().trim() });
+      const existingClient = await OrgClient.findOne({organization: id, email: email.toLowerCase().trim() });
       if (existingClient) {
 		console.log(existingClient)
         return res.status(400).json({ 
@@ -209,7 +210,7 @@ exports.createClient = async (req, res) => {
       const tempPassword = generateTempPassword();
   
       // Create new client
-      const client = await User.create({
+      const client = await OrgClient.create({
         name: businessOwnerName.trim(),
         email: email.toLowerCase().trim(),
         password: tempPassword,
@@ -230,7 +231,7 @@ exports.createClient = async (req, res) => {
         businessYoutubeChannel: businessYoutubeChannel ? businessYoutubeChannel.trim() : null,
         turnOverRange: turnOverRange || null,
       });
-      client.organization.push(id);
+      client.organization = id;
       await client.save();
       
 	  organization.clients.push({ client: client._id, role: 'member', status: 'active', joinedAt: new Date() });
@@ -285,7 +286,7 @@ exports.createClient = async (req, res) => {
 };
   
   // Helper function to generate secure temporary password
-  function generateTempPassword() {
+function generateTempPassword() {
     const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
     const symbols = '!@#$%&*';
     let password = '';
@@ -304,56 +305,196 @@ exports.createClient = async (req, res) => {
     
     // Shuffle the password
     return password.split('').sort(() => Math.random() - 0.5).join('');
-  }
+}
 
 // Add client membership
-exports.addClient = async (req, res) => {
-	try {
-		const { id } = req.org._id; // org id
-		const { clientId, role = 'member', status = 'active', settings } = req.body;
-		if (!clientId) return res.status(400).json({ success: false, message: 'clientId is required' });
-		const org = await Organization.findById(id);
-		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
-		if (org.status === 'suspended') return res.status(400).json({ success: false, message: 'Organization is suspended' });
-        // Membership must point to User, not Client
-        const existsClient = await User.findById(clientId).select('_id');
-		if (!existsClient) return res.status(404).json({ success: false, message: 'Client not found' });
-		const already = (org.clients || []).some(m => String(m.client) === String(clientId));
-		if (already) return res.status(400).json({ success: false, message: 'Client already in organization' });
-		org.clients.push({
-			client: clientId,
-			role,
-			status,
-			joinedAt: status === 'active' ? new Date() : undefined,
-			settings: settings || {}
-		});
-		await org.save();
-		return res.status(201).json({ success: true, data: org });
-	} catch (error) {
-		return res.status(400).json({ success: false, message: error.message });
-	}
-};
+// exports.addClient = async (req, res) => {
+// 	try {
+// 		const { id } = req.org._id; // org id
+// 		const { clientId, role = 'member', status = 'active', settings } = req.body;
+// 		if (!clientId) return res.status(400).json({ success: false, message: 'clientId is required' });
+// 		const org = await Organization.findById(id);
+// 		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+// 		if (org.status === 'suspended') return res.status(400).json({ success: false, message: 'Organization is suspended' });
+//         // Membership must point to User, not Client
+//         const existsClient = await User.findById(clientId).select('_id');
+// 		if (!existsClient) return res.status(404).json({ success: false, message: 'Client not found' });
+// 		const already = (org.clients || []).some(m => String(m.client) === String(clientId));
+// 		if (already) return res.status(400).json({ success: false, message: 'Client already in organization' });
+// 		org.clients.push({
+// 			client: clientId,
+// 			role,
+// 			status,
+// 			joinedAt: status === 'active' ? new Date() : undefined,
+// 			settings: settings || {}
+// 		});
+// 		await org.save();
+// 		return res.status(201).json({ success: true, data: org });
+// 	} catch (error) {
+// 		return res.status(400).json({ success: false, message: error.message });
+// 	}
+// };
 
-// Update client role/status
+// Update existing client
 exports.updateClient = async (req, res) => {
 	try {
-		const { id } = req.org._id; // org id
-		const { clientId } = req.params; // client id
-		const { role, status, settings } = req.body;
-		const org = await Organization.findById(id);
-		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
-		const membership = (org.clients || []).find(m => String(m.client) === String(clientId));
-		if (!membership) return res.status(404).json({ success: false, message: 'Client not in organization' });
-		if (typeof role !== 'undefined') membership.role = role;
-		if (typeof status !== 'undefined') membership.status = status;
-		if (typeof settings !== 'undefined') membership.settings = settings;
-		if (membership.status === 'active' && !membership.joinedAt) membership.joinedAt = new Date();
-		await org.save();
-		return res.json({ success: true, data: org });
+	  const orgId = req.org && (req.org._id || req.org.id);
+	  if (!orgId) {
+		return res.status(400).json({ success: false, message: 'Organization context missing' });
+	  }
+  
+	  const { clientId } = req.params;
+	  if (!clientId) {
+		return res.status(400).json({ success: false, message: 'Client ID is required' });
+	  }
+  
+	  const organization = await Organization.findById(orgId);
+	  if (!organization) {
+		return res.status(404).json({ success: false, message: 'Organization not found' });
+	  }
+  
+	  const client = await OrgClient.findOne({ _id: clientId, organization: orgId });
+	  if (!client) {
+		return res.status(404).json({ success: false, message: 'Client not found or not associated with this organization' });
+	  }
+  
+	  const {
+		businessName,
+		businessOwnerName,
+		email,
+		businessNumber,
+		businessGSTNumber,
+		businessPANNumber,
+		businessMobileNumber,
+		businessCategory,
+		businessAddress,
+		city,
+		pinCode,
+		businessLogo,
+		businessWebsite,
+		businessYoutubeChannel,
+		turnOverRange,
+		status // optional: update status
+	  } = req.body;
+  
+	  // Prevent duplicate email (if email changed)
+	  if (email && email.toLowerCase().trim() !== client.email) {
+		const existing = await OrgClient.findOne({
+		  organization: orgId,
+		  email: email.toLowerCase().trim(),
+		  _id: { $ne: clientId }
+		});
+		if (existing) {
+		  return res.status(400).json({
+			success: false,
+			message: 'Client with this email already exists'
+		  });
+		}
+		client.email = email.toLowerCase().trim();
+	  }
+  
+	  // Update only provided fields (partial update)
+	  const updatableFields = {
+		businessName,
+		businessOwnerName,
+		businessNumber,
+		businessGSTNumber,
+		businessPANNumber,
+		businessMobileNumber,
+		businessCategory,
+		businessAddress,
+		city,
+		pinCode,
+		businessLogo,
+		businessWebsite,
+		businessYoutubeChannel,
+		turnOverRange,
+		status
+	  };
+  
+	  Object.entries(updatableFields).forEach(([key, value]) => {
+		if (value !== undefined && value !== null && value.toString().trim() !== '') {
+		  client[key] = typeof value === 'string' ? value.trim() : value;
+		}
+	  });
+  
+	  await client.save();
+  
+	  console.log('Client updated successfully:', {
+		id: client._id,
+		email: client.email,
+		businessName: client.businessName
+	  });
+  
+	  res.status(200).json({
+		success: true,
+		message: 'Client updated successfully',
+		client: {
+		  id: client._id,
+		  userId: client.userId,
+		  name: client.name,
+		  email: client.email,
+		  businessName: client.businessName,
+		  businessOwnerName: client.businessOwnerName,
+		  businessCategory: client.businessCategory,
+		  city: client.city,
+		  status: client.status,
+		  updatedAt: client.updatedAt
+		}
+	  });
 	} catch (error) {
-		return res.status(400).json({ success: false, message: error.message });
+	  console.error('Update client error:', error);
+  
+	  if (error.code === 11000) {
+		const field = Object.keys(error.keyPattern)[0];
+		return res.status(400).json({
+		  success: false,
+		  message: `${field === 'email' ? 'Email' : 'User ID'} already exists`
+		});
+	  }
+  
+	  res.status(500).json({
+		success: false,
+		message: error.message || 'Failed to update client. Please try again.'
+	  });
 	}
-};
+  };
+
+// Generate login token for client (admin impersonation)
+exports.generateClientLoginToken = async (req, res) => {
+	try {
+	  const clientId = req.params.id;
+	  
+	  // Find client by ID
+	  const client = await OrgClient.findById(clientId);
+	  if (!client || client.role !== 'client') {
+		return res.status(404).json({ success: false, message: 'Client not found' });
+	  }
+	  
+	  // Generate a short-lived token for this client (e.g., 1 hour)
+	  const token = jwt.sign({ 
+		id: client._id,
+		type: 'client',
+		clientId: client._id
+	  }, process.env.JWT_SECRET, {
+		expiresIn: '5h'
+	  });
+	  
+	  res.json({
+		success: true,
+		token,
+		user: {
+		  id: client._id,
+		  name: client.name,
+		  email: client.email,
+		  role: client.role
+		}
+	  });
+	} catch (error) {
+	  console.error('Generate client login token error:', error);
+	  res.status(500).json({ success: false, message: 'Server error' });
+	}
+  };
 
 // Remove client membership
 exports.removeClient = async (req, res) => {

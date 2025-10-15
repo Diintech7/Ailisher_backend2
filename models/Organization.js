@@ -58,14 +58,8 @@ const OrganizationSchema = new mongoose.Schema({
 			_id: false,
 			client: {
 				type: mongoose.Schema.Types.ObjectId,
-				ref: 'User',
+				ref: 'OrgClient',
 				required: true,
-				index: true
-			},
-			role: {
-				type: String,
-				enum: ['member', 'manager', 'admin'],
-				default: 'member',
 				index: true
 			},
 			status: {
