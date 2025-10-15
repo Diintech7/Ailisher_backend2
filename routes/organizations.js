@@ -42,6 +42,11 @@ router.delete('/clients/:clientId', verifyOrganizationToken, async (req, res) =>
 	return organizationController.removeClient(req, res);
 });
 
+// Generate login token for a client (for admin impersonation)
+router.post(
+	"/clients/:id/login-token",verifyOrganizationToken,organizationController.generateClientLoginToken
+  );
+
 module.exports = router;
 
 

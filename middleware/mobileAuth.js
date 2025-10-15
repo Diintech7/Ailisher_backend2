@@ -2,6 +2,7 @@
 const jwt = require('jsonwebtoken');
 const MobileUser = require('../models/MobileUser');
 const User = require('../models/User');
+const OrgClient = require('../models/OrgClient');
 
 // Generate JWT token
 const generateToken = (userId, mobile, clientId) => {
@@ -137,11 +138,20 @@ const checkClientAccess = (allowedClients = []) => {
       }
 
       // Validate client exists and is active
-      const client = await User.findOne({
+      let client = await User.findOne({
         userId: clientId,
         role: 'client',
         status: 'active'
       });
+
+      if(!client)
+      {
+        client = await OrgClient.findOne({
+          userId: clientId,
+          role: 'client',
+          status: 'active'
+        });
+      }
 
       if (!client) {
         return res.status(400).json({

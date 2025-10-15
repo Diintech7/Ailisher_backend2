@@ -104,11 +104,21 @@ MobileUserSchema.pre('save', async function(next) {
     }
     
     const User = mongoose.model('User');
-    const client = await User.findOne({
+    const OrgClient = mongoose.model('OrgClient');
+    let client = await User.findOne({
       userId: this.clientId,
       role: 'client',
       status: 'active'
     });
+
+    if(!client)
+    {
+      client = await OrgClient.findOne({
+        userId: this.clientId,
+        role: 'client',
+        status: 'active'
+      });
+    }
     
     if (!client) {
       next(new Error('Invalid client ID or client is not active.'));

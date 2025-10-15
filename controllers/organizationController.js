@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
 const Organization = require('../models/Organization');
 const Client = require('../models/Client'); // legacy Client model (not used for membership)
 const User = require('../models/User');
@@ -561,12 +562,13 @@ exports.listClientsByIdentifier = async (req, res) => {
 		const org = await Organization.findOne(filter)
 			.populate({
 				path: 'clients.client',
-				select: 'name email businessName businessMobileNumber businessAddress businessLogo city pinCode status createdAt'
+				select: 'userId name email businessName businessMobileNumber businessAddress businessLogo city pinCode status createdAt'
 			});
 		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
 
 		let members = (org.clients || []).map(m => ({
-			clientId: m.client?._id,
+			id: m.client?._id,
+			clientId: m.client?.userId,
 			name: m.client?.name,
 			email: m.client?.email,
 			businessName: m.client?.businessName,

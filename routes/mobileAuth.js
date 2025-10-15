@@ -13,6 +13,7 @@ const {
   checkClientAccess,
 } = require("../middleware/mobileAuth");
 const CreditAccount = require("../models/CreditAccount");
+const OrgClient = require("../models/OrgClient");
 
 // Validation helpers
 const validateMobile = (mobile) => /^\d{10}$/.test(mobile);
@@ -32,21 +33,32 @@ const validateClient = async (req, res, next) => {
       });
     }
 
-    const client = await User.findOne({
+    let client = await User.findOne({
       userId: clientId,
       role: "client",
       status: "active",
     });
 
-    if (!client) {
+    if(!client)
+    {
+      client = await OrgClient.findOne({
+        userId: clientId,
+        role: "client",
+        status: "active",
+      });
+    }
+
+    else if (!client) {
       return res.status(400).json({
         success: false,
         responseCode: 1501, // Same as check-user invalid client
         message: "Invalid client ID or client is not active.",
       });
     }
+    console.log(client);
 
     req.client = client; // Attach client info to request
+    console.log(req.client);
     next();
   } catch (error) {
     console.error("Client validation error:", error);
@@ -128,7 +140,8 @@ router.post("/login", validateClient, async (req, res) => {
     const { mobile } = req.body;
     const clientId = req.params.clientId;
     const client = req.client;
-
+    console.log(clientId);
+    console.log(client);
     if (!mobile || !validateMobile(mobile)) {
       return res.status(400).json({
         success: false,
