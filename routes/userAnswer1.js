@@ -1033,9 +1033,15 @@ router.get('/questions/:questionId/answers/:answerId/evaluation',
           ...evaluationUpdate
         };
         // Use findOneAndUpdate to update only the evaluation field
+        const updateSet = { evaluation: updatedEvaluation };
+        // Also update Hindi evaluation score/relevancy if Hindi evaluation exists
+        if (answerBefore && answerBefore.hindiEvaluation) {
+          if (accuracy !== undefined) updateSet['hindiEvaluation.relevancy'] = accuracy;
+          if (marks !== undefined) updateSet['hindiEvaluation.score'] = marks;
+        }
         const updatedAnswer = await UserAnswer.findOneAndUpdate(
           queryFilter,
-          { $set: { evaluation: updatedEvaluation } },
+          { $set: updateSet },
           { new: true }
         )
           .populate('questionId', 'question metadata')
