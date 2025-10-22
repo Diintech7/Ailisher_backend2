@@ -217,7 +217,7 @@ exports.createClient = async (req, res) => {
         email: email.toLowerCase().trim(),
         password: tempPassword,
         role: 'client',
-        status: 'pending',
+        status: 'active',
         businessName: businessName.trim(),
         businessOwnerName: businessOwnerName.trim(),
         businessNumber: businessNumber.trim(),
