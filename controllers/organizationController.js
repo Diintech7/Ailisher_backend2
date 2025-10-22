@@ -77,9 +77,10 @@ exports.getOrganization = async (req, res) => {
 exports.updateOrganization = async (req, res) => {
 	try {
 		const { id } = req.params;
-		const { name, slug, status, metadata } = req.body;
+		const { name, slug, status, metadata, authEmail} = req.body;
 		const set = {};
 		if (name) set.name = name;
+		if (email) set.authEmail = authEmail;
 		if (typeof status !== 'undefined') set.status = status;
 		if (typeof metadata !== 'undefined') set.metadata = metadata;
 		if (slug) set.slug = slugify(slug);
@@ -526,21 +527,29 @@ exports.listClients = async (req, res) => {
 		const org = await Organization.findOne({ slug })
 			.populate({
 				path: 'clients.client',
-				select: 'name email businessName businessMobileNumber businessAddress city pinCode status createdAt'
+				// select: 'name email businessName businessMobileNumber businessAddress city pinCode status createdAt'
 			});
 		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
 
 		const members = (org.clients || []).map(m => ({
-			clientId: m.client?._id,
-			name: m.client?.name,
-			email: m.client?.email,
-			businessName: m.client?.businessName,
-			businessMobileNumber: m.client?.businessMobileNumber,
-			businessAddress: m.client?.businessAddress,
-			city: m.client?.city,
-			pinCode: m.client?.pinCode,
-			status: m.status,
-			role: m.role,
+			businessAddress:m.client?.businessAddress,
+            businessCategory:m.client?.businessCategory,
+            businessGSTNumber:m.client?.businessGSTNumber,
+            businessLogo:m.client?.businessLogo,
+            businessMobileNumber:m.client?.businessMobileNumber,
+            businessName:m.client?.businessName,
+            businessNumber:m.client?.businessNumber,
+            businessOwnerName:m.client?.businessOwnerName,
+            businessPANNumber:m.client?.businessPANNumber,
+            businessWebsite:m.client?.businessWebsite,
+            businessYoutubeChannel:m.client?.businessYoutubeChannel,
+            city:m.client?.city,
+            email:m.client?.email,
+            name:m.client?.name,
+            pinCode:m.client?.pinCode,
+            role:m.client?.role,
+            status:m.client?.status,
+            turnOverRange:m.client?.turnOverRange,
 			joinedAt: m.joinedAt,
 			createdAt: m.client?.createdAt
 		}));

@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const Superadmin = require("../models/Superadmin");
 const Admin = require("../models/Admin");
 const User = require("../models/User");
+const Organization = require('../models/Organization');
 
 // Generate JWT Token for admin
 const generateToken = (id) => {
@@ -287,4 +288,42 @@ const registerclient = async (req, res) => {
   }
 };
 
-module.exports={loginSuperadmin,registerSuperadmin,getclients,getadmins,deleteclient,deleteadmin,registeradmin,registerclient}
+// Generate login token for client (admin impersonation)
+const generateOrgLoginToken = async (req, res) => {
+	try {
+	  const orgId = req.params.id;
+	  console.log(orgId)
+	  // Find client by ID
+	  const org = await Organization.findById(orgId);
+	  console.log(org);
+	  if (!org) {
+		return res.status(404).json({ success: false, message: 'org not found' });
+	  }
+
+	  // Generate a short-lived token for this client (e.g., 1 hour)
+	  const token = jwt.sign({ 
+		orgId: org._id,
+	  }, process.env.JWT_SECRET, {
+		expiresIn: '5h'
+	  });
+	  
+    console.log(token)
+	  res.json({
+		success: true,
+		token,
+		organization: {
+		  id: org._id,
+		  name: org.name,
+		  email: org.authEmail,
+		}
+
+	  });
+	  console.log(token);
+
+	} catch (error) {
+	  console.error('Generate organization login token error:', error);
+	  res.status(500).json({ success: false, message: 'Server error' });
+	}
+  };
+
+module.exports={loginSuperadmin,registerSuperadmin,getclients,getadmins,deleteclient,deleteadmin,registeradmin,registerclient,generateOrgLoginToken}

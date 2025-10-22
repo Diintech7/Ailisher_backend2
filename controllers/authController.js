@@ -1,6 +1,7 @@
 // controllers/authController.js - Authentication controller functions
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const OrgClient = require('../models/OrgClient');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -124,7 +125,12 @@ exports.validate = async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     // Find user by id
-    const user = await User.findById(decoded.id).select('-password');
+    let user = await User.findById(decoded.id).select('-password');
+
+    if(!user)
+    {
+    user = await OrgClient.findById(decoded.id).select('-password');
+    }
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid token' });
     }

@@ -117,6 +117,92 @@ const authenticateMobileUser = async (req, res, next) => {
   }
 };
 
+// Authenticate mobile user
+const authenticateUser = async (req, res, next) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    console.log(token)
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access denied. No token provided.',
+        error: {
+          code: 'NO_TOKEN',
+          details: 'Authorization header with Bearer token is required'
+        }
+      });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token.',
+        error: {
+          code: 'INVALID_TOKEN',
+          details: jwtError.message
+        }
+      });
+    }
+    
+    if (decoded.type !== 'mobile') {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token type.',
+        error: {
+          code: 'INVALID_TOKEN_TYPE',
+          details: 'This endpoint requires a mobile user token'
+        }
+      });
+    }
+
+    // Check if user exists and token matches
+    const user = await MobileUser.findOne({
+      _id: decoded.id,
+      authToken: token
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token or user not found.',
+        error: {
+          code: 'USER_NOT_FOUND',
+          details: 'User associated with this token does not exist or token has been revoked'
+        }
+      });
+    }
+    // Set user information in request
+    req.user = {
+      id: user._id,
+      mobile: user.mobile,
+      clientId: user.clientId,
+      userId: user.clientId,
+      isAuthenticated: true
+    };
+
+    console.log('Mobile user authenticated:', {
+      userId: req.user.id,
+      mobile: req.user.mobile,
+      clientId: req.user.clientId
+    });
+
+    next();
+  } catch (error) {
+    console.error('Authentication error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error during authentication.',
+      error: {
+        code: 'AUTH_SERVER_ERROR',
+        details: error.message
+      }
+    });
+  }
+};
+
 // Check client access middleware
 const checkClientAccess = (allowedClients = []) => {
   return async (req, res, next) => {
@@ -275,5 +361,6 @@ module.exports = {
   authenticateMobileUser,
   checkClientAccess,
   ensureUserBelongsToClient,
-  authenticateQRCode
+  authenticateQRCode,
+  authenticateUser
 };

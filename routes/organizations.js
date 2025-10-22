@@ -3,6 +3,8 @@ const router = express.Router();
 const orgAuthController = require('../controllers/orgAuthController');
 const organizationController = require('../controllers/organizationController');
 const { verifyOrganizationToken } = require('../middleware/orgAuth');
+const { verifyToken } = require('../middleware/auth');
+const { authenticateUser } = require('../middleware/mobileAuth');
 
 // Auth
 router.post('/register', orgAuthController.register);

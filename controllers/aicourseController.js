@@ -3,6 +3,7 @@ const AICourse = require('../models/AICourse');
 const User = require('../models/User');
 const { generatePresignedUrl, generateGetPresignedUrl, deleteObject } = require('../utils/r2');
 const AILecture = require('../models/AILecture');
+const OrgClient = require('../models/OrgClient');
 
 const getClientId = (user) => {
   return user.role === 'client' && user.userId ? user.userId : user._id.toString();
@@ -65,7 +66,7 @@ exports.createAICourse = async (req, res) => {
       return res.status(400).json({ success: false, message: 'title, overview and details are required' });
     }
 
-    const currentUser = await User.findById(req.user.id);
+    const currentUser = await User.findById(req.user.id) || await OrgClient.findById(req.user.id) ;
     if (!currentUser) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -113,7 +114,7 @@ exports.createAICourse = async (req, res) => {
 
 exports.getAICourses = async (req, res) => {
   try {
-    const currentUser = await User.findById(req.user.id);
+    const currentUser = await User.findById(req.user.id) || await OrgClient.findById(req.user.id) ;
     if (!currentUser) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }

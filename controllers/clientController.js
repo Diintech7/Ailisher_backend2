@@ -253,7 +253,7 @@ exports.getuserprofile = async (req, res) => {
       .populate('userId', 'mobile isVerified lastLoginAt')
       .select('-__v')
       .sort({ createdAt: -1 });
-
+    console.log(userProfiles)
     if (!userProfiles || userProfiles.length === 0) {
       return res.status(404).json({
         success: false,

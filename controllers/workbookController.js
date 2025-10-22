@@ -15,6 +15,7 @@ const SubjectiveQuestion = require('../models/SubjectiveQuestion');
 const MyWorkbook = require('../models/MyWorkbook'); // Make sure this is at the top if not present
 const UserPlan = require('../models/UserPlan');
 const Cart = require('../models/Cart');
+const OrgClient = require('../models/OrgClient');
 
 
 const formatDuration = (seconds) => {
@@ -229,7 +230,7 @@ exports.createWorkbook = async (req, res) => {
       isForSale, MRP, offerPrice, currency, validityDays, details, GST
     } = req.body;
 
-    const currentUser = await User.findById(req.user.id);
+    const currentUser = await User.findById(req.user.id) || await OrgClient.findById(req.user.id) ;
     if (!currentUser) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -364,7 +365,7 @@ exports.createWorkbook = async (req, res) => {
 exports.getWorkbooks = async (req, res) => {
   try {
     console.log("getting workbooks")
-    const currentUser = await User.findById(req.user.id);
+    const currentUser = await User.findById(req.user.id) || await OrgClient.findById(req.user.id) ;
     console.log(currentUser)
     if (!currentUser) {
       return res.status(404).json({ success: false, message: 'User not found' });

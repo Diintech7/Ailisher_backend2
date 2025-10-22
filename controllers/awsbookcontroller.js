@@ -1,4 +1,5 @@
 const Book = require("../models/Book");
+const OrgClient = require("../models/OrgClient");
 const User = require("../models/User");
 const {
   generatePresignedUrl,
@@ -183,7 +184,7 @@ exports.createBook = async (req, res) => {
       GST,
     }); // Debug log
 
-    const currentUser = await User.findById(req.user.id);
+    const currentUser = await User.findById(req.user.id) || await OrgClient.findById(req.user.id) ;
     if (!currentUser) {
       return res
         .status(404)
@@ -466,7 +467,7 @@ exports.createBook = async (req, res) => {
 // Get books with S3 URLs
 exports.getBooks = async (req, res) => {
   try {
-    const currentUser = await User.findById(req.user.id);
+    const currentUser = await User.findById(req.user.id) || await OrgClient.findById(req.user.id) ;
     if (!currentUser) {
       return res
         .status(404)

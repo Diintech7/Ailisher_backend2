@@ -9,7 +9,9 @@ exports.verifyOrganizationToken = async (req, res, next) => {
 		}
 		const token = authHeader.split(' ')[1];
 		const decoded = jwt.verify(token, process.env.JWT_SECRET);
+		console.log(decoded)
 		const org = await Organization.findById(decoded.orgId);
+		console.log("midd",org)
 		if (!org) return res.status(401).json({ success: false, message: 'Invalid token' });
 		req.org = org;
 		return next();
