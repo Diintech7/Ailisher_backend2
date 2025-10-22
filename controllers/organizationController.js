@@ -532,6 +532,8 @@ exports.listClients = async (req, res) => {
 		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
 
 		const members = (org.clients || []).map(m => ({
+			id: m.client?._id,
+			clientId: m.client?.userId,
 			businessAddress:m.client?.businessAddress,
             businessCategory:m.client?.businessCategory,
             businessGSTNumber:m.client?.businessGSTNumber,
