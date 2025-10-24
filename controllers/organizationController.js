@@ -506,10 +506,12 @@ exports.generateClientLoginToken = async (req, res) => {
 exports.removeClient = async (req, res) => {
 	try {
         const { id } = req.org._id; // org id
-		const { clientId } = req.params; // client id		
+		const { clientId } = req.params; // client id	
+		console.log(clientId)	
         const org = await Organization.findById(id);
 		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
 		org.clients = (org.clients || []).filter(m => String(m.client) !== String(clientId));
+		console.log(org.clients)
 		await org.save();
 		return res.json({ success: true, data: org });
 	} catch (error) {
@@ -528,7 +530,7 @@ exports.listClients = async (req, res) => {
 			.populate({
 				path: 'clients.client',
 				// select: 'name email businessName businessMobileNumber businessAddress city pinCode status createdAt'
-			});
+			}).sort({ createdAt: -1 });
 		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
 
 		const members = (org.clients || []).map(m => ({

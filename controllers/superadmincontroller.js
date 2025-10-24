@@ -56,6 +56,39 @@ const loginSuperadmin = async (req,res) => {
    }
 };
 
+// Validate superadmin token
+const validateSuperadminToken = async (req, res) => {
+  try {
+    // Get token from header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+    
+    const token = authHeader.split(' ')[1];
+    
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Find superadmin by id
+    const superadmin = await Superadmin.findById(decoded.id).select('-password');
+    if (!superadmin) {
+      return res.status(401).json({ success: false, message: 'Invalid token' });
+    }
+    
+    res.json({
+      success: true,
+      role: 'superadmin',
+      name: superadmin.name,
+      email: superadmin.email,
+      _id: superadmin._id
+    });
+  } catch (error) {
+    console.error('Superadmin token validation error:', error);
+    return res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+};
+
 const registerSuperadmin = async (req, res) => {
   try {
     const { name, email, password, superadmincode } = req.body;
@@ -326,4 +359,4 @@ const generateOrgLoginToken = async (req, res) => {
 	}
   };
 
-module.exports={loginSuperadmin,registerSuperadmin,getclients,getadmins,deleteclient,deleteadmin,registeradmin,registerclient,generateOrgLoginToken}
+module.exports={loginSuperadmin,registerSuperadmin,getclients,getadmins,deleteclient,deleteadmin,registeradmin,registerclient,generateOrgLoginToken,validateSuperadminToken}

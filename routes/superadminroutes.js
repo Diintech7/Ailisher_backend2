@@ -8,7 +8,8 @@ const {
   deleteclient,
   registeradmin,
   registerclient,
-  generateOrgLoginToken
+  generateOrgLoginToken,
+  validateSuperadminToken
 } = require('../controllers/superadmincontroller');
 const { verifySuperadminToken } = require('../middleware/auth');
 const organizationController = require("../controllers/organizationController");
@@ -18,6 +19,8 @@ const router = express.Router();
 router.post('/login', loginSuperadmin);
 
 router.post('/register', registerSuperadmin);
+
+router.get('/validate', validateSuperadminToken);
 
 router.get('/getadmins', getadmins);
 
