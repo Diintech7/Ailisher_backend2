@@ -45,7 +45,7 @@ const OrgClientSchema = new mongoose.Schema({
   },
   businessNumber: {
     type: String,
-    required: function() { return this.role === 'client'; }
+    // required: function() { return this.role === 'client'; }
   },
   businessGSTNumber: {
     type: String,
