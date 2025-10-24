@@ -40,6 +40,10 @@ router.patch('/clients/:clientId', verifyOrganizationToken, async (req, res) => 
 	return organizationController.updateClient(req, res);
 });
 
+router.patch('/clients/:clientId/toggle-status', verifyOrganizationToken, async (req, res) => {
+	return organizationController.toggleClientStatus(req, res);
+});
+
 router.delete('/clients/:clientId', verifyOrganizationToken, async (req, res) => {
 	return organizationController.removeClient(req, res);
 });

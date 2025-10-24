@@ -33,6 +33,10 @@ const OrgClientSchema = new mongoose.Schema({
     enum: ['active', 'inactive', 'pending'],
     default: 'active'
   },
+  isEnabled: {
+    type: Boolean,
+    default: true
+  },
   
   // Business registration fields
   businessName: {

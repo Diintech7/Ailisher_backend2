@@ -502,6 +502,62 @@ exports.generateClientLoginToken = async (req, res) => {
 	}
   };
 
+// Toggle client status (enable/disable)
+exports.toggleClientStatus = async (req, res) => {
+	try {
+		const { isEnabled } = req.body;
+		const orgId = req.org && (req.org._id || req.org.id);
+		if (!orgId) {
+			return res.status(400).json({ success: false, message: 'Organization context missing' });
+		}
+
+		const { clientId } = req.params;
+		if (!clientId) {
+			return res.status(400).json({ success: false, message: 'Client ID is required' });
+		}
+
+		const organization = await Organization.findById(orgId);
+		if (!organization) {
+			return res.status(404).json({ success: false, message: 'Organization not found' });
+		}
+
+		const client = await OrgClient.findOne({ _id: clientId, organization: orgId });
+		if (!client) {
+			return res.status(404).json({ success: false, message: 'Client not found or not associated with this organization' });
+		}
+
+		client.isEnabled = isEnabled;
+		client.updatedAt = new Date();
+		await client.save();
+
+		console.log('Client status toggled successfully:', {
+			id: client._id,
+			email: client.email,
+			businessName: client.businessName,
+			isEnabled: client.isEnabled
+		});
+
+		res.status(200).json({
+			success: true,
+			client: {
+				id: client._id,
+				userId: client.userId,
+				name: client.name,
+				email: client.email,
+				businessName: client.businessName,
+				isEnabled: client.isEnabled,
+				updatedAt: client.updatedAt
+			}
+		});
+	} catch (error) {
+		console.error('Toggle client status error:', error);
+		res.status(500).json({
+			success: false,
+			message: error.message || 'Failed to toggle client status. Please try again.'
+		});
+	}
+};
+
 // Remove client membership
 exports.removeClient = async (req, res) => {
 	try {
@@ -553,9 +609,11 @@ exports.listClients = async (req, res) => {
             pinCode:m.client?.pinCode,
             role:m.client?.role,
             status:m.client?.status,
+			isEnabled:m.client?.isEnabled,
             turnOverRange:m.client?.turnOverRange,
 			joinedAt: m.joinedAt,
-			createdAt: m.client?.createdAt
+			createdAt: m.client?.createdAt,
+			updatedAt: m.client?.updatedAt
 		}));
 
 		return res.json({ success: true, data: members });
@@ -596,6 +654,7 @@ exports.listClientsByIdentifier = async (req, res) => {
 			pinCode: m.client?.pinCode,
 			status: m.status,
 			role: m.role,
+			isEnabled: m.client?.isEnabled,
 			joinedAt: m.joinedAt,
 			createdAt: m.client?.createdAt
 		}));
