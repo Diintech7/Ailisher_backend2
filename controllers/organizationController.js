@@ -179,7 +179,7 @@ exports.createClient = async (req, res) => {
         businessName,
         businessOwnerName,
         email,
-        businessNumber,
+        // businessNumber,
         businessGSTNumber,
         businessPANNumber,
         businessMobileNumber,
@@ -561,17 +561,22 @@ exports.toggleClientStatus = async (req, res) => {
 // Remove client membership
 exports.removeClient = async (req, res) => {
 	try {
-        const { id } = req.org._id; // org id
+        const id = req.org._id; // org id
 		const { clientId } = req.params; // client id	
-		console.log(clientId)	
+		console.log("clientId",clientId)	
+		console.log("orgId",id)
         const org = await Organization.findById(id);
+		console.log("org",org)
 		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
-		org.clients = (org.clients || []).filter(m => String(m.client) !== String(clientId));
-		console.log(org.clients)
+
+		const client = await OrgClient.findByIdAndDelete(clientId);
+		if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
+		console.log("client",client)
+		org.clients.pull({ client: clientId });
 		await org.save();
-		return res.json({ success: true, data: org });
+		return res.json({ success: true, message: 'Client removed successfully' });
 	} catch (error) {
-		return res.status(error.statusCode || 400).json({ success: false, message: error.message });
+		return res.status(500).json({ success: false, message: 'Failed to remove client' });
 	}
 };
 
