@@ -10,7 +10,7 @@ const SubjectiveTestQuestion = require("../models/SubjectiveTestQuestion");
 const {
   generatePresignedUrl,
   generateAnnotatedImageUrl,
-} = require("../utils/s3");
+} = require("../utils/r2");
 const path = require("path");
 const Evaluation = require("../models/Evaluation");
 const EvaluatorCreditService = require("../services/evaluatorCreditService");

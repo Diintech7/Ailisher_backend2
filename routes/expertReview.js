@@ -6,7 +6,7 @@ const ReviewRequest = require('../models/ReviewRequest');
 const AiswbQuestion = require('../models/AiswbQuestion');
 const MobileUser = require('../models/MobileUser');
 const { authenticateMobileUser } = require('../middleware/mobileAuth');
-const { generatePresignedUrl, generateAnnotatedImageUrl } = require('../utils/s3');
+const { generatePresignedUrl, generateAnnotatedImageUrl } = require('../utils/r2');
 const path = require('path');
 
 // 1. 📋 Get Pending Review Requests

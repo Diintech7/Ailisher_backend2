@@ -58,7 +58,7 @@ const OrganizationSchema = new mongoose.Schema({
 			_id: false,
 			client: {
 				type: mongoose.Schema.Types.ObjectId,
-				ref: 'OrgClient',
+				ref: 'User',
 				required: true,
 				index: true
 			},

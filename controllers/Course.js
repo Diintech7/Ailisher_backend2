@@ -2,7 +2,7 @@ const path = require('path');
 const Book = require("../models/Book");
 const User = require("../models/User");
 const Course = require("../models/Course");
-const { generatePresignedUrl, generateGetPresignedUrl, deleteObject } = require("../utils/s3");
+const { generatePresignedUrl, generateGetPresignedUrl, deleteObject } = require("../utils/r2");
 
 // Get presigned URL for cover image upload
 const getuploadurl = async (req, res) => {

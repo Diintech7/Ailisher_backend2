@@ -4,7 +4,7 @@ const {
   generatePresignedUrl,
   generateGetPresignedUrl,
   deleteObject,
-} = require("../utils/s3");
+} = require("../utils/r2");
 const User = require("../models/User");
 const SubjectiveTestQuestion = require("../models/SubjectiveTestQuestion");
 const UserAnswer = require("../models/UserAnswer");

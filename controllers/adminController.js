@@ -251,13 +251,13 @@ function generateTempPassword() {
 exports.generateClientLoginToken = async (req, res) => {
   try {
     const clientId = req.params.id;
-    
+    console.log(clientId)
     // Find client by ID
     const client = await User.findById(clientId);
     if (!client || client.role !== 'client') {
       return res.status(404).json({ success: false, message: 'Client not found' });
     }
-    
+    console.log(client)
     // Generate a short-lived token for this client (e.g., 1 hour)
     const token = jwt.sign({ 
       id: client._id,

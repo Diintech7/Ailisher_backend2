@@ -6,7 +6,7 @@ const Topic = require('../models/Topic');
 const Chapter = require('../models/Chapter');
 const SubTopic = require('../models/SubTopic');
 const { verifyToken } = require('../middleware/auth');
-const { generatePresignedUrl, generateGetPresignedUrl, uploadFileToS3, deleteObject } = require('../utils/s3');
+const { generatePresignedUrl, generateGetPresignedUrl, deleteObject } = require('../utils/r2');
 
 // S3 Upload endpoint for datastore files
 router.post('/upload-s3', verifyToken, async (req, res) => {

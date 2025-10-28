@@ -9,7 +9,7 @@ const {
   generatePresignedUrl,
   generateGetPresignedUrl,
   deleteObject,
-} = require("../utils/s3");
+} = require("../utils/r2");
 const { Client } = require("twilio/lib/base/BaseTwilio");
 const { default: mongoose } = require("mongoose");
 

@@ -5,7 +5,7 @@ const {
   generatePresignedUrl,
   generateGetPresignedUrl,
   deleteObject,
-} = require("../utils/s3");
+} = require("../utils/r2");
 const path = require("path");
 
 // Helper function to format book with user info and S3 URLs

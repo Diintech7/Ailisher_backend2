@@ -5,7 +5,7 @@ const Client = require('../models/Client'); // legacy Client model (not used for
 const User = require('../models/User');
 const { path } = require('@ffmpeg-installer/ffmpeg');
 const { generatePresignedUrl } = require('../utils/r2');
-const OrgClient = require('../models/OrgClient');
+const { generateGetPresignedUrl } = require('../utils/r2');
 
 // Helpers
 function slugify(name) {
@@ -133,7 +133,7 @@ exports.uploadLogo = async (req,res) => {
 	}
 	const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
 	const ext = path.extname(fileName);
-    const Key = `/organization/${id}/logo/${uniqueSuffix}${ext}`;
+    const key = `/organization/${id}/logo/${uniqueSuffix}${ext}`;
 
 	const uploadUrl = await generatePresignedUrl(key);
 
@@ -157,7 +157,6 @@ exports.createClient = async (req, res) => {
         businessName,
         businessOwnerName,
         email,
-        businessNumber,
         businessGSTNumber,
         businessPANNumber,
         businessMobileNumber,
@@ -179,7 +178,6 @@ exports.createClient = async (req, res) => {
         businessName,
         businessOwnerName,
         email,
-        // businessNumber,
         businessGSTNumber,
         businessPANNumber,
         businessMobileNumber,
@@ -199,7 +197,7 @@ exports.createClient = async (req, res) => {
       }
   
       // Check if client already exists
-      const existingClient = await OrgClient.findOne({organization: id, email: email.toLowerCase().trim() });
+      const existingClient = await User.findOne({organization: id, email: email.toLowerCase().trim() });
       if (existingClient) {
 		console.log(existingClient)
         return res.status(400).json({ 
@@ -212,7 +210,7 @@ exports.createClient = async (req, res) => {
       const tempPassword = generateTempPassword();
   
       // Create new client
-      const client = await OrgClient.create({
+      const client = await User.create({
         name: businessOwnerName.trim(),
         email: email.toLowerCase().trim(),
         password: tempPassword,
@@ -220,7 +218,6 @@ exports.createClient = async (req, res) => {
         status: 'active',
         businessName: businessName.trim(),
         businessOwnerName: businessOwnerName.trim(),
-        businessNumber: businessNumber.trim(),
         businessGSTNumber: businessGSTNumber.trim(),
         businessPANNumber: businessPANNumber.trim(),
         businessMobileNumber: businessMobileNumber.trim(),
@@ -355,7 +352,7 @@ exports.updateClient = async (req, res) => {
 		return res.status(404).json({ success: false, message: 'Organization not found' });
 	  }
   
-	  const client = await OrgClient.findOne({ _id: clientId, organization: orgId });
+	  const client = await User.findOne({ _id: clientId, organization: orgId });
 	  if (!client) {
 		return res.status(404).json({ success: false, message: 'Client not found or not associated with this organization' });
 	  }
@@ -381,7 +378,7 @@ exports.updateClient = async (req, res) => {
   
 	  // Prevent duplicate email (if email changed)
 	  if (email && email.toLowerCase().trim() !== client.email) {
-		const existing = await OrgClient.findOne({
+		const existing = await User.findOne({
 		  organization: orgId,
 		  email: email.toLowerCase().trim(),
 		  _id: { $ne: clientId }
@@ -468,7 +465,7 @@ exports.generateClientLoginToken = async (req, res) => {
 	  const clientId = req.params.id;
 	  
 	  // Find client by ID
-	  const client = await OrgClient.findById(clientId);
+	  const client = await User.findById(clientId);
 	  console.log(client);
 	  if (!client || client.role !== 'client') {
 		return res.status(404).json({ success: false, message: 'Client not found' });
@@ -521,7 +518,7 @@ exports.toggleClientStatus = async (req, res) => {
 			return res.status(404).json({ success: false, message: 'Organization not found' });
 		}
 
-		const client = await OrgClient.findOne({ _id: clientId, organization: orgId });
+		const client = await User.findOne({ _id: clientId, organization: orgId });
 		if (!client) {
 			return res.status(404).json({ success: false, message: 'Client not found or not associated with this organization' });
 		}
@@ -569,7 +566,7 @@ exports.removeClient = async (req, res) => {
 		console.log("org",org)
 		if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
 
-		const client = await OrgClient.findByIdAndDelete(clientId);
+		const client = await User.findByIdAndDelete(clientId);
 		if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
 		console.log("client",client)
 		org.clients.pull({ client: clientId });
@@ -620,6 +617,9 @@ exports.listClients = async (req, res) => {
 			createdAt: m.client?.createdAt,
 			updatedAt: m.client?.updatedAt
 		}));
+		console.log("members",members)
+		const downloadUrl = await generateGetPresignedUrl("/covers/cover-1761550932724-148499935.png");
+		console.log("downloadUrl",downloadUrl)
 
 		return res.json({ success: true, data: members });
 	} catch (error) {

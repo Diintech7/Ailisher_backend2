@@ -219,7 +219,13 @@ function generateTempPassword() {
 // Get all clients
 exports.getAllClients = async (req, res) => {
   try {
-    const clients = await User.find({ role: 'client' })
+    const clients = await User.find({
+      role: 'client',
+      $or: [
+        { organization: null },
+        { organization: { $exists: false } }
+      ]
+    })
       .select('-password')
       .sort({ createdAt: -1 });
     

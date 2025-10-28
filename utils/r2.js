@@ -104,6 +104,48 @@ const generateGetPresignedUrl = async (key, expiresIn = 604800) => { // Default 
   }
 };
 
+// Generate presigned URL for annotated images (long-lived)
+const generateAnnotatedImageUrl = async (key) => {
+  try {
+    console.log('Generating annotated image URL for key:', key);
+    console.log('Using bucket:', process.env.AWS_BUCKET_NAME);
+    console.log('Using region:', process.env.AWS_REGION);
+
+    // Ensure the key is properly formatted
+    const formattedKey = key.startsWith('/') ? key.slice(1) : key;
+    console.log('Formatted key:', formattedKey);
+
+    const command = new GetObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: formattedKey,
+    });
+
+    console.log('Created GetObjectCommand with params:', {
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: formattedKey
+    });
+
+    // Generate URL with 1 year expiration
+    const signedUrl = await getSignedUrl(s3Client, command, { 
+      expiresIn: 604800 
+    });
+
+    console.log('Successfully generated annotated image URL');
+    console.log(signedUrl)
+    return signedUrl;
+  } catch (error) {
+    console.error('Error generating annotated image URL:', {
+      error: error.message,
+      code: error.code,
+      key: key,
+      bucket: process.env.R2_BUCKET_NAME,
+      region: process.env.R2_REGION,
+      stack: error.stack
+    });
+    throw error;
+  }
+};
+
 const deleteObject = async (key) => {
   try {
     const command = new DeleteObjectCommand({
@@ -122,5 +164,6 @@ module.exports = {
   s3Client,
   generatePresignedUrl,
   generateGetPresignedUrl,
+  generateAnnotatedImageUrl,
   deleteObject,
 };

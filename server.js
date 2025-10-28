@@ -61,6 +61,7 @@ const whatsappOtpRoutes = require('./routes/whatsappOtp')
 const notificationsRoutes = require('./routes/notifications')
 const organizationRoutes = require('./routes/organizations')
 const superadminRoutes = require('./routes/superadminroutes')
+const liveClassesRoutes = require('./routes/liveClasses')
 
 app.use(cors())
 app.use(express.json({ limit: "50mb" }))
@@ -135,6 +136,7 @@ app.use('/api/whatsapp', whatsappOtpRoutes)
 app.use('/api/notifications', notificationsRoutes)
 app.use('/api/organizations', organizationRoutes)
 app.use('/api/superadmin', superadminRoutes)
+app.use('/api/live-classes', liveClassesRoutes)
 
 // Enhanced PDF processing routes with clustering and optional auth
 app.use("/api/enhanced-pdf-embedding", require("./routes/pdfEmbedding"))
