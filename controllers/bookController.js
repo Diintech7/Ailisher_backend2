@@ -6,7 +6,7 @@ const User = require('../models/User');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const { generateGetPresignedUrl } = require('../utils/s3');
+const { generateGetPresignedUrl } = require('../utils/r2');
 
 // Configure multer storage
 const storage = multer.diskStorage({

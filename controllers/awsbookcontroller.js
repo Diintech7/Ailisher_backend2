@@ -93,7 +93,7 @@ exports.getCoverImageUploadUrl = async (req, res) => {
     // Create unique filename with timestamp
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     const ext = path.extname(fileName);
-    const key = `/covers/cover-${uniqueSuffix}${ext}`;
+    const key = `${req.user.businessName}/covers/cover-${uniqueSuffix}${ext}`;
 
     // Generate presigned URL
     const uploadUrl = await generatePresignedUrl(key, contentType);
