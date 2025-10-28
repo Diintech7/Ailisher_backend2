@@ -165,7 +165,7 @@ router.post("/login", validateClient, async (req, res) => {
 
       // // Send Telegram alert for existing user login
       // try {
-      //   await axios.post(`http://localhost:5000/api/clients/CLI147189HIGB/telegram/send-text`, {
+      //   await axios.post(`https://test.ailisher.com/api/clients/CLI147189HIGB/telegram/send-text`, {
       //     text: `👤 <b>User Login</b>\n\n📱 Mobile: ${mobile}\n🏢 Client ID: ${clientId}\n⏰ Time: ${new Date().toLocaleString()}\n🆔 User ID: ${mobileUser._id}\n🔢 Login Count: ${mobileUser.loginCount || 1}`
       //   });
       // } catch (telegramError) {
@@ -212,7 +212,7 @@ router.post("/login", validateClient, async (req, res) => {
         // Send Telegram alert for new user
         try {
           await axios.post(
-            `http://localhost:5000/api/clients/${clientId}/telegram/send-text`,
+            `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
             {
               text: `🆕 <b>New User Registered!</b>\n\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>User No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`
             },
@@ -564,7 +564,7 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
       // Send Telegram alert for new user
       try {
         await axios.post(
-          `http://localhost:5000/api/clients/${clientId}/telegram/send-text`,
+          `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
           {
             text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${name}\n📱 Mobile: ${mobileUser.mobile}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
           }
