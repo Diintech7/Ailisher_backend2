@@ -2310,10 +2310,11 @@ router.post("/annotated-image-upload-url", async (req, res) => {
         message: "fileName, contentType, clientId, and answerId are required",
       });
     }
+    const user = await User.findOne({userId:clientId})
 
     // Generate S3 key for the annotated image
     const fileExtension = path.extname(fileName);
-    const s3Key = `/KitabAI/annotated-images/${clientId}/${answerId}/${Date.now()}${fileExtension}`;
+    const s3Key = `/${user.businessName}/annotated-images/${clientId}/${answerId}/${Date.now()}${fileExtension}`;
 
     // Generate presigned URL for upload
     const uploadUrl = await generatePresignedUrl(s3Key, contentType);

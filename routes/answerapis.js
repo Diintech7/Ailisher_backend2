@@ -6,7 +6,7 @@ const SubjectiveTestQuestion = require('../models/SubjectiveTestQuestion');
 const AISWBSet = require('../models/AISWBSet');
 const { validationResult, param, body, query } = require('express-validator');
 const { verifyTokenforevaluator } = require('../middleware/auth');
-const { generateAnnotatedImageUrl } = require('../utils/s3');
+const { generateAnnotatedImageUrl } = require('../utils/r2');
 
 // GET /crud/answers - List all submitted answers with pagination and filters
 router.get('/answers', [
