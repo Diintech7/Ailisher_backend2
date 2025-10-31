@@ -9,7 +9,7 @@ const Asset = require('../models/Asset');
 const DatastoreItem = require('../models/DatastoreItem');
 const SubjectiveTest = require('../models/SubjectiveTest');
 const ObjectiveTest = require('../models/ObjectiveTest');
-const { generateGetPresignedUrl } = require('../utils/s3');
+const { generateGetPresignedUrl } = require('../utils/r2');
 const { default: mongoose } = require('mongoose');
 
 // Get client dashboard data

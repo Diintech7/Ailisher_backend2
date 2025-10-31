@@ -7,7 +7,7 @@ const CreditTransaction = require("../models/CreditTransaction");
 const ObjectiveTest = require("../models/ObjectiveTest");
 const Workbook = require("../models/Workbook");
 const SubjectiveTest = require("../models/SubjectiveTest");
-const { generateGetPresignedUrl } = require("../utils/s3");
+const { generateGetPresignedUrl } = require("../utils/r2");
 const UserPlan = require("../models/UserPlan");
 const Payment = require("../models/Payment");
 

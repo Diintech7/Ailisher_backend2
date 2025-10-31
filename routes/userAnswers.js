@@ -14,7 +14,7 @@ const {
   refreshAnnotatedImageUrls,
   generateAnnotatedImageUrl,
   uploadFileToS3,
-} = require("../utils/s3");
+} = require("../utils/r2");
 const { overlayTextOnImage } = require("../controllers/TextOverlayController");
 const axios = require("axios");
 const SubjectiveTest = require("../models/SubjectiveTest");

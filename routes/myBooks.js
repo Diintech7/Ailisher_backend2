@@ -7,7 +7,7 @@ const MyBook = require('../models/MyBook');
 const Book = require('../models/Book');
 const MobileUser = require('../models/MobileUser');
 const { authenticateMobileUser, ensureUserBelongsToClient } = require('../middleware/mobileAuth');
-const { generateGetPresignedUrl } = require('../utils/s3');
+const { generateGetPresignedUrl } = require('../utils/r2');
 const UserPlan = require('../models/UserPlan');
 
 // Apply authentication middleware to all routes

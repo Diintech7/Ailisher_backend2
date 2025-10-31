@@ -160,10 +160,22 @@ const deleteObject = async (key) => {
   }
 };
 
+const uploadFileToS3 = async (buffer, key, contentType) => {
+  const command = new PutObjectCommand({
+    Bucket: process.env.R2_BUCKET_NAME,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+  });
+  await s3Client.send(command);
+  return key;
+};
+
 module.exports = {
   s3Client,
   generatePresignedUrl,
   generateGetPresignedUrl,
   generateAnnotatedImageUrl,
   deleteObject,
+  uploadFileToS3
 };

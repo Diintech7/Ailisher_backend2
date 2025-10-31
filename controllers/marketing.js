@@ -1,4 +1,4 @@
-const { generatePresignedUrl } = require("../utils/s3");
+const { generatePresignedUrl } = require("../utils/r2");
 
 exports.uploadImage = async (req,res) => {
     try {

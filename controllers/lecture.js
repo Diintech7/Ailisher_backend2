@@ -6,7 +6,7 @@ const {
   s3Client,
   uploadFileToS3,
   generateGetPresignedUrl,
-} = require("../utils/s3");
+} = require("../utils/r2");
 
 const createlecture = async (req, res) => {
   try {

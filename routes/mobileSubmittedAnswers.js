@@ -14,7 +14,7 @@ const Topic = require('../models/Topic');
 const SubTopic = require('../models/SubTopic');
 const Workbook = require('../models/Workbook');
 const { authenticateMobileUser } = require('../middleware/mobileAuth');
-const { generateAnnotatedImageUrl, generateGetPresignedUrl } = require('../utils/s3');
+const { generateAnnotatedImageUrl, generateGetPresignedUrl } = require('../utils/r2');
 
 // Apply authentication middleware to all routes
 router.use(authenticateMobileUser);

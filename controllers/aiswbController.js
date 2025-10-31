@@ -4,7 +4,7 @@ const { validationResult } = require('express-validator');
 const UserAnswer = require('../models/UserAnswer');
 const UserProfile = require('../models/UserProfile');
 const { getEvaluationFrameworkText } = require('../services/aiServices');
-const { generatePresignedUrl, generateGetPresignedUrl, deleteObject } = require('../utils/s3');
+const { generatePresignedUrl, generateGetPresignedUrl, deleteObject } = require('../utils/r2');
 
 // Question Controllers
 const addQuestion = async (req, res) => {
