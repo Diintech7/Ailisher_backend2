@@ -35,6 +35,11 @@ const UserPlanSchema = new mongoose.Schema({
     default: null,
     index: true
   },
+  trial: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
   creditsGranted: {
     type: Number,
     default: 0
