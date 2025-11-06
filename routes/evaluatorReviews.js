@@ -2468,6 +2468,21 @@ router.post("/publishwithannotation", async (req, res) => {
     } else {
       console.log(`⚠️ [PUBLISH ENDPOINT] evaluationRecord: ${evaluationRecord ? 'exists' : 'missing'}`);
     }
+    (async () => {
+      try {
+        const msg = [
+          "✅ Answer published with annotation",
+          `User: ${String(userAnswer.userId.name || userAnswer.userId.mobile || "-")}`,
+          `Question: ${String(question.question || userAnswer.questionId)}`,
+          `Evaluator: ${String(evaluator.name || evaluator._id || "-")}`,
+        ].filter(Boolean).join("\n");
+        const bot = new Telegraf('8310670507:AAGmbiGS6qrmE1-uJa6spkFQu_6Y3WXUExY');
+        const chatId = '-1003255474348';
+        await bot.telegram.sendMessage(chatId, msg, { parse_mode: 'HTML' });
+      } catch (tgErr) {
+        console.warn("Telegram alert failed:", tgErr && tgErr.message);
+      }
+    })();
 
     res.json({
       success: true,

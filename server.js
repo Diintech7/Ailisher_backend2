@@ -62,6 +62,7 @@ const notificationsRoutes = require('./routes/notifications')
 const organizationRoutes = require('./routes/organizations')
 const superadminRoutes = require('./routes/superadminroutes')
 const liveClassesRoutes = require('./routes/liveClasses')
+const userProfileRoutes = require('./routes/userProfile')
 
 app.use(cors())
 app.use(express.json({ limit: "50mb" }))
@@ -137,6 +138,15 @@ app.use('/api/notifications', notificationsRoutes)
 app.use('/api/organizations', organizationRoutes)
 app.use('/api/superadmin', superadminRoutes)
 app.use('/api/live-classes', liveClassesRoutes)
+app.use(
+  "/api/clients/:clientId/mobile/user-profile",
+  checkClientAccess(),
+  (req, res, next) => {
+    req.clientId = req.params.clientId
+    next()
+  },
+  userProfileRoutes,
+)
 
 // Enhanced PDF processing routes with clustering and optional auth
 app.use("/api/enhanced-pdf-embedding", require("./routes/pdfEmbedding"))

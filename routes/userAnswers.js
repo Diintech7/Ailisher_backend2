@@ -21,6 +21,8 @@ const TelegramServiceController = require("../controllers/telegrambotcontroller"
 const telegramService = new TelegramServiceController();
 const SubjectiveTest = require("../models/SubjectiveTest");
 const SubjectiveTestQuestion = require("../models/SubjectiveTestQuestion");
+const Book = require("../models/Book");
+const Workbook = require("../models/Workbook");
 const {
   validateTextRelevanceToQuestion,
   extractTextFromImagesWithFallback,
@@ -42,6 +44,7 @@ const {
   enrichHindiEvaluationFromEnglish,
   directTranslateEvaluationToHindi,
 } = require("../services/aiServices");
+const { Telegraf, Telegram } = require("telegraf");
 
 router.use("/crud", crud);
 
@@ -1553,19 +1556,49 @@ router.post(
       // Fire-and-forget Telegram alert (does not affect API response)
       (async () => {
         try {
+          // Derive context for message enrichment
+          let typeLabel = "Workbook"; // This route handles AISWB submissions
+          let category = null;
+          let subCategory = null;
+          let exam = null;
+          try {
+            if (setInfo && setInfo.itemType && setInfo.itemId) {
+              if (setInfo.itemType === "workbook") {
+                const wb = await Workbook.findById(setInfo.itemId).select("mainCategory subCategory exam").lean();
+                if (wb) {
+                  category = wb.mainCategory || null;
+                  subCategory = wb.subCategory || null;
+                  exam = wb.exam || null;
+                }
+              } else if (setInfo.itemType === "book") {
+                const bk = await Book.findById(setInfo.itemId).select("mainCategory subCategory exam").lean();
+                if (bk) {
+                  category = bk.mainCategory || null;
+                  subCategory = bk.subCategory || null;
+                  exam = bk.exam || null;
+                }
+              }
+            }
+          } catch (_) {}
+
           const msg = [
             "✅ New answer submission",
-            `Client: ${String(req.user && req.user.clientId || req.clientId || "-")}`,
-            `User: ${String(req.user && req.user.id || "-")}`,
-            `Question: ${String(question && question._id || questionId)}`,
-            `Answer: ${String(userAnswer && userAnswer._id || "-")}`,
-            `Attempt: ${String(userAnswer && userAnswer.attemptNumber || "-")}`,
-            `Status: ${String(userAnswer && userAnswer.submissionStatus || "submitted")}`,
+            `Client: ${String((req.clientInfo && req.clientInfo.businessName) || "-")}`,
+            `User: ${String(req.user.name || req.user.mobile || "-")}`,
+            `Type: ${typeLabel}`,
+            exam ? `Exam: ${String(exam)}` : null,
+            category ? `Category: ${String(category)}` : null,
+            subCategory ? `Sub Category: ${String(subCategory)}` : null,
+            `Question: ${String(question.question || questionId)}`,
+            `Attempt: ${String((userAnswer && userAnswer.attemptNumber) || "-")}`,
+            `Status: ${String((userAnswer && userAnswer.submissionStatus) || "submitted")}`,
             question && question.metadata && question.metadata.maximumMarks
               ? `Max Marks: ${String(question.metadata.maximumMarks)}`
               : null,
           ].filter(Boolean).join("\n");
-          await telegramService.sendTextMessage(msg);
+          const bot = new Telegraf('8310670507:AAGmbiGS6qrmE1-uJa6spkFQu_6Y3WXUExY');
+          const chatId = '-1003255474348';
+          await bot.telegram.sendMessage(chatId, msg, { parse_mode: 'HTML' });
         } catch (tgErr) {
           console.warn("Telegram alert failed:", tgErr && tgErr.message);
         }

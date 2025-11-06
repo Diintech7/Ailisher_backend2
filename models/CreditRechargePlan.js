@@ -43,7 +43,7 @@ const CreditRechargePlanSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ['UPSC', 'BPSC', 'UPPCS','Credit-Recharge', 'Other'],
+    enum: ['UPSC', 'BPSC', 'UPPCS','Credit-Recharge','Trial', 'Other'],
     default: 'UPSC'
   },
   imageKey: {
