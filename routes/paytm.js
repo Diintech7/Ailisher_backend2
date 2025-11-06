@@ -9,6 +9,8 @@ const CreditRechargePlan = require("../models/CreditRechargePlan");
 const UserPlan = require("../models/UserPlan");
 const PaytmConfig = require("../config/paytm");
 const { authenticateMobileUser } = require("../middleware/mobileAuth");
+const TelegramServiceController = require("../controllers/telegrambotcontroller");
+const { Telegraf } = require("telegraf");
 
 const router = express.Router();
 
@@ -87,20 +89,11 @@ router.post("/initiate", authenticateMobileUser, async (req, res) => {
     if (req.clientId === "CLI147189HIGB") {
       // Send Telegram alert for payment initiated
       try {
-        await axios.post(
-          `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
-          {
-            text: `🆕 <b>INITIATED PAYMENT</b>\n\n👤 ${customerPhone} (${customerName}) has initiated the process to purchase the plan:\n📦 <b>${
-              plan.name
-            }</b>\n💰 Worth: ₹${amount}\n⏰ Time: ${new Date().toLocaleString(
-              "en-IN",
-              { timeZone: "Asia/Kolkata" }
-            )}`,
-          }
-        );
+        const text = `🆕 <b>INITIATED PAYMENT</b>\n\n👤 ${customerPhone} (${customerName}) has initiated the process to purchase the plan:\n📦 <b>${plan.name}</b>\n💰 Worth: ₹${amount}\n⏰ Time: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}\n🆔 Order: ${orderId}`;
+        const bot = new Telegraf("8237631073:AAES4YAapPcaeIIAKTnruqUlwEOdKeaBUMs");
+        await bot.telegram.sendMessage(-1003286549465, text, { parse_mode: 'HTML' });
       } catch (telegramError) {
         console.error("Failed to send Telegram alert:", telegramError.message);
-        // Don't fail the payment initiated if Telegram fails
       }
     }
 
@@ -298,12 +291,15 @@ router.post("/callback", async (req, res) => {
                 // Send Telegram alert for payment successfull
                 if (req.clientId === "CLI147189HIGB") {
                   try {
-                    await axios.post(
-                      `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
-                      {
-                        text: `✅ <b>Paid to Mobishaala</b>\n\n💰<b>Total Amount:</b> ₹${creditsToAdd}\n🏦 <b>Net Amount:</b> ₹${creditsToAdd}\n👤 <b>${paymentDoc.customerPhone}</b> (${paymentDoc.customerName})\n🆔 <b>Order No:</b> ${orderId}\n📦 <b>Plan:</b> ${plan.name}`,
-                      }
-                    );
+                    // await axios.post(
+                    //   `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
+                    //   {
+                    //     text: `✅ <b>Paid to Mobishaala</b>\n\n💰<b>Total Amount:</b> ₹${creditsToAdd}\n🏦 <b>Net Amount:</b> ₹${creditsToAdd}\n👤 <b>${paymentDoc.customerPhone}</b> (${paymentDoc.customerName})\n🆔 <b>Order No:</b> ${orderId}\n📦 <b>Plan:</b> ${plan.name}`,
+                    //   }
+                    // );
+                    const text = `✅ <b>Paid to Mobishaala</b>\n\n💰<b>Total Amount:</b> ₹${creditsToAdd}\n🏦 <b>Net Amount:</b> ₹${creditsToAdd}\n👤 <b>${paymentDoc.customerPhone}</b> (${paymentDoc.customerName})\n🆔 <b>Order No:</b> ${orderId}\n📦 <b>Plan:</b> ${plan.name}`;
+                    const bot = new Telegraf("8237631073:AAES4YAapPcaeIIAKTnruqUlwEOdKeaBUMs");
+                    await bot.telegram.sendMessage(-1003286549465, text, { parse_mode: 'HTML' });
                   } catch (telegramError) {
                     console.error(
                       "Failed to send Telegram alert:",

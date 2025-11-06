@@ -17,6 +17,8 @@ const {
 } = require("../utils/r2");
 const { overlayTextOnImage } = require("../controllers/TextOverlayController");
 const axios = require("axios");
+const TelegramServiceController = require("../controllers/telegrambotcontroller");
+const telegramService = new TelegramServiceController();
 const SubjectiveTest = require("../models/SubjectiveTest");
 const SubjectiveTestQuestion = require("../models/SubjectiveTestQuestion");
 const {
@@ -1547,6 +1549,27 @@ router.post(
       } else {
         successMessage = "Answer submitted and evaluated successfully";
       }
+
+      // Fire-and-forget Telegram alert (does not affect API response)
+      (async () => {
+        try {
+          const msg = [
+            "✅ New answer submission",
+            `Client: ${String(req.user && req.user.clientId || req.clientId || "-")}`,
+            `User: ${String(req.user && req.user.id || "-")}`,
+            `Question: ${String(question && question._id || questionId)}`,
+            `Answer: ${String(userAnswer && userAnswer._id || "-")}`,
+            `Attempt: ${String(userAnswer && userAnswer.attemptNumber || "-")}`,
+            `Status: ${String(userAnswer && userAnswer.submissionStatus || "submitted")}`,
+            question && question.metadata && question.metadata.maximumMarks
+              ? `Max Marks: ${String(question.metadata.maximumMarks)}`
+              : null,
+          ].filter(Boolean).join("\n");
+          await telegramService.sendTextMessage(msg);
+        } catch (tgErr) {
+          console.warn("Telegram alert failed:", tgErr && tgErr.message);
+        }
+      })();
 
       console.log(
         "[AnswerUpload][AISWB]",

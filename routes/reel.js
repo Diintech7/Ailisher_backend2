@@ -79,7 +79,7 @@ router.post("/", verifyToken, isClient, async (req, res) => {
     }
 
     console.log("get2");
-    const count = await Reels.countDocuments();
+    const count = await Reels.countDocuments({ createdBy: req.user.id });
 
     const reel = new Reels({
       title,
@@ -253,6 +253,7 @@ router.get('/popular',
 router.patch("/reorder", verifyToken, isClient, async (req, res) => {
   try {
     const { reels } = req.body;
+    const createdBy = new mongoose.Types.ObjectId(req.user.id);
 
     if (!reels || !Array.isArray(reels)) {
       return res.status(400).json({
@@ -261,10 +262,10 @@ router.patch("/reorder", verifyToken, isClient, async (req, res) => {
       });
     }
 
-    // Update each reel with its new order
+    // Update each reel with its new order (only for current creator)
     const updatePromises = reels.map((reel, index) => {
-      return Reels.findByIdAndUpdate(
-        reel._id,
+      return Reels.findOneAndUpdate(
+        { _id: reel._id, createdBy },
         { order: index + 1 },
         { new: true }
       );
@@ -279,8 +280,8 @@ router.patch("/reorder", verifyToken, isClient, async (req, res) => {
 
     await Promise.all(updatePromises);
 
-    // Fetch updated reels in new order
-    const updatedReels = await Reels.find().sort({ order: 1 });
+    // Fetch updated reels in new order for current creator
+    const updatedReels = await Reels.find({ createdBy }).sort({ order: 1 });
 
     res.json({
       success: true,
@@ -292,6 +293,68 @@ router.patch("/reorder", verifyToken, isClient, async (req, res) => {
       success: false,
       message: "Server error",
     });
+  }
+});
+
+// @route   PATCH /api/reels/:id/order
+// @desc    Update a single reel's order number
+// @access  Admin only
+router.patch("/:id/order", verifyToken, isClient, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { order } = req.body || {};
+    const createdBy = new mongoose.Types.ObjectId(req.user.id);
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Reel ID is required" });
+    }
+    const newOrder = Number(order);
+    if (!Number.isFinite(newOrder) || newOrder < 1) {
+      return res.status(400).json({ success: false, message: "Valid order (>=1) is required" });
+    }
+
+    const reel = await Reels.findOne({ _id: id, createdBy });
+    if (!reel) {
+      return res.status(404).json({ success: false, message: "Reel not found" });
+    }
+
+    // Reassign orders: move this reel to newOrder, shift others accordingly
+    const all = await Reels.find({ createdBy }).sort({ order: 1 });
+    const maxOrder = all.length;
+    const targetOrder = Math.min(newOrder, maxOrder);
+
+    const updated = [];
+    // Build an array excluding the target reel
+    const others = all.filter(r => r._id.toString() !== id.toString());
+    // Insert the target reel into the desired position (1-indexed)
+    const position = Math.max(0, targetOrder - 1);
+    others.splice(position, 0, reel);
+
+    // Persist contiguous order
+    for (let i = 0; i < others.length; i++) {
+      const r = others[i];
+      const desired = i + 1;
+      if (r.order !== desired) {
+        const u = await Reels.findByIdAndUpdate(r._id, { order: desired }, { new: true });
+        updated.push(u);
+      } else {
+        updated.push(r);
+      }
+    }
+
+    
+    // Return refreshed ordered list for current creator
+    const refreshed = await Reels.find({ createdBy }).sort({ order: 1 });
+
+    for (const reel of refreshed) {
+      if (reel.videoKey) {
+        reel.videoUrl = await generateGetPresignedUrl(reel.videoKey);
+      }
+    }
+    return res.status(200).json({ success: true, data: refreshed });
+  } catch (error) {
+    console.error("Error updating reel order:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
