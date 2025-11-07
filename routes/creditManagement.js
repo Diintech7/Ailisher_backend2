@@ -56,10 +56,27 @@ router.post('/trial/grant', async (req, res) => {
     // Determine trial plan
     let plan = null;
     if (planId) {
-      plan = await CreditRechargePlan.findOne({ _id: planId, clientId, category: 'Trial', status: 'active', isEnabled: true });
+      const now = new Date();
+      plan = await CreditRechargePlan.findOne({
+        _id: planId,
+        clientId,
+        category: 'Trial',
+        status: 'active',
+        isEnabled: true,
+        offerEndAt: { $gte: now },
+        $or: [ { offerStartAt: { $exists: false } }, { offerStartAt: null }, { offerStartAt: { $lte: now } } ]
+      });
       if (!plan) return res.status(404).json({ success: false, message: 'Trial plan not found or not active' });
     } else {
-      plan = await CreditRechargePlan.findOne({ clientId, category: 'Trial', status: 'active', isEnabled: true }).sort({ updatedAt: -1 });
+      const now = new Date();
+      plan = await CreditRechargePlan.findOne({
+        clientId,
+        category: 'Trial',
+        status: 'active',
+        isEnabled: true,
+        offerEndAt: { $gte: now },
+        $or: [ { offerStartAt: { $exists: false } }, { offerStartAt: null }, { offerStartAt: { $lte: now } } ]
+      }).sort({ updatedAt: -1 });
       if (!plan) return res.status(404).json({ success: false, message: 'No active Trial plan configured for this client' });
     }
 

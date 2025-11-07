@@ -41,6 +41,24 @@ const CreditRechargePlanSchema = new mongoose.Schema({
     min: 0,
     alias: 'offerprice'
   },
+  // Optional offer window. For category 'Trial', offerEndAt is required.
+  offerStartAt: {
+    type: Date
+  },
+  offerEndAt: {
+    type: Date,
+    required: function () {
+      return this.category === 'Trial';
+    },
+    validate: {
+      validator: function (value) {
+        if (!value) return true; // handled by required when Trial
+        if (this.offerStartAt && value < this.offerStartAt) return false;
+        return true;
+      },
+      message: 'offerEndAt must be after offerStartAt'
+    }
+  },
   category: {
     type: String,
     enum: ['UPSC', 'BPSC', 'UPPCS','Credit-Recharge','Trial', 'Other'],
@@ -75,6 +93,17 @@ const CreditRechargePlanSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
+});
+
+// Virtual to check if offer is currently active
+CreditRechargePlanSchema.virtual('isOfferActive').get(function () {
+  const now = new Date();
+  return (
+    this.offerStartAt instanceof Date &&
+    this.offerEndAt instanceof Date &&
+    now >= this.offerStartAt &&
+    now <= this.offerEndAt
+  );
 });
 
 module.exports = mongoose.model('CreditRechargePlan', CreditRechargePlanSchema);
