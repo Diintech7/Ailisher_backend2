@@ -238,8 +238,8 @@ const validateQuestionToSet = [
     .isString()
     .withMessage('Evaluation guideline must be a string')
     .trim()
-    .isLength({ min: 5, max: 5000 })
-    .withMessage('Evaluation guideline must be between 5 and 5000 characters')
+    .isLength({ min: 5, max: 10000 })
+    .withMessage('Evaluation guideline must be between 5 and 10000 characters')
 ];
 
 const validateQuestionSubmissionsQuery = [
