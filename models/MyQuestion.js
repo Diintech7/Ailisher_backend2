@@ -17,16 +17,6 @@ const myQuestionSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
-  answerFiles: [{
-    fileKey: {
-      type: String,
-      required: true
-    },
-    uploadedAt: {
-        type: Date,
-        default: Date.now
-    }
-    }],
     subject: {
       type: String,
       required: true,

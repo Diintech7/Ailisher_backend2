@@ -2,6 +2,7 @@ const MyQuestion = require('../models/MyQuestion');
 const { validationResult } = require('express-validator');
 const { getEvaluationFrameworkText } = require('../services/aiServices');
 const { generatePresignedUrl, generateGetPresignedUrl, deleteObject } = require('../utils/r2');
+const UserAnswer = require('../models/UserAnswer');
 
 // Create question (User uploads)
 const createQuestion = async (req, res) => {
@@ -809,6 +810,139 @@ const confirmFileUpload = async (req, res) => {
   }
 };
 
+// Create question and submit answer in a single request (multipart/form-data with key 'images')
+const createQuestionWithAnswer = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid input data",
+        error: {
+          code: "INVALID_INPUT",
+          details: errors.array()
+        }
+      });
+    }
+
+    const clientId = req.user.clientId || req.user.userId;
+    const userId = req.user.id;
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        message: "Client ID is required",
+        error: {
+          code: "MISSING_CLIENT_ID",
+          details: "Client ID must be provided"
+        }
+      });
+    }
+
+    const {
+      question,
+      wordLimit,
+      maximumMarks,
+      subject,
+      exam,
+      timeSpent = 0,
+      sourceType = "direct_access"
+    } = req.body || {};
+
+    if (!question || !wordLimit || !maximumMarks || !subject || !exam) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+        error: {
+          code: "MISSING_FIELDS",
+          details: "question, wordLimit, maximumMarks, subject, exam are required"
+        }
+      });
+    }
+
+    // Build MyQuestion
+    const myQuestion = new MyQuestion({
+      question,
+      wordLimit,
+      maximumMarks,
+      subject,
+      exam,
+      clientId,
+      createdBy: userId,
+      status: 'pending'
+    });
+    await myQuestion.save();
+
+    // Normalize uploaded files from multer (CloudinaryStorage)
+    const uploadedFiles = Array.isArray(req.files)
+      ? req.files.map((f) => ({
+          imageUrl: f.path || f.secure_url,
+          cloudinaryPublicId: f.filename || f.public_id,
+          originalName: f.originalname || f.originalName || ""
+        }))
+      : [];
+
+    if (!uploadedFiles.length) {
+      return res.status(400).json({
+        success: false,
+        message: "images is required",
+        error: {
+          code: "MISSING_ANSWER_CONTENT",
+          details: "Provide at least one answer image under key 'images'"
+        }
+      });
+    }
+
+    // Create UserAnswer linked to this question (no evaluation)
+    const answerData = {
+      userId,
+      questionId: myQuestion._id.toString(),
+      clientId,
+      testType: "myquestion",
+      answerImages: uploadedFiles,
+      submissionStatus: "submitted",
+      submittedAt: new Date(),
+      metadata: {
+        timeSpent: Number(timeSpent) || 0,
+        sourceType,
+      },
+    };
+    const userAnswer = await UserAnswer.createNewAttemptSafe(answerData);
+
+    return res.status(201).json({
+      success: true,
+      message: "Question and answer submitted successfully",
+      data: {
+        question: {
+          id: myQuestion._id.toString(),
+          question: myQuestion.question,
+          wordLimit: myQuestion.wordLimit,
+          maximumMarks: myQuestion.maximumMarks,
+          subject: myQuestion.subject,
+          exam: myQuestion.exam,
+          status: myQuestion.status,
+          createdAt: myQuestion.createdAt.toISOString()
+        },
+        answer: {
+          id: userAnswer._id,
+          attemptNumber: userAnswer.attemptNumber,
+          submissionStatus: userAnswer.submissionStatus,
+          submittedAt: userAnswer.submittedAt
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Create question with answer error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: {
+        code: "SERVER_ERROR",
+        details: error.message
+      }
+    });
+  }
+};
+
 module.exports = {
   createQuestion,
   getQuestion,
@@ -819,6 +953,7 @@ module.exports = {
   formatQuestion,
   activateQuestion,
   generateTemporaryFileUploadUrl,
-  confirmFileUpload
+  confirmFileUpload,
+  createQuestionWithAnswer
 };
 
