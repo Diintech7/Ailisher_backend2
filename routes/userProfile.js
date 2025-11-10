@@ -187,6 +187,14 @@ router.get("/:userId", async (req, res) => {
         .lean()
     ]);
 
+    console.log(profile)
+    console.log(answersAgg)
+    console.log(recentAnswers)
+    console.log(myBooksCount)
+    console.log(myWorkbooksCount)
+    console.log(paymentsAgg)
+    console.log(lastPurchase)
+
     return res.status(200).json({
       success: true,
       data: {
@@ -228,6 +236,8 @@ router.get("/:userId", async (req, res) => {
 });
 
 module.exports = router;
+
+
 
 
 

@@ -23,6 +23,7 @@ const pdfSplitsRoutes = require('./routes/pdfSplits');
 const mobileAuthRoutes = require('./routes/mobileAuth');
 const mobileBooksRoutes = require('./routes/mobileBooks');
 const aiswbRoutes = require('./routes/aiswb');
+const myQuestionRoutes = require('./routes/myquestion');
 const userAnswersRoutes = require('./routes/userAnswers');
 const evaluationRoutes = require('./routes/evaluations'); // Updated evaluation routes
 const { checkClientAccess } = require('./middleware/mobileAuth');
@@ -111,6 +112,7 @@ app.use('/api/workbooks', workbookRoutes);
 app.use('/api/qrcode', qrCodeRoutes);
 app.use('/api/books', pdfSplitsRoutes);
 app.use('/api/aiswb', aiswbRoutes);
+app.use('/api/myquestion', myQuestionRoutes);
 app.use('/api/mybooks', myBooksRoutes);
 app.use('/api/evaluators', evaluatorsRoutes);
 app.use('/api/homepage', mainBookstoreRoutes);
@@ -146,6 +148,16 @@ app.use(
     next()
   },
   userProfileRoutes,
+)
+
+app.use(
+  "/api/clients/:clientId/mobile/myquestion",
+  checkClientAccess(),
+  (req, res, next) => {
+    req.clientId = req.params.clientId
+    next()
+  },
+  myQuestionRoutes,
 )
 
 // Enhanced PDF processing routes with clustering and optional auth

@@ -22,7 +22,6 @@ const generateToken = (userId, mobile, clientId) => {
 const authenticateMobileUser = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
-    console.log(token)
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -37,6 +36,7 @@ const authenticateMobileUser = async (req, res, next) => {
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("decoded", decoded)
     } catch (jwtError) {
       return res.status(401).json({
         success: false,
@@ -64,7 +64,7 @@ const authenticateMobileUser = async (req, res, next) => {
       _id: decoded.id,
       authToken: token
     });
-
+    console.log(user)
     if (!user) {
       return res.status(401).json({
         success: false,

@@ -13,7 +13,7 @@ const userAnswerSchema = new mongoose.Schema({
   },
   testType: {
     type: String,
-    enum: ['aiswb', 'subjective'],
+    enum: ['aiswb', 'subjective', 'myquestion'],
     // required: true
   },
   testId: {
