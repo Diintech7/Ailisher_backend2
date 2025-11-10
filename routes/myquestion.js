@@ -19,10 +19,11 @@ router.get('/questions',
 );
 
 // Client routes (web authentication)
+// NOTE: Define specific route before the parameterized :questionId route to avoid conflicts
 router.get('/questions/pending',
-    verifyToken,
-    myQuestionValidation.validateQuestionQuery,
-    myQuestionController.getPendingFormatting
+  verifyToken,
+  myQuestionValidation.validateQuestionQuery,
+  myQuestionController.getPendingFormatting
 );
 
 router.get('/questions/:questionId',
@@ -58,8 +59,6 @@ router.post('/questions/:questionId/files/confirm',
   myQuestionValidation.validateFileConfirm,
   myQuestionController.confirmFileUpload
 );
-
-
 
 router.put('/questions/:questionId/format',
   verifyToken,

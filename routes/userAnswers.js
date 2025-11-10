@@ -45,6 +45,7 @@ const {
   directTranslateEvaluationToHindi,
 } = require("../services/aiServices");
 const { Telegraf, Telegram } = require("telegraf");
+const MyQuestion = require("../models/MyQuestion");
 
 router.use("/crud", crud);
 
@@ -97,6 +98,22 @@ const validateAnswerSubmission = [
     .trim()
     .isLength({ max: 5000 })
     .withMessage("Text answer must be less than 5000 characters"),
+  body("answerImages")
+    .optional()
+    .isArray()
+    .withMessage("answerImages must be an array"),
+  body("answerImages.*.imageUrl")
+    .optional()
+    .isString()
+    .withMessage("imageUrl must be a string"),
+  body("answerImages.*.cloudinaryPublicId")
+    .optional()
+    .isString()
+    .withMessage("cloudinaryPublicId must be a string"),
+  body("answerImages.*.originalName")
+    .optional()
+    .isString()
+    .withMessage("originalName must be a string"),
   body("timeSpent")
     .optional()
     .isInt({ min: 0 })
@@ -130,6 +147,149 @@ const validateManualEvaluation = [
     .isInt({ min: 1, max: 100 })
     .withMessage("Max marks must be between 1 and 100"),
 ];
+
+/**
+ * Submit answer for a MyQuestion (no evaluation triggered)
+ * POST /api/useranswers/myquestion/questions/:questionId/answers
+ * Auth: Mobile user (authenticateMobileUser)
+ * Body:
+ *  - textAnswer?: string
+ *  - answerImages?: [{ imageUrl, cloudinaryPublicId, originalName }]
+ *  - timeSpent?: number
+ *  - sourceType?: 'qr_scan' | 'direct_access' | 'set_practice'
+ */
+async function submitMyQuestionAnswer(req, res) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid input data",
+          responseCode: 2002,
+          error: {
+            code: "INVALID_INPUT",
+            details: errors.array(),
+          },
+        });
+      }
+
+      const { questionId } = req.params;
+      // Guard against missing body and support multiple field names
+      const body = req.body || {};
+      const {
+        images: imagesFromBody = [],
+        answerImages: answerImagesFromBody = [],
+        files: filesFromBody = [],
+        timeSpent = 0,
+        sourceType = "direct_access"
+      } = body;
+      // Normalize images array from body fields
+      const bodyImages = Array.isArray(imagesFromBody)
+        ? imagesFromBody
+        : Array.isArray(answerImagesFromBody)
+          ? answerImagesFromBody
+          : Array.isArray(filesFromBody)
+            ? filesFromBody
+            : [];
+
+      // Map uploaded files (multipart/form-data) from multer (CloudinaryStorage)
+      const uploadedFiles = Array.isArray(req.files)
+        ? req.files.map((f) => ({
+            imageUrl: f.path || f.secure_url,           // Cloudinary URL
+            cloudinaryPublicId: f.filename || f.public_id, // public_id
+            originalName: f.originalname || f.originalName || ""
+          }))
+        : [];
+
+      // Prefer uploaded files if present, otherwise use body-provided images
+      const images = uploadedFiles.length > 0 ? uploadedFiles : bodyImages;
+      const userId = req.user.id;
+      const clientId = req.user.clientId || req.user.userId;
+
+      // Require at least text or images
+      if (!Array.isArray(images) || images.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "images is required",
+          responseCode: 2003,
+          error: {
+            code: "MISSING_ANSWER_CONTENT",
+            details: "Provide at least one answer image",
+          },
+        });
+      }
+
+      // Verify question exists
+      const question = await MyQuestion.findById(questionId);
+      if (!question) {
+        return res.status(404).json({
+          success: false,
+          message: "Question not found",
+          responseCode: 2004,
+          error: {
+            code: "QUESTION_NOT_FOUND",
+            details: "The specified question does not exist",
+          },
+        });
+      }
+
+      // Prepare answer data
+      const answerData = {
+        userId,
+        questionId,
+        clientId,
+        testType: "myquestion",
+        answerImages: Array.isArray(images) ? images.filter(Boolean) : [],
+        submissionStatus: "submitted",
+        submittedAt: new Date(),
+        metadata: {
+          timeSpent: Number(timeSpent) || 0,
+          sourceType,
+        },
+      };
+
+      // Create new attempt safely (handles attemptNumber and limits)
+      const userAnswer = await UserAnswer.createNewAttemptSafe(answerData);
+
+      return res.status(201).json({
+        success: true,
+        message: "Answer submitted successfully",
+        responseCode: 2001,
+        data: {
+          id: userAnswer._id,
+          attemptNumber: userAnswer.attemptNumber,
+          submissionStatus: userAnswer.submissionStatus,
+          submittedAt: userAnswer.submittedAt,
+          question: {
+            id: question._id,
+            question: question.question,
+            maximumMarks: question.maximumMarks || question.metadata?.maximumMarks,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Submit myquestion answer error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+        responseCode: 2005,
+        error: {
+          code: "SERVER_ERROR",
+          details: error.message,
+        },
+      });
+    }
+}
+
+// Primary route
+router.post(
+  "/myquestions/:questionId/answers",
+  authenticateMobileUser,
+  upload.array("images", 10),
+  validateQuestionId,
+  validateAnswerSubmission,
+  submitMyQuestionAnswer
+);
 
 router.post(
   "/answers/:answerId/evaluate-manual",

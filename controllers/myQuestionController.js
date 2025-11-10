@@ -18,7 +18,7 @@ const createQuestion = async (req, res) => {
       });
     }
 
-    const { question, wordLimit, maximumMarks, subject, exam } = req.body;
+    const { question, wordLimit, maximumMarks, subject, exam, key} = req.body;
     const clientId = req.user.clientId || req.user.userId;
     const userId = req.user.id;
 
@@ -39,6 +39,10 @@ const createQuestion = async (req, res) => {
       maximumMarks,
       subject,
       exam,
+      answerFiles:{
+        fileKey: key,
+        uploadedAt: new Date()
+      },
       clientId,
       createdBy: userId,
       status: 'pending'
@@ -56,6 +60,7 @@ const createQuestion = async (req, res) => {
         maximumMarks: myQuestion.maximumMarks,
         subject: myQuestion.subject,
         exam: myQuestion.exam,
+        answerFiles: myQuestion.answerFiles,
         status: myQuestion.status,
         createdAt: myQuestion.createdAt.toISOString()
       }
@@ -444,7 +449,6 @@ const getPendingFormatting = async (req, res) => {
       .limit(parseInt(limit))
       .populate('createdBy', 'name mobile');
 
-      
     const total = await MyQuestion.countDocuments({
       clientId,
       status: 'pending'
