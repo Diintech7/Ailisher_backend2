@@ -489,7 +489,7 @@ router.post(
           customPrompt: evaluationPrompt,
         };
 
-        userAnswer.submissionStatus = "evaluated";
+        userAnswer.submissionStatus = "submitted";
         userAnswer.reviewedAt = new Date();
         userAnswer.evaluatedAt = new Date();
 

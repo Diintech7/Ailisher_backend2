@@ -15,6 +15,7 @@ const SubTopic = require('../models/SubTopic');
 const Workbook = require('../models/Workbook');
 const { authenticateMobileUser } = require('../middleware/mobileAuth');
 const { generateAnnotatedImageUrl, generateGetPresignedUrl } = require('../utils/r2');
+const MyQuestion = require('../models/MyQuestion');
 
 // Apply authentication middleware to all routes
 router.use(authenticateMobileUser);
@@ -197,6 +198,12 @@ router.get('/', async (req, res) => {
             .select('name description category subcategory Estimated_time imageKey imageUrl instructions')
             .lean();
         }
+      }
+      if (answer.testType === 'myquestion') {
+        // For myquestion questions, populate from MyQuestion
+        populatedQuestion = await MyQuestion.findById(answer.questionId)
+          .select('question detailedAnswer modalAnswer answerVideoUrls metadata languageMode evaluationMode test')
+          .lean();
       } else {
         // For AISWB questions, populate from AiswbQuestion
         populatedQuestion = await AiswbQuestion.findById(answer.questionId)
@@ -427,6 +434,12 @@ router.get('/:answerId', async (req, res) => {
           .select('name description category subcategory Estimated_time imageKey imageUrl instructions')
           .lean();
       }
+    } 
+    else if (userAnswer.testType === 'myquestion') {
+      // For myquestion questions, populate from MyQuestion
+      question = await MyQuestion.findById(userAnswer.questionId)
+        .select('question detailedAnswer modalAnswer modalAnswerPdfKey answerVideoUrls metadata languageMode evaluationMode test')
+        .lean();
     } 
     else {
       console.log("AISWB")
