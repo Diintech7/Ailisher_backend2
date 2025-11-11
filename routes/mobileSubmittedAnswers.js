@@ -300,7 +300,7 @@ router.get('/', async (req, res) => {
         bookWorkbookInfo: bookWorkbookInfo,
         
         // Submission type
-        submissionType: isSubjectiveTest ? 'subjective_test' : 'aiswb',
+        submissionType: answer.testType,
         
         attemptNumber: answer.attemptNumber,
         submissionStatus: answer.submissionStatus,
