@@ -14,6 +14,7 @@ const {
 } = require("../middleware/mobileAuth");
 const CreditAccount = require("../models/CreditAccount");
 const OrgClient = require("../models/OrgClient");
+const { Telegraf } = require('telegraf');
 
 // Validation helpers
 const validateMobile = (mobile) => /^\d{10}$/.test(mobile);
@@ -140,7 +141,8 @@ router.post("/login", validateClient, async (req, res) => {
     const { mobile } = req.body;
     const clientId = req.params.clientId;
     const client = req.client;
-    console.log(clientId);
+    const org = client.organization.toString() || ''
+    console.log(org);
     console.log(client);
     if (!mobile || !validateMobile(mobile)) {
       return res.status(400).json({
@@ -216,12 +218,6 @@ router.post("/login", validateClient, async (req, res) => {
             {
               text: `🆕 <b>New User Registered!</b>\n\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>User No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`
             },
-            // {
-            //   headers:{
-            //     Authorization:`Bearer ${token}`
-            //   }
-            // }
-            
           );
         } catch (telegramError) {
           console.error(
@@ -231,6 +227,21 @@ router.post("/login", validateClient, async (req, res) => {
           // Don't fail the registration if Telegram fails
         }
         }
+
+        if(org === "68eceaefbc63e372b4906b67")
+          {
+            try {
+              const bot = new Telegraf("8220122553:AAG6_abPeoseq25BASSkaVRBi7w4kDBB3Gs");
+              const chatId = '-1003219979462';
+              if (!chatId) {
+                throw new Error('Chat ID not configured');
+              }
+              const text = `🆕 <b>New User Registered in ${client.businessName}</b>\n\n🏢 <b>ClientId:</b> ${clientId}\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>User No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`;
+              await bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' });
+            } catch (error) {
+              console.error('Error sending text to Telegram:', error);
+            }
+          }
         
 
         // 2. Immediately create a credit account for this user
@@ -494,6 +505,8 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     const { name, age, gender, exams, native_language, city, pincode } = req.body;
     const clientId = req.params.clientId;
     const userId = req.user.id;
+    const client = await User.findOne({ userId: clientId });
+    const org = client.organization.toString() || ''
     console.log(req.body)
     const mobileUser = await MobileUser.findOne({ _id: userId, clientId });
     if (!mobileUser) {
@@ -575,6 +588,20 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
       }
     }
 
+    if(org === "68eceaefbc63e372b4906b67")
+      {
+        try {
+          const bot = new Telegraf("8220122553:AAG6_abPeoseq25BASSkaVRBi7w4kDBB3Gs");
+          const chatId = '-1003219979462';
+          if (!chatId) {
+            throw new Error('Chat ID not configured');
+          }
+          const text = `📄 <b>New Profile Created in ${client.businessName}</b>\n\n👤 Name: ${name}\n📱 Mobile: ${mobileUser.mobile}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+          await bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' });
+        } catch (error) {
+          console.error('Error sending text to Telegram:', error);
+        }
+      }
 
     res.status(200).json({
       status: "PROFILE_SAVED",
