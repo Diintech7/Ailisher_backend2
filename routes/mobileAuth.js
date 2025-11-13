@@ -508,7 +508,11 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     const clientId = req.params.clientId;
     const userId = req.user.id;
     const client = await User.findOne({ userId: clientId });
-    const org = client.organization.toString() || ''
+    let org = null;
+    if(client.organization && client.organization !== null)
+    {
+    org = client.organization.toString()
+    }
     console.log(req.body)
     const mobileUser = await MobileUser.findOne({ _id: userId, clientId });
     if (!mobileUser) {
