@@ -141,9 +141,11 @@ router.post("/login", validateClient, async (req, res) => {
     const { mobile } = req.body;
     const clientId = req.params.clientId;
     const client = req.client;
-    const org = client.organization.toString() || ''
-    console.log(org);
-    console.log(client);
+    let org = null;
+    if(client.organization && client.organization !== null)
+    {
+    org = client.organization.toString()
+    }
     if (!mobile || !validateMobile(mobile)) {
       return res.status(400).json({
         success: false,
