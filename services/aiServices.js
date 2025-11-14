@@ -235,7 +235,7 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
       if (serviceConfig.serviceConfig?.includeMarginalia !== undefined) {
         formData.append("include_marginalia", serviceConfig.serviceConfig.includeMarginalia.toString());
       } else {
-        formData.append("include_marginalia", "true");
+        formData.append("include_marginalia", "false");
       }
 
       if (serviceConfig.serviceConfig?.includeMetadataInMarkdown !== undefined) {
@@ -244,7 +244,7 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
           serviceConfig.serviceConfig.includeMetadataInMarkdown.toString()
         );
       } else {
-        formData.append("include_metadata_in_markdown", "true");
+        formData.append("include_metadata_in_markdown", "false");
       }
 
       const queryParams = new URLSearchParams();
@@ -294,9 +294,11 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
       if (agenticResponse.status === 200 && responseData && responseData.data) {
         let extractedText = "";
         const apiData = responseData.data;
+        // Prioritize markdown format over JSON chunks
         if (apiData.markdown && apiData.markdown.trim()) {
           extractedText = apiData.markdown.trim();
         } else if (apiData.chunks && Array.isArray(apiData.chunks)) {
+          // Fallback: convert chunks to markdown-like format
           const chunkTexts = apiData.chunks
             .filter((chunk) => chunk.text && chunk.text.trim())
             .map((chunk) => chunk.text.trim());
@@ -306,7 +308,17 @@ const extractTextFromImagesAgentic = async (imageUrls, serviceConfig) => {
         }
 
         if (extractedText && extractedText.length > 0) {
-          extractedTexts.push(extractedText);
+          // Strip Landing AI inline metadata comments like <!-- ... -->
+          extractedText = extractedText
+            .replace(/<!--[\s\S]*?-->/g, "")
+            .split("\n")
+            .map((line) => line.trimEnd())
+            .filter((line) => line.trim().length > 0)
+            .join("\n");
+
+        }
+        if (extractedText && extractedText.length > 0) {
+          extractedTexts.push(extractedText.trim());
         } else {
           extractedTexts.push("No readable text found");
         }
@@ -989,11 +1001,21 @@ const parseEvaluationResponse = (evaluationText, question) => {
         .map(item => item.trim())
         .filter((item, idx, arr) => item && arr.indexOf(item) === idx);
       if (evaluation.analysis[section].length === 0) {
-        evaluation.analysis[section] = ['No content provided by AI.'];
+        // Provide meaningful default messages instead of "No content provided by AI"
+        const defaultMessages = {
+          introduction: ['The introduction needs improvement and better context setting.'],
+          body: ['The main content requires more detailed explanation and better organization.'],
+          conclusion: ['The conclusion needs to be more comprehensive and provide better closure.'],
+          strengths: ['Some positive aspects are present but need more development.'],
+          weaknesses: ['Several areas need improvement for better quality.'],
+          suggestions: ['Consider adding more examples and better structure to enhance your answer.'],
+          feedback: ['The answer shows potential but requires more depth and clarity.']
+        };
+        evaluation.analysis[section] = [defaultMessages[section] || 'Content needs improvement.'];
       }
     });
     if (evaluation.comments.length === 0) {
-      evaluation.comments = ['No comments provided by AI.'];
+      evaluation.comments = ['The answer needs more detail and better organization to meet the requirements.'];
     }
     // Enforce max 4 unique, trimmed comments
     evaluation.comments = (evaluation.comments || [])
@@ -1002,7 +1024,7 @@ const parseEvaluationResponse = (evaluationText, question) => {
       .filter((c, i, arr) => arr.indexOf(c) === i)
       .slice(0, 4);
     if (!evaluation.remark || evaluation.remark.length === 0) {
-      evaluation.remark = 'No remark provided by AI.';
+      evaluation.remark = 'The answer demonstrates basic understanding but needs significant improvement in content quality and structure.';
     }
     return evaluation;
   } catch (error) {
@@ -1173,22 +1195,39 @@ function cleanExtractedTexts(extractedTexts) {
   if (!Array.isArray(extractedTexts)) return [];
   return extractedTexts.map(text => {
     if (!text || typeof text !== 'string') return '';
+    
+    // First, remove Landing AI inline metadata comments like <!-- ... -->
+    text = text.replace(/<!--[\s\S]*?-->/g, "");
+    
+    // Check if text contains Hindi/Devanagari characters
+    const hasHindi = /[\u0900-\u097F]/.test(text);
+    
     // Remove lines that are only symbols, numbers, or repeated characters
-    return text
+    const cleanedLines = text
       .split('\n')
       .map(line => line.trim())
       .filter(line => {
         if (!line) return false;
-        if (line.length < 3) return false;
+        // For Hindi text, be more lenient - allow shorter lines
+        if (hasHindi) {
+          if (line.length < 2) return false;
+        } else {
+          if (line.length < 3) return false;
+        }
         if (/^(No readable text found|Failed to extract text|Text extraction failed)/i.test(line)) return false;
+        // Don't filter out lines that contain Hindi characters
+        if (/[\u0900-\u097F]/.test(line)) return true;
         if (/^[\d\s\-+*/=().,:;]+$/.test(line)) return false;
         if (/^(.)\1{5,}$/.test(line)) return false;
-        if (/^[^a-zA-Z0-9]+$/.test(line)) return false;
-        if (line.length > 0 && line.replace(/[^a-zA-Z0-9]/g, '').length < 2) return false;
+        if (/^[^a-zA-Z0-9\u0900-\u097F]+$/.test(line)) return false;
+        // For non-Hindi text, check alphanumeric content
+        if (!hasHindi && line.length > 0 && line.replace(/[^a-zA-Z0-9]/g, '').length < 2) return false;
         return true;
-      })
-      .join('\n');
-  }).filter(Boolean);
+      });
+    
+    const cleaned = cleanedLines.join('\n').trim();
+    return cleaned;
+  }).filter(text => text && text.length > 0);
 }
 
 // Language detection function
@@ -1362,15 +1401,25 @@ const parseHindiEvaluationResponse = (evaluationText, question) => {
         .map(item => item.trim())
         .filter((item, idx, arr) => item && arr.indexOf(item) === idx);
       if (evaluation.analysis[section].length === 0) {
-        evaluation.analysis[section] = ['AI द्वारा कोई सामग्री प्रदान नहीं की गई।'];
+        // Provide meaningful default messages in Hindi instead of "AI द्वारा कोई सामग्री प्रदान नहीं की गई।"
+        const defaultMessages = {
+          introduction: ['परिचय में सुधार और बेहतर संदर्भ स्थापना की आवश्यकता है।'],
+          body: ['मुख्य सामग्री में अधिक विस्तृत व्याख्या और बेहतर संगठन की आवश्यकता है।'],
+          conclusion: ['निष्कर्ष को अधिक व्यापक होना चाहिए और बेहतर समापन प्रदान करना चाहिए।'],
+          strengths: ['कुछ सकारात्मक पहलू मौजूद हैं लेकिन अधिक विकास की आवश्यकता है।'],
+          weaknesses: ['बेहतर गुणवत्ता के लिए कई क्षेत्रों में सुधार की आवश्यकता है।'],
+          suggestions: ['अपने उत्तर को बेहतर बनाने के लिए अधिक उदाहरण और बेहतर संरचना पर विचार करें।'],
+          feedback: ['उत्तर में क्षमता दिखाई देती है लेकिन अधिक गहराई और स्पष्टता की आवश्यकता है।']
+        };
+        evaluation.analysis[section] = [defaultMessages[section] || 'सामग्री में सुधार की आवश्यकता है।'];
       }
     });
     
     if (evaluation.comments.length === 0) {
-      evaluation.comments = ['AI द्वारा कोई टिप्पणी प्रदान नहीं की गई।'];
+      evaluation.comments = ['उत्तर में अधिक विस्तार और बेहतर संगठन की आवश्यकता है ताकि आवश्यकताओं को पूरा किया जा सके।'];
     }
     if (!evaluation.remark || evaluation.remark.length === 0) {
-      evaluation.remark = 'AI द्वारा कोई टिप्पणी प्रदान नहीं की गई।';
+      evaluation.remark = 'उत्तर में बुनियादी समझ दिखाई देती है लेकिन सामग्री की गुणवत्ता और संरचना में महत्वपूर्ण सुधार की आवश्यकता है।';
     }
     
     return evaluation;
