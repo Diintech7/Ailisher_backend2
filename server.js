@@ -168,6 +168,7 @@ app.use("/api/enhanced-pdf-chat", require("./routes/pdfChat"))
 // Public mobile chat endpoints (no token) — bookId only
 app.use("/api/mobile/public-chat", require("./routes/mobilePublicChat"))
 app.use("/api/mobile/public-chat", require("./routes/mobilePDFChat"))
+app.use("/api/app-analytics", require("./routes/appAnalytics"))
 
 
 // Global Evaluation routes (accessible without client-specific middleware)
@@ -273,6 +274,16 @@ app.use(
     next()
   },
   mainBookstoreRoutes,
+)
+
+app.use(
+  "/api/clients/:clientId/app-analytics",
+  checkClientAccess(),
+  (req, res, next) => {
+    req.clientId = req.params.clientId
+    next()
+  },
+  require('./routes/appAnalytics'),
 )
 
 app.use(

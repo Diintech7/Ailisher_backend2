@@ -37,7 +37,7 @@ router.post('/credit-recharge-plans/:planId/items', clientController.addCreditRe
 
 router.delete('/credit-recharge-plans/:planId/items/:itemId', clientController.deleteCreditRechargePlanItem);
 
-
+router.get('/:userId/analytics',verifyToken, clientController.getAppAnalytics);
 // Additional routes would go here
 // Such as routes for managing AI books, workbooks, agents, users, etc.
 

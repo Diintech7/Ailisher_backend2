@@ -11,6 +11,7 @@ const SubjectiveTest = require('../models/SubjectiveTest');
 const ObjectiveTest = require('../models/ObjectiveTest');
 const { generateGetPresignedUrl } = require('../utils/r2');
 const { default: mongoose } = require('mongoose');
+const AppAnalytics = require('../models/AppAnalytics');
 
 // Get client dashboard data
 exports.getDashboard = async (req, res) => {
@@ -816,6 +817,16 @@ exports.addCreditRechargePlanItem = async (req, res) => {
     res.json({ success: true, message: 'Item added to plan', data: populated });
   } catch (error) {
     console.error('Error adding item to plan:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getAppAnalytics = async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const appAnalytics = await AppAnalytics.find({ userId });
+    res.json({ success: true, data: appAnalytics });
+  } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
