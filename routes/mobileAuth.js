@@ -643,6 +643,7 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
     const clientId = req.params.clientId;
     const userId = req.user.id;
     const client = await User.findOne({ userId: clientId });
+    console.log("client", client)
     const mobileUser = await MobileUser.findOne({ _id: userId, clientId });
     if (!mobileUser) {
       return res.status(403).json({
@@ -681,6 +682,7 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
         mobile: profile.userId.mobile,
         isEvaluator: profile.isEvaluator,
         institute_name: client.businessName,
+        institute_logo: client.businessLogo,
         created_at: profile.createdAt,
         updated_at: profile.updatedAt,
       },

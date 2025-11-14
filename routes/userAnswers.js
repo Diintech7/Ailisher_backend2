@@ -46,6 +46,7 @@ const {
 } = require("../services/aiServices");
 const { Telegraf, Telegram } = require("telegraf");
 const MyQuestion = require("../models/MyQuestion");
+const { verifyToken } = require("../middleware/auth");
 
 router.use("/crud", crud);
 
@@ -552,6 +553,355 @@ router.post(
 );
 
 router.post(
+  "/myquestion/answers/:answerId/evaluate",
+  [
+    param("answerId").isMongoId().withMessage("Answer ID must be a valid MongoDB ObjectId"),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid input data",
+          responseCode: 2002,
+          error: { code: "INVALID_INPUT", details: errors.array() },
+        });
+      }
+
+      const __traceId = `MYQ-EVAL-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+      const { answerId } = req.params;
+
+      // 1) Load answer and question
+      const answer = await UserAnswer.findById(answerId).lean();
+      if (!answer) return res.status(404).json({ success: false, message: "Answer not found" });
+      if (answer.testType !== "myquestion") {
+        return res.status(400).json({ success: false, message: "Invalid test type for this endpoint" });
+      }
+
+      const question = await MyQuestion.findById(answer.questionId).lean();
+      if (!question) return res.status(404).json({ success: false, message: "Question not found" });
+
+      // 2) Prepare content: images + optional text
+      const answerImages = Array.isArray(answer.answerImages) ? answer.answerImages : [];
+      let extractedTexts = [];
+      if (answerImages.length > 0) {
+        try {
+          const imageUrls = answerImages.map(x => x.imageUrl).filter(Boolean);
+          extractedTexts = await extractTextFromImagesWithFallback(imageUrls);
+          extractedTexts = cleanExtractedTexts(extractedTexts);
+        } catch (e) {
+          console.warn("[MyQuestion][Evaluate] extraction failed", e.message);
+        }
+      }
+      if (answer.textAnswer && String(answer.textAnswer).trim()) {
+        extractedTexts.push(String(answer.textAnswer).trim());
+      }
+
+      const hasValidText = (extractedTexts || []).some(t =>
+        t && t.trim() && !t.startsWith("Failed to extract text") && !t.startsWith("No readable text found") && !t.includes("Text extraction failed")
+      );
+      if (!hasValidText) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid or unreadable answer content",
+          responseCode: 2008,
+          error: { code: "UNREADABLE_ANSWER_CONTENT" }
+        });
+      }
+
+      const combinedText = extractedTexts.join(" ");
+      const detectedLanguage = detectLanguage(combinedText);
+
+      // 3) Evaluate (Gemini/OpenAI) similar to AISWB block
+      const evaluationMode = (question && typeof question.evaluationMode === "string")
+        ? question.evaluationMode.toLowerCase()
+        : "";
+      const isManualEvaluation = evaluationMode === "manual";
+      const includeImageAnnotations = !isManualEvaluation;
+      const evaluationService = await getServiceForTask("evaluation");
+      const prompt = generateEvaluationPrompt(question, extractedTexts);
+      let evaluation = null;
+
+      if (evaluationService.serviceName === "gemini") {
+        const response = await axios.post(`${evaluationService.apiUrl}?key=${evaluationService.apiKey}`, {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 2048 }
+        }, { headers: { "Content-Type": "application/json" }, timeout: 30000 });
+
+        if (!(response.status === 200 && response.data?.candidates?.[0]?.content))
+          throw new Error("Invalid response from Gemini API");
+
+        const evaluationText = response.data.candidates[0].content.parts[0].text;
+        evaluation = parseEvaluationResponse(evaluationText, question);
+
+        // Hindi enrichment (if needed)
+        if (detectedLanguage === "hindi") {
+          try {
+            const hindiEvaluation = await translateEvaluationToHindi(evaluation, question);
+            if (hindiEvaluation) {
+              evaluation.hindiEvaluation = hindiEvaluation;
+            } else {
+              const hindiPrompt = generateCustomHindiEvaluationPrompt(question, extractedTexts);
+              const hindiResponse = await axios.post(
+                `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
+                {
+                  contents: [{ parts: [{ text: hindiPrompt }] }],
+                  generationConfig: {
+                    temperature: 0.7,
+                    topK: 40,
+                    topP: 0.95,
+                    maxOutputTokens: 2048,
+                  },
+                },
+                { headers: { "Content-Type": "application/json" }, timeout: 30000 }
+              );
+              if (hindiResponse.status === 200 && hindiResponse.data?.candidates?.[0]?.content) {
+                const hindiEvaluationText = hindiResponse.data.candidates[0].content.parts[0].text;
+                evaluation.hindiEvaluation = parseHindiEvaluationResponse(hindiEvaluationText, question);
+              }
+            }
+            evaluation = enforceEvaluationLimits(evaluation, { maxRemark: 250 });
+          } catch (hindiError) {
+            console.error("[MyQuestion][Evaluate] Hindi evaluation failed:", hindiError.message);
+          }
+        }
+
+        // Per-image comments only in auto mode
+        if (includeImageAnnotations) {
+          try {
+            let perImage = parseImageAnnotations(evaluationText, answerImages.length);
+            const needsFallback = !perImage || perImage.every(arr => arr.length === 0);
+            if (needsFallback) {
+              const candidates = (evaluation.comments || []).slice(0, 4);
+              perImage = mapCommentsToImages(candidates, extractedTexts, 2);
+            }
+            evaluation.perImageComments = perImage;
+          } catch {}
+        }
+
+        evaluation.evaluationMethod = "gemini";
+      } else if (evaluationService.serviceName === "openai") {
+        const response = await axios.post(evaluationService.apiUrl, {
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 1500, temperature: 0.7
+        }, { headers: { "Content-Type": "application/json", Authorization: `Bearer ${evaluationService.apiKey}` }, timeout: 30000 });
+
+        if (!response.data?.choices?.[0]?.message?.content)
+          throw new Error("Invalid response from OpenAI API");
+
+        const evaluationText = response.data.choices[0].message.content;
+        evaluation = parseEvaluationResponse(evaluationText, question);
+
+        // Hindi enrichment (if needed)
+        if (detectedLanguage === "hindi") {
+          try {
+            const hindiEvaluation = await translateEvaluationToHindi(evaluation, question);
+            if (hindiEvaluation) {
+              evaluation.hindiEvaluation = await enrichHindiEvaluationFromEnglish(
+                evaluation,
+                hindiEvaluation
+              );
+            } else {
+              const hindiPrompt = generateCustomHindiEvaluationPrompt(
+                question,
+                extractedTexts,
+                { includeImageAnnotations }
+              );
+              const hindiResponse = await axios.post(
+                evaluationService.apiUrl,
+                {
+                  model: "gpt-4o-mini",
+                  messages: [{ role: "user", content: hindiPrompt }],
+                  max_tokens: 1500,
+                  temperature: 0.7,
+                },
+                {
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${evaluationService.apiKey}`,
+                  },
+                  timeout: 30000,
+                }
+              );
+              if (hindiResponse.data?.choices?.[0]?.message?.content) {
+                const hindiEvaluationText = hindiResponse.data.choices[0].message.content;
+                const parsedHindiEval = parseHindiEvaluationResponse(
+                  hindiEvaluationText,
+                  question
+                );
+                evaluation.hindiEvaluation = await enrichHindiEvaluationFromEnglish(
+                  evaluation,
+                  parsedHindiEval
+                );
+              }
+            }
+          } catch (hindiError) {
+            console.error("[MyQuestion][Evaluate] Hindi evaluation failed:", hindiError.message);
+          }
+        }
+
+        if (includeImageAnnotations) {
+          try {
+            let perImage = parseImageAnnotations(evaluationText, answerImages.length);
+            const needsFallback = !perImage || perImage.every(arr => arr.length === 0);
+            if (needsFallback) {
+              const candidates = (evaluation.comments || []).slice(0, 4);
+              perImage = mapCommentsToImages(candidates, extractedTexts, 2);
+            }
+            evaluation.perImageComments = perImage;
+          } catch {}
+        }
+        
+        evaluation.evaluationMethod = "openai";
+      } else {
+        evaluation = generateMockEvaluation(question);
+        evaluation.evaluationMethod = "agentic_mock";
+      }
+
+      if (!evaluation) evaluation = generateMockEvaluation(question);
+      evaluation = enforceEvaluationLimits(evaluation, { maxRemark: 250 });
+
+      if (
+        detectedLanguage === "hindi" &&
+        evaluation &&
+        !evaluation.hindiEvaluation
+      ) {
+        try {
+          const hindiEvaluation = await translateEvaluationToHindi(evaluation, question);
+          if (hindiEvaluation) {
+            evaluation.hindiEvaluation = hindiEvaluation;
+          }
+        } catch (hindiError) {
+          console.warn("[MyQuestion][Evaluate] Hindi fallback translation failed:", hindiError.message);
+        }
+      }
+
+      // Final per-image fallback in auto mode
+      if (includeImageAnnotations && (!evaluation.perImageComments || evaluation.perImageComments.every(a => (a || []).length === 0))) {
+        try {
+          const candidates = [
+            ...(evaluation.comments || []),
+            ...(evaluation.analysis?.strengths || []).map(s => `✓ ${s}`),
+            ...(evaluation.analysis?.weaknesses || []).map(w => `⚠ ${w}`),
+          ];
+          evaluation.perImageComments = mapCommentsToImages(candidates, extractedTexts, 2);
+        } catch {}
+      }
+
+      // 4) Persist evaluation
+      const hindiEvaluation = evaluation.hindiEvaluation;
+      if (hindiEvaluation) {
+        delete evaluation.hindiEvaluation;
+      }
+
+      const update = {
+        evaluation,
+        submissionStatus: includeImageAnnotations ? "evaluated" : "submitted",
+        reviewStatus: null,
+      };
+
+      if (includeImageAnnotations) {
+        update.evaluatedAt = new Date();
+        update.publishStatus = "published";
+      }
+
+      if (hindiEvaluation) {
+        update.hindiEvaluation = hindiEvaluation;
+      }
+
+      // 5) Auto annotations in auto mode (best-effort)
+      if (includeImageAnnotations && answerImages.length > 0) {
+        try {
+          const annotations = [];
+          const useHindiAnnotations =
+            detectedLanguage === "hindi" &&
+            Array.isArray(hindiEvaluation?.comments) &&
+            hindiEvaluation.comments.length > 0;
+          const sourceCommentsAll = useHindiAnnotations
+            ? hindiEvaluation.comments
+            : (evaluation.comments || []);
+          for (let i = 0; i < answerImages.length; i++) {
+            const img = answerImages[i];
+            if (!img.cloudinaryPublicId) continue;
+
+            const evalComments = sourceCommentsAll.slice(0, 4);
+            const comments =
+              answerImages.length === 1
+                ? evalComments
+                : useHindiAnnotations
+                    ? sourceCommentsAll.slice(i * 2, i * 2 + 2)
+                    : (Array.isArray(evaluation.perImageComments?.[i]) && evaluation.perImageComments[i].length > 0)
+                        ? evaluation.perImageComments[i]
+                        : evalComments.slice(0, 2);
+
+            const text = (comments || []).map(c => String(c).trim()).filter(Boolean).join("\n\n");
+            if (!text) continue;
+
+            try {
+              const s3Key = `${req.clientInfo.businessName}/auto-annotated-images/${req.user.clientId}/${answer.questionId}/${Date.now()}_${i}.png`;
+              let annotatedImageBase64 = null;
+              const mockReq = { body: {
+                imageUrl: img.imageUrl, text,
+                fontsize: 18, fontStyle: "handwritten", customFontPath: "./assets/fonts/Kalam-Regular.ttf", fontWeight: "bold",
+                color: "#FF0000", align: "left", numbered: true, withTicks: false, ticks: [{ x: 0.22, y: 0.3, size: 80, color: "#FF0000" }],
+                xPadding: 24, sidebar: true, sidebarWidth: 480, sidebarColor: "#FFFFFF", padding: 10, borderRadius: 6,
+                textShadow: "2px 2px 6px rgba(0,0,0,0.9)",
+                evaluation,
+                hindiEvaluation: hindiEvaluation || undefined,
+                maxScore: question.metadata?.maximumMarks || question.maximumMarks
+              }};
+              const mockRes = { json: (d) => { if (d.success && d.image) annotatedImageBase64 = d.image; else throw new Error("overlay failed"); } };
+              await overlayTextOnImage(mockReq, mockRes);
+              if (annotatedImageBase64) {
+                const imageBuffer = Buffer.from(annotatedImageBase64, "base64");
+                const uploadedKey = await uploadFileToS3(imageBuffer, s3Key, "image/png");
+                const downloadUrl = await generateAnnotatedImageUrl(uploadedKey);
+                annotations.push({ s3Key: uploadedKey, downloadUrl, uploadedAt: new Date() });
+              }
+            } catch (annErr) {
+              console.warn("[MyQuestion][Evaluate] annotation failed:", annErr.message);
+            }
+          }
+          if (annotations.length > 0) {
+            update.annotations = annotations;
+            update.annotationsCount = annotations.length;
+          }
+        } catch (wrapErr) {
+          console.warn("[MyQuestion][Evaluate] annotation wrapper failed:", wrapErr.message);
+        }
+      }
+
+      await UserAnswer.findByIdAndUpdate(answerId, update, { new: false });
+
+      return res.status(200).json({
+        success: true,
+        message: "Answer evaluated successfully",
+        responseCode: 2010,
+        data: {
+          answerId,
+          evaluation,
+          evaluatedAt: update.evaluatedAt || null,
+          submissionStatus: update.submissionStatus,
+          hindiEvaluation: update.hindiEvaluation,
+          annotations: update.annotations,
+          annotationsCount: update.annotationsCount
+        }
+      });
+    } catch (error) {
+      console.error("[MyQuestion][Evaluate] Error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+        responseCode: 2011,
+        error: { code: "SERVER_ERROR", details: error.message }
+      });
+    }
+  }
+);
+
+router.post(
   "/questions/:questionId/answers",
   authenticateMobileUser,
   validateQuestionId,
@@ -718,22 +1068,39 @@ router.post(
             extractedTexts
           );
 
-          // Store relevance validation result to add as comment in evaluation
-          // No longer blocking submission - will be included in feedback
+          if (!relevanceValidation.isValid) {
+            if (req.files && req.files.length > 0) {
+              for (const file of req.files) {
+                try {
+                  await cloudinary.uploader.destroy(file.filename);
+                } catch (cleanupError) {
+                  console.error(
+                    "Error cleaning up invalid image:",
+                    cleanupError
+                  );
+                }
+              }
+            }
+
+            return res.status(400).json({
+              success: false,
+              message: "Invalid image content",
+              responseCode: 1576,
+              error: {
+                code: "INVALID_IMAGE_CONTENT",
+                details: relevanceValidation.reason,
+                aiResponse: relevanceValidation.aiResponse || null,
+              },
+            });
+          }
 
           const hasValidText = extractedTexts.some(
-            (text) => {
-              if (!text || typeof text !== 'string') return false;
-              const trimmed = text.trim();
-              if (trimmed.length === 0) return false;
-              if (trimmed.startsWith("Failed to extract text")) return false;
-              if (trimmed.startsWith("No readable text found")) return false;
-              if (trimmed.includes("Text extraction failed")) return false;
-              // Check if text contains actual content (not just whitespace/symbols)
-              // Allow Hindi characters (Devanagari script: \u0900-\u097F)
-              const hasContent = /[\u0900-\u097Fa-zA-Z0-9]/.test(trimmed);
-              return hasContent;
-            }
+            (text) =>
+              text &&
+              text.trim().length > 0 &&
+              !text.startsWith("Failed to extract text") &&
+              !text.startsWith("No readable text found") &&
+              !text.includes("Text extraction failed")
           );
 
           // Detect language early so it's available for all evaluation scenarios
@@ -799,33 +1166,6 @@ router.post(
                     evaluationText,
                     question
                   );
-
-                  // Add relevance validation as a comment if validation failed
-                  if (!relevanceValidation.isValid && relevanceValidation.reason) {
-                    // Set relevancy and score to 0 when answer is not relevant
-                    evaluation.relevancy = 0;
-                    evaluation.score = 0;
-                    if (!evaluation.comments) {
-                      evaluation.comments = [];
-                    }
-                    const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
-                    evaluation.comments.unshift(relevanceComment);
-                    // Limit to max 4 comments
-                    evaluation.comments = evaluation.comments.slice(0, 4);
-                    // Update analysis sections with relevance message
-                    if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
-                      evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
-                    }
-                    if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
-                      evaluation.analysis.body = ['Your answer is not relevant to the question.'];
-                    }
-                    if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
-                      evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
-                    }
-                    if (!evaluation.remark || evaluation.remark.includes('No remark')) {
-                      evaluation.remark = 'Your answer is not relevant to the question.';
-                    }
-                  }
 
                   if (detectedLanguage === "hindi") {
                     console.log(
@@ -973,33 +1313,6 @@ router.post(
                     question
                   );
 
-                  // Add relevance validation as a comment if validation failed
-                  if (!relevanceValidation.isValid && relevanceValidation.reason) {
-                    // Set relevancy and score to 0 when answer is not relevant
-                    evaluation.relevancy = 0;
-                    evaluation.score = 0;
-                    if (!evaluation.comments) {
-                      evaluation.comments = [];
-                    }
-                    const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
-                    evaluation.comments.unshift(relevanceComment);
-                    // Limit to max 4 comments
-                    evaluation.comments = evaluation.comments.slice(0, 4);
-                    // Update analysis sections with relevance message
-                    if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
-                      evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
-                    }
-                    if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
-                      evaluation.analysis.body = ['Your answer is not relevant to the question.'];
-                    }
-                    if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
-                      evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
-                    }
-                    if (!evaluation.remark || evaluation.remark.includes('No remark')) {
-                      evaluation.remark = 'Your answer is not relevant to the question.';
-                    }
-                  }
-
                   if (detectedLanguage === "hindi") {
                     console.log(
                       "[v0] Generating Hindi evaluation for detected Hindi text"
@@ -1108,34 +1421,6 @@ router.post(
               if (!evaluation) {
                 evaluation = generateMockEvaluation(question);
               }
-
-              // Add relevance validation as a comment if validation failed (for fallback evaluations)
-              if (!relevanceValidation.isValid && relevanceValidation.reason) {
-                // Set relevancy and score to 0 when answer is not relevant
-                evaluation.relevancy = 0;
-                evaluation.score = 0;
-                if (!evaluation.comments) {
-                  evaluation.comments = [];
-                }
-                const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
-                evaluation.comments.unshift(relevanceComment);
-                // Limit to max 4 comments
-                evaluation.comments = evaluation.comments.slice(0, 4);
-                // Update analysis sections with relevance message
-                if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
-                  evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
-                }
-                if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
-                  evaluation.analysis.body = ['Your answer is not relevant to the question.'];
-                }
-                if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
-                  evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
-                }
-                if (!evaluation.remark || evaluation.remark.includes('No remark')) {
-                  evaluation.remark = 'Your answer is not relevant to the question.';
-                }
-              }
-
               // Enforce storage limits (e.g., remark length)
               evaluation = enforceEvaluationLimits(evaluation, {
                 maxRemark: 250,
@@ -1308,34 +1593,6 @@ router.post(
             } catch (evaluationError) {
               console.error("AI evaluation failed:", evaluationError.message);
               evaluation = generateMockEvaluation(question);
-
-              // Add relevance validation as a comment if validation failed
-              if (!relevanceValidation.isValid && relevanceValidation.reason) {
-                // Set relevancy and score to 0 when answer is not relevant
-                evaluation.relevancy = 0;
-                evaluation.score = 0;
-                if (!evaluation.comments) {
-                  evaluation.comments = [];
-                }
-                const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
-                evaluation.comments.unshift(relevanceComment);
-                // Limit to max 4 comments
-                evaluation.comments = evaluation.comments.slice(0, 4);
-                // Update analysis sections with relevance message
-                if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
-                  evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
-                }
-                if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
-                  evaluation.analysis.body = ['Your answer is not relevant to the question.'];
-                }
-                if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
-                  evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
-                }
-                if (!evaluation.remark || evaluation.remark.includes('No remark')) {
-                  evaluation.remark = 'Your answer is not relevant to the question.';
-                }
-              }
-
               evaluation = enforceEvaluationLimits(evaluation, {
                 maxRemark: 250,
               });
@@ -2112,22 +2369,39 @@ router.post(
             extractedTexts
           );
 
-          // Store relevance validation result to add as comment in evaluation
-          // No longer blocking submission - will be included in feedback
+          if (!relevanceValidation.isValid) {
+            if (req.files && req.files.length > 0) {
+              for (const file of req.files) {
+                try {
+                  await cloudinary.uploader.destroy(file.filename);
+                } catch (cleanupError) {
+                  console.error(
+                    "Error cleaning up invalid image:",
+                    cleanupError
+                  );
+                }
+              }
+            }
+
+            return res.status(400).json({
+              success: false,
+              message: "Invalid image content",
+              responseCode: 1576,
+              error: {
+                code: "INVALID_IMAGE_CONTENT",
+                details: relevanceValidation.reason,
+                aiResponse: relevanceValidation.aiResponse || null,
+              },
+            });
+          }
 
           const hasValidText = extractedTexts.some(
-            (text) => {
-              if (!text || typeof text !== 'string') return false;
-              const trimmed = text.trim();
-              if (trimmed.length === 0) return false;
-              if (trimmed.startsWith("Failed to extract text")) return false;
-              if (trimmed.startsWith("No readable text found")) return false;
-              if (trimmed.includes("Text extraction failed")) return false;
-              // Check if text contains actual content (not just whitespace/symbols)
-              // Allow Hindi characters (Devanagari script: \u0900-\u097F)
-              const hasContent = /[\u0900-\u097Fa-zA-Z0-9]/.test(trimmed);
-              return hasContent;
-            }
+            (text) =>
+              text &&
+              text.trim().length > 0 &&
+              !text.startsWith("Failed to extract text") &&
+              !text.startsWith("No readable text found") &&
+              !text.includes("Text extraction failed")
           );
 
           // Detect language early so it's available for all evaluation scenarios
@@ -2189,33 +2463,6 @@ router.post(
                     evaluationText,
                     question
                   );
-
-                  // Add relevance validation as a comment if validation failed
-                  if (!relevanceValidation.isValid && relevanceValidation.reason) {
-                    // Set relevancy and score to 0 when answer is not relevant
-                    evaluation.relevancy = 0;
-                    evaluation.score = 0;
-                    if (!evaluation.comments) {
-                      evaluation.comments = [];
-                    }
-                    const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
-                    evaluation.comments.unshift(relevanceComment);
-                    // Limit to max 4 comments
-                    evaluation.comments = evaluation.comments.slice(0, 4);
-                    // Update analysis sections with relevance message
-                    if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
-                      evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
-                    }
-                    if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
-                      evaluation.analysis.body = ['Your answer is not relevant to the question.'];
-                    }
-                    if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
-                      evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
-                    }
-                    if (!evaluation.remark || evaluation.remark.includes('No remark')) {
-                      evaluation.remark = 'Your answer is not relevant to the question.';
-                    }
-                  }
 
                   if (detectedLanguage === "hindi") {
                     console.log(
@@ -2328,33 +2575,6 @@ router.post(
                     question
                   );
 
-                  // Add relevance validation as a comment if validation failed
-                  if (!relevanceValidation.isValid && relevanceValidation.reason) {
-                    // Set relevancy and score to 0 when answer is not relevant
-                    evaluation.relevancy = 0;
-                    evaluation.score = 0;
-                    if (!evaluation.comments) {
-                      evaluation.comments = [];
-                    }
-                    const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
-                    evaluation.comments.unshift(relevanceComment);
-                    // Limit to max 4 comments
-                    evaluation.comments = evaluation.comments.slice(0, 4);
-                    // Update analysis sections with relevance message
-                    if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
-                      evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
-                    }
-                    if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
-                      evaluation.analysis.body = ['Your answer is not relevant to the question.'];
-                    }
-                    if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
-                      evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
-                    }
-                    if (!evaluation.remark || evaluation.remark.includes('No remark')) {
-                      evaluation.remark = 'Your answer is not relevant to the question.';
-                    }
-                  }
-
                   if (detectedLanguage === "hindi") {
                     console.log(
                       "[v0] Generating Hindi evaluation for detected Hindi text"
@@ -2428,33 +2648,6 @@ router.post(
 
               if (!evaluation) {
                 evaluation = generateMockEvaluation(question);
-              }
-
-              // Add relevance validation as a comment if validation failed (for fallback evaluations)
-              if (!relevanceValidation.isValid && relevanceValidation.reason) {
-                // Set relevancy and score to 0 when answer is not relevant
-                evaluation.relevancy = 0;
-                evaluation.score = 0;
-                if (!evaluation.comments) {
-                  evaluation.comments = [];
-                }
-                const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
-                evaluation.comments.unshift(relevanceComment);
-                // Limit to max 4 comments
-                evaluation.comments = evaluation.comments.slice(0, 4);
-                // Update analysis sections with relevance message
-                if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
-                  evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
-                }
-                if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
-                  evaluation.analysis.body = ['Your answer is not relevant to the question.'];
-                }
-                if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
-                  evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
-                }
-                if (!evaluation.remark || evaluation.remark.includes('No remark')) {
-                  evaluation.remark = 'Your answer is not relevant to the question.';
-                }
               }
 
               // Generate Hindi evaluation for fallback evaluation if language is Hindi
@@ -2568,17 +2761,6 @@ router.post(
             } catch (evaluationError) {
               console.error("AI evaluation failed:", evaluationError.message);
               evaluation = generateMockEvaluation(question);
-
-              // Add relevance validation as a comment if validation failed
-              if (!relevanceValidation.isValid && relevanceValidation.reason) {
-                if (!evaluation.comments) {
-                  evaluation.comments = [];
-                }
-                const relevanceComment = `Relevance Check: ${relevanceValidation.reason}`;
-                evaluation.comments.unshift(relevanceComment);
-                // Limit to max 4 comments
-                evaluation.comments = evaluation.comments.slice(0, 4);
-              }
 
               // Generate Hindi evaluation for error fallback if language is Hindi
               if (
@@ -3150,5 +3332,477 @@ router.get("/:answerId", authenticateMobileUser, async (req, res) => {
     });
   }
 });
+
+router.post(
+  '/:answerId/evaluate',
+  verifyToken,
+  [
+    param('answerId')
+      .isMongoId()
+      .withMessage('Answer ID must be a valid MongoDB ObjectId'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid input data',
+          error: {
+            code: 'INVALID_INPUT',
+            details: errors.array(),
+          },
+        });
+      }
+
+      const { answerId } = req.params;
+      const clientId = req.user.userId;
+      console.log(clientId)
+      const userAnswer = await UserAnswer.findOne({
+        _id: answerId,
+        clientId: clientId,
+      }).lean();
+
+      if (!userAnswer) {
+        return res.status(404).json({
+          success: false,
+          message: 'Answer not found',
+          error: {
+            code: 'ANSWER_NOT_FOUND',
+            details: 'The specified answer does not exist',
+          },
+        });
+      }
+
+      if (userAnswer.submissionStatus === 'evaluated') {
+        return res.status(400).json({
+          success: false,
+          message: 'Answer already evaluated',
+          error: {
+            code: 'ANSWER_ALREADY_EVALUATED',
+            details: 'The specified answer has already been evaluated',
+          },
+        });
+      }
+      if (userAnswer.submissionStatus === 'accepted') {
+
+        return res.status(400).json({
+          success: false,
+          message: 'Answer already accepted',
+          error: {
+            code: 'ANSWER_ALREADY_ACCEPTED',
+            details: 'The specified answer has already been accepted',
+          },
+        });
+      }
+      
+      let question = null;
+      if (userAnswer.testType === 'myquestion') {
+        question = await MyQuestion.findById(userAnswer.questionId).lean();
+      } else {
+        question = await AiswbQuestion.findById(userAnswer.questionId).lean();
+      }
+
+      if (!question) {
+        return res.status(404).json({
+          success: false,
+          message: 'Question not found',
+          error: {
+            code: 'QUESTION_NOT_FOUND',
+            details: 'Unable to locate question for this answer',
+          },
+        });
+      }
+
+      const answerImages = Array.isArray(userAnswer.answerImages)
+        ? userAnswer.answerImages
+        : [];
+
+      let extractedTexts = Array.isArray(userAnswer.extractedTexts)
+        ? [...userAnswer.extractedTexts]
+        : [];
+
+      if (answerImages.length > 0) {
+        try {
+          const imageUrls = answerImages
+            .map((img) => img.imageUrl || img.secure_url)
+            .filter(Boolean);
+          const extracted = await extractTextFromImagesWithFallback(imageUrls);
+          extractedTexts = cleanExtractedTexts(extracted);
+        } catch (extractionError) {
+          console.warn(
+            '[MobileEvaluate] Text extraction failed:',
+            extractionError.message
+          );
+        }
+      }
+
+      if (userAnswer.textAnswer) {
+        extractedTexts.push(String(userAnswer.textAnswer));
+      }
+
+      extractedTexts = cleanExtractedTexts(extractedTexts);
+
+      const hasValidText = extractedTexts.some((text) => {
+        if (!text || typeof text !== 'string') return false;
+        const trimmed = text.trim();
+        if (!trimmed) return false;
+        if (trimmed.startsWith('Failed to extract text')) return false;
+        if (trimmed.startsWith('No readable text found')) return false;
+        if (trimmed.includes('Text extraction failed')) return false;
+        return /[\u0900-\u097Fa-zA-Z0-9]/.test(trimmed);
+      });
+
+      if (!hasValidText) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid or unreadable answer content',
+          error: {
+            code: 'UNREADABLE_ANSWER_CONTENT',
+            details:
+              'No readable text could be extracted from the stored answer',
+          },
+        });
+      }
+
+      const includeImageAnnotations = question.evaluationMode !== 'manual';
+      const combinedText = extractedTexts.join(' ');
+      const detectedLanguage = detectLanguage(combinedText);
+      const evaluationService = await getServiceForTask('evaluation');
+      const prompt = generateEvaluationPrompt(question, extractedTexts);
+
+      let evaluation = null;
+
+      const attachPerImageComments = (evaluationText) => {
+        if (!includeImageAnnotations) return;
+        try {
+          let perImage = parseImageAnnotations(
+            evaluationText,
+            answerImages.length
+          );
+          if (!perImage || perImage.every((arr) => arr.length === 0)) {
+            const candidates = (evaluation.comments || []).slice(0, 4);
+            perImage = mapCommentsToImages(candidates, extractedTexts, 2);
+          }
+          evaluation.perImageComments = perImage;
+        } catch (err) {
+          console.warn(
+            '[MobileEvaluate] per-image annotation parsing failed:',
+            err.message
+          );
+        }
+      };
+
+      if (evaluationService.serviceName === 'gemini') {
+        const response = await axios.post(
+          `${evaluationService.apiUrl}?key=${evaluationService.apiKey}`,
+          {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.7,
+              topK: 40,
+              topP: 0.95,
+              maxOutputTokens: 2048,
+            },
+          },
+          {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 30000,
+          }
+        );
+
+        if (
+          response.status === 200 &&
+          response.data?.candidates?.[0]?.content?.parts?.[0]?.text
+        ) {
+          const evaluationText = response.data.candidates[0].content.parts[0]
+            .text;
+          evaluation = parseEvaluationResponse(evaluationText, question);
+          attachPerImageComments(evaluationText);
+          evaluation.evaluationMethod = 'gemini';
+        } else {
+          throw new Error('Invalid response from Gemini API');
+        }
+      } else if (evaluationService.serviceName === 'openai') {
+        const response = await axios.post(
+          evaluationService.apiUrl,
+          {
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 1500,
+            temperature: 0.7,
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${evaluationService.apiKey}`,
+            },
+            timeout: 30000,
+          }
+        );
+
+        const evaluationText = response.data?.choices?.[0]?.message?.content;
+        if (!evaluationText) {
+          throw new Error('Invalid response from OpenAI API');
+        }
+        evaluation = parseEvaluationResponse(evaluationText, question);
+        attachPerImageComments(evaluationText);
+        evaluation.evaluationMethod = 'openai';
+      } else {
+        evaluation = generateMockEvaluation(question);
+        evaluation.evaluationMethod = 'agentic_mock';
+      }
+
+      if (!evaluation) {
+        evaluation = generateMockEvaluation(question);
+      }
+
+      if (
+        detectedLanguage === 'hindi' &&
+        evaluation &&
+        !evaluation.hindiEvaluation
+      ) {
+        try {
+          const hindiEvaluation = await translateEvaluationToHindi(
+            evaluation,
+            question
+          );
+          if (hindiEvaluation) {
+            evaluation.hindiEvaluation = await enrichHindiEvaluationFromEnglish(
+              evaluation,
+              hindiEvaluation
+            );
+          } else {
+            const hindiPrompt = generateCustomHindiEvaluationPrompt(
+              question,
+              extractedTexts,
+              { includeImageAnnotations }
+            );
+            const hindiResponse = await axios.post(
+              evaluationService.apiUrl,
+              {
+                model: 'gpt-4o-mini',
+                messages: [{ role: 'user', content: hindiPrompt }],
+                max_tokens: 1500,
+                temperature: 0.7,
+              },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${evaluationService.apiKey}`,
+                },
+                timeout: 30000,
+              }
+            );
+            if (hindiResponse.data?.choices?.[0]?.message?.content) {
+              const parsedHindiEval = parseHindiEvaluationResponse(
+                hindiResponse.data.choices[0].message.content,
+                question
+              );
+              evaluation.hindiEvaluation = await enrichHindiEvaluationFromEnglish(
+                evaluation,
+                parsedHindiEval
+              );
+            }
+          }
+        } catch (hindiError) {
+          console.warn(
+            '[MobileEvaluate] Hindi evaluation failed:',
+            hindiError.message
+          );
+        }
+      }
+
+      evaluation = enforceEvaluationLimits(evaluation, { maxRemark: 250 });
+
+      // Ensure score never exceeds maximum marks
+      const maxMarks = question.metadata?.maximumMarks || question.maximumMarks;
+      if (maxMarks && Number.isFinite(maxMarks) && evaluation && typeof evaluation.score === 'number') {
+        evaluation.score = Math.min(maxMarks, Math.max(0, evaluation.score));
+        // Also cap Hindi evaluation score if present
+        if (evaluation.hindiEvaluation && typeof evaluation.hindiEvaluation.score === 'number') {
+          evaluation.hindiEvaluation.score = Math.min(maxMarks, Math.max(0, evaluation.hindiEvaluation.score));
+        }
+      }
+
+      if (
+        includeImageAnnotations &&
+        (!evaluation.perImageComments ||
+          evaluation.perImageComments.every((arr) => (arr || []).length === 0))
+      ) {
+        try {
+          const candidates = [
+            ...(evaluation.comments || []),
+            ...(evaluation.analysis?.strengths || []).map((s) => `✓ ${s}`),
+            ...(evaluation.analysis?.weaknesses || []).map((w) => `⚠ ${w}`),
+          ];
+          evaluation.perImageComments = mapCommentsToImages(
+            candidates,
+            extractedTexts,
+            2
+          );
+        } catch (perImageErr) {
+          console.warn(
+            '[MobileEvaluate] per-image fallback mapping failed:',
+            perImageErr.message
+          );
+        }
+      }
+
+      const update = {
+        evaluation,
+        submissionStatus: includeImageAnnotations ? 'evaluated' : 'submitted',
+        reviewStatus: null,
+        evaluatedAt: includeImageAnnotations ? new Date() : undefined,
+        publishStatus: includeImageAnnotations ? 'published' : undefined,
+        extractedTexts,
+      };
+
+      if (evaluation.hindiEvaluation) {
+        // Ensure Hindi evaluation score is also capped
+        const maxMarksForHindi = question.metadata?.maximumMarks || question.maximumMarks;
+        if (maxMarksForHindi && Number.isFinite(maxMarksForHindi) && typeof evaluation.hindiEvaluation.score === 'number') {
+          evaluation.hindiEvaluation.score = Math.min(maxMarksForHindi, Math.max(0, evaluation.hindiEvaluation.score));
+        }
+        update.hindiEvaluation = evaluation.hindiEvaluation;
+        delete evaluation.hindiEvaluation;
+      }
+
+      if (includeImageAnnotations && answerImages.length > 0) {
+        try {
+          const annotations = [];
+          const sourceCommentsAll =
+            (update.hindiEvaluation?.comments &&
+              update.hindiEvaluation.comments.length > 0 &&
+              update.hindiEvaluation.comments) ||
+            evaluation.comments ||
+            [];
+
+          for (let i = 0; i < answerImages.length; i++) {
+            const img = answerImages[i];
+            if (!img || !img.cloudinaryPublicId || !img.imageUrl) continue;
+
+            const evalComments = sourceCommentsAll.slice(0, 4);
+            const comments =
+              answerImages.length === 1
+                ? evalComments
+                : (evaluation.perImageComments &&
+                    Array.isArray(evaluation.perImageComments[i]) &&
+                    evaluation.perImageComments[i].length > 0 &&
+                    evaluation.perImageComments[i]) ||
+                  evalComments.slice(0, 2);
+
+            const text = (comments || [])
+              .map((c) => String(c).trim())
+              .filter(Boolean)
+              .join('\n\n');
+            if (!text) continue;
+
+            const businessName =
+              req.clientInfo?.businessName || `client-${clientId || 'na'}`;
+            const s3Key = `${businessName}/mobile-auto-annotations/${clientId}/${userAnswer.questionId}/${Date.now()}_${i}.png`;
+
+            let annotatedImageBase64 = null;
+            const mockReq = {
+              body: {
+                imageUrl: img.imageUrl,
+                text,
+                fontsize: 18,
+                fontStyle: 'handwritten',
+                customFontPath: './assets/fonts/Kalam-Regular.ttf',
+                fontWeight: 'bold',
+                color: '#FF0000',
+                align: 'left',
+                numbered: true,
+                withTicks: false,
+                xPadding: 24,
+                sidebar: true,
+                sidebarWidth: 480,
+                sidebarColor: '#FFFFFF',
+                padding: 10,
+                borderRadius: 6,
+                textShadow: '2px 2px 6px rgba(0,0,0,0.9)',
+                evaluation,
+                hindiEvaluation: update.hindiEvaluation,
+                maxScore:
+                  question.metadata?.maximumMarks || question.maximumMarks || 0,
+              },
+            };
+            const mockRes = {
+              json: (data) => {
+                if (data.success && data.image) {
+                  annotatedImageBase64 = data.image;
+                } else {
+                  throw new Error('Overlay failed');
+                }
+              },
+            };
+
+            await overlayTextOnImage(mockReq, mockRes);
+            if (!annotatedImageBase64) continue;
+
+            const imageBuffer = Buffer.from(annotatedImageBase64, 'base64');
+            const uploadedKey = await uploadFileToS3(
+              imageBuffer,
+              s3Key,
+              'image/png'
+            );
+            const downloadUrl = await generateAnnotatedImageUrl(uploadedKey);
+            annotations.push({
+              s3Key: uploadedKey,
+              downloadUrl,
+              uploadedAt: new Date(),
+            });
+          }
+
+          if (annotations.length > 0) {
+            update.annotations = annotations;
+            update.annotationsCount = annotations.length;
+          }
+        } catch (annotationError) {
+          console.warn(
+            '[MobileEvaluate] Annotation generation failed:',
+            annotationError.message
+          );
+        }
+      }
+
+      const updatedAnswer = await UserAnswer.findByIdAndUpdate(
+        userAnswer._id,
+        update,
+        { new: true }
+      )
+        .select(
+          'evaluation hindiEvaluation submissionStatus publishStatus reviewStatus evaluatedAt annotations annotationsCount extractedTexts'
+        )
+        .lean();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Answer evaluated successfully',
+        data: {
+          answerId,
+          submissionStatus: updatedAnswer?.submissionStatus,
+          publishStatus: updatedAnswer?.publishStatus,
+          evaluatedAt: updatedAnswer?.evaluatedAt,
+          evaluation: updatedAnswer?.evaluation,
+          hindiEvaluation: updatedAnswer?.hindiEvaluation,
+          annotations: updatedAnswer?.annotations || [],
+          annotationsCount: updatedAnswer?.annotationsCount || 0,
+        },
+      });
+    } catch (error) {
+      console.error('[MobileEvaluate] Error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        error: {
+          code: 'SERVER_ERROR',
+          details: error.message,
+        },
+      });
+    }
+  }
+);
 
 module.exports = router;
