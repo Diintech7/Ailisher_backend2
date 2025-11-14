@@ -16,6 +16,7 @@ const MyWorkbook = require('../models/MyWorkbook'); // Make sure this is at the 
 const UserPlan = require('../models/UserPlan');
 const Cart = require('../models/Cart');
 const OrgClient = require('../models/OrgClient');
+const UserAnswer = require('../models/UserAnswer');
 
 
 const formatDuration = (seconds) => {
@@ -1081,7 +1082,10 @@ exports.getWorkbookSets = async (req, res) => {
 // Get questions for a specific set in a workbook
 exports.getQuestionsForSetInWorkbook = async (req, res) => {
   try {
+    console.log("got it")
     const { id, setId } = req.params;
+    const userId = req.user?.id;
+    
     // Validate workbook exists
     const workbook = await Workbook.findById(id);
     if (!workbook) {
@@ -1095,6 +1099,22 @@ exports.getQuestionsForSetInWorkbook = async (req, res) => {
     // Optionally, check set.itemId matches workbook or its chapters/topics/subtopics
     // Fetch questions in this set
     const questions = await AiswbQuestion.find({ setId });
+    
+    // Fetch user answers to check which questions have been attempted
+    let attemptedQuestionIds = new Set();
+    if (userId) {
+      const questionIds = questions.map(q => q._id);
+      const userAnswers = await UserAnswer.find({
+        userId: userId,
+        questionId: { $in: questionIds },
+        testType: 'aiswb'
+      }).select('questionId').lean();
+      
+      attemptedQuestionIds = new Set(
+        userAnswers.map(answer => answer.questionId.toString())
+      );
+    }
+    
     const formattedQuestions = questions.map(q => ({
       _id: q._id,
       question: q.question,
@@ -1104,7 +1124,8 @@ exports.getQuestionsForSetInWorkbook = async (req, res) => {
         maximumMarks: q.metadata.maximumMarks,
         estimatedTime: q.metadata.estimatedTime,
         wordLimit: q.metadata.wordLimit,
-      }
+      },
+      attempted: attemptedQuestionIds.has(q._id.toString())
     }));
     return res.status(200).json({ success: true, questions: formattedQuestions });
   } catch (error) {
