@@ -718,39 +718,22 @@ router.post(
             extractedTexts
           );
 
-          if (!relevanceValidation.isValid) {
-            if (req.files && req.files.length > 0) {
-              for (const file of req.files) {
-                try {
-                  await cloudinary.uploader.destroy(file.filename);
-                } catch (cleanupError) {
-                  console.error(
-                    "Error cleaning up invalid image:",
-                    cleanupError
-                  );
-                }
-              }
-            }
-
-            return res.status(400).json({
-              success: false,
-              message: "Invalid image content",
-              responseCode: 1576,
-              error: {
-                code: "INVALID_IMAGE_CONTENT",
-                details: relevanceValidation.reason,
-                aiResponse: relevanceValidation.aiResponse || null,
-              },
-            });
-          }
+          // Store relevance validation result to add as comment in evaluation
+          // No longer blocking submission - will be included in feedback
 
           const hasValidText = extractedTexts.some(
-            (text) =>
-              text &&
-              text.trim().length > 0 &&
-              !text.startsWith("Failed to extract text") &&
-              !text.startsWith("No readable text found") &&
-              !text.includes("Text extraction failed")
+            (text) => {
+              if (!text || typeof text !== 'string') return false;
+              const trimmed = text.trim();
+              if (trimmed.length === 0) return false;
+              if (trimmed.startsWith("Failed to extract text")) return false;
+              if (trimmed.startsWith("No readable text found")) return false;
+              if (trimmed.includes("Text extraction failed")) return false;
+              // Check if text contains actual content (not just whitespace/symbols)
+              // Allow Hindi characters (Devanagari script: \u0900-\u097F)
+              const hasContent = /[\u0900-\u097Fa-zA-Z0-9]/.test(trimmed);
+              return hasContent;
+            }
           );
 
           // Detect language early so it's available for all evaluation scenarios
@@ -816,6 +799,33 @@ router.post(
                     evaluationText,
                     question
                   );
+
+                  // Add relevance validation as a comment if validation failed
+                  if (!relevanceValidation.isValid && relevanceValidation.reason) {
+                    // Set relevancy and score to 0 when answer is not relevant
+                    evaluation.relevancy = 0;
+                    evaluation.score = 0;
+                    if (!evaluation.comments) {
+                      evaluation.comments = [];
+                    }
+                    const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
+                    evaluation.comments.unshift(relevanceComment);
+                    // Limit to max 4 comments
+                    evaluation.comments = evaluation.comments.slice(0, 4);
+                    // Update analysis sections with relevance message
+                    if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
+                      evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
+                    }
+                    if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
+                      evaluation.analysis.body = ['Your answer is not relevant to the question.'];
+                    }
+                    if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
+                      evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
+                    }
+                    if (!evaluation.remark || evaluation.remark.includes('No remark')) {
+                      evaluation.remark = 'Your answer is not relevant to the question.';
+                    }
+                  }
 
                   if (detectedLanguage === "hindi") {
                     console.log(
@@ -963,6 +973,33 @@ router.post(
                     question
                   );
 
+                  // Add relevance validation as a comment if validation failed
+                  if (!relevanceValidation.isValid && relevanceValidation.reason) {
+                    // Set relevancy and score to 0 when answer is not relevant
+                    evaluation.relevancy = 0;
+                    evaluation.score = 0;
+                    if (!evaluation.comments) {
+                      evaluation.comments = [];
+                    }
+                    const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
+                    evaluation.comments.unshift(relevanceComment);
+                    // Limit to max 4 comments
+                    evaluation.comments = evaluation.comments.slice(0, 4);
+                    // Update analysis sections with relevance message
+                    if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
+                      evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
+                    }
+                    if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
+                      evaluation.analysis.body = ['Your answer is not relevant to the question.'];
+                    }
+                    if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
+                      evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
+                    }
+                    if (!evaluation.remark || evaluation.remark.includes('No remark')) {
+                      evaluation.remark = 'Your answer is not relevant to the question.';
+                    }
+                  }
+
                   if (detectedLanguage === "hindi") {
                     console.log(
                       "[v0] Generating Hindi evaluation for detected Hindi text"
@@ -1071,6 +1108,34 @@ router.post(
               if (!evaluation) {
                 evaluation = generateMockEvaluation(question);
               }
+
+              // Add relevance validation as a comment if validation failed (for fallback evaluations)
+              if (!relevanceValidation.isValid && relevanceValidation.reason) {
+                // Set relevancy and score to 0 when answer is not relevant
+                evaluation.relevancy = 0;
+                evaluation.score = 0;
+                if (!evaluation.comments) {
+                  evaluation.comments = [];
+                }
+                const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
+                evaluation.comments.unshift(relevanceComment);
+                // Limit to max 4 comments
+                evaluation.comments = evaluation.comments.slice(0, 4);
+                // Update analysis sections with relevance message
+                if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
+                  evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
+                }
+                if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
+                  evaluation.analysis.body = ['Your answer is not relevant to the question.'];
+                }
+                if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
+                  evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
+                }
+                if (!evaluation.remark || evaluation.remark.includes('No remark')) {
+                  evaluation.remark = 'Your answer is not relevant to the question.';
+                }
+              }
+
               // Enforce storage limits (e.g., remark length)
               evaluation = enforceEvaluationLimits(evaluation, {
                 maxRemark: 250,
@@ -1243,6 +1308,34 @@ router.post(
             } catch (evaluationError) {
               console.error("AI evaluation failed:", evaluationError.message);
               evaluation = generateMockEvaluation(question);
+
+              // Add relevance validation as a comment if validation failed
+              if (!relevanceValidation.isValid && relevanceValidation.reason) {
+                // Set relevancy and score to 0 when answer is not relevant
+                evaluation.relevancy = 0;
+                evaluation.score = 0;
+                if (!evaluation.comments) {
+                  evaluation.comments = [];
+                }
+                const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
+                evaluation.comments.unshift(relevanceComment);
+                // Limit to max 4 comments
+                evaluation.comments = evaluation.comments.slice(0, 4);
+                // Update analysis sections with relevance message
+                if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
+                  evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
+                }
+                if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
+                  evaluation.analysis.body = ['Your answer is not relevant to the question.'];
+                }
+                if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
+                  evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
+                }
+                if (!evaluation.remark || evaluation.remark.includes('No remark')) {
+                  evaluation.remark = 'Your answer is not relevant to the question.';
+                }
+              }
+
               evaluation = enforceEvaluationLimits(evaluation, {
                 maxRemark: 250,
               });
@@ -2019,39 +2112,22 @@ router.post(
             extractedTexts
           );
 
-          if (!relevanceValidation.isValid) {
-            if (req.files && req.files.length > 0) {
-              for (const file of req.files) {
-                try {
-                  await cloudinary.uploader.destroy(file.filename);
-                } catch (cleanupError) {
-                  console.error(
-                    "Error cleaning up invalid image:",
-                    cleanupError
-                  );
-                }
-              }
-            }
-
-            return res.status(400).json({
-              success: false,
-              message: "Invalid image content",
-              responseCode: 1576,
-              error: {
-                code: "INVALID_IMAGE_CONTENT",
-                details: relevanceValidation.reason,
-                aiResponse: relevanceValidation.aiResponse || null,
-              },
-            });
-          }
+          // Store relevance validation result to add as comment in evaluation
+          // No longer blocking submission - will be included in feedback
 
           const hasValidText = extractedTexts.some(
-            (text) =>
-              text &&
-              text.trim().length > 0 &&
-              !text.startsWith("Failed to extract text") &&
-              !text.startsWith("No readable text found") &&
-              !text.includes("Text extraction failed")
+            (text) => {
+              if (!text || typeof text !== 'string') return false;
+              const trimmed = text.trim();
+              if (trimmed.length === 0) return false;
+              if (trimmed.startsWith("Failed to extract text")) return false;
+              if (trimmed.startsWith("No readable text found")) return false;
+              if (trimmed.includes("Text extraction failed")) return false;
+              // Check if text contains actual content (not just whitespace/symbols)
+              // Allow Hindi characters (Devanagari script: \u0900-\u097F)
+              const hasContent = /[\u0900-\u097Fa-zA-Z0-9]/.test(trimmed);
+              return hasContent;
+            }
           );
 
           // Detect language early so it's available for all evaluation scenarios
@@ -2113,6 +2189,33 @@ router.post(
                     evaluationText,
                     question
                   );
+
+                  // Add relevance validation as a comment if validation failed
+                  if (!relevanceValidation.isValid && relevanceValidation.reason) {
+                    // Set relevancy and score to 0 when answer is not relevant
+                    evaluation.relevancy = 0;
+                    evaluation.score = 0;
+                    if (!evaluation.comments) {
+                      evaluation.comments = [];
+                    }
+                    const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
+                    evaluation.comments.unshift(relevanceComment);
+                    // Limit to max 4 comments
+                    evaluation.comments = evaluation.comments.slice(0, 4);
+                    // Update analysis sections with relevance message
+                    if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
+                      evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
+                    }
+                    if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
+                      evaluation.analysis.body = ['Your answer is not relevant to the question.'];
+                    }
+                    if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
+                      evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
+                    }
+                    if (!evaluation.remark || evaluation.remark.includes('No remark')) {
+                      evaluation.remark = 'Your answer is not relevant to the question.';
+                    }
+                  }
 
                   if (detectedLanguage === "hindi") {
                     console.log(
@@ -2225,6 +2328,33 @@ router.post(
                     question
                   );
 
+                  // Add relevance validation as a comment if validation failed
+                  if (!relevanceValidation.isValid && relevanceValidation.reason) {
+                    // Set relevancy and score to 0 when answer is not relevant
+                    evaluation.relevancy = 0;
+                    evaluation.score = 0;
+                    if (!evaluation.comments) {
+                      evaluation.comments = [];
+                    }
+                    const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
+                    evaluation.comments.unshift(relevanceComment);
+                    // Limit to max 4 comments
+                    evaluation.comments = evaluation.comments.slice(0, 4);
+                    // Update analysis sections with relevance message
+                    if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
+                      evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
+                    }
+                    if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
+                      evaluation.analysis.body = ['Your answer is not relevant to the question.'];
+                    }
+                    if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
+                      evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
+                    }
+                    if (!evaluation.remark || evaluation.remark.includes('No remark')) {
+                      evaluation.remark = 'Your answer is not relevant to the question.';
+                    }
+                  }
+
                   if (detectedLanguage === "hindi") {
                     console.log(
                       "[v0] Generating Hindi evaluation for detected Hindi text"
@@ -2298,6 +2428,33 @@ router.post(
 
               if (!evaluation) {
                 evaluation = generateMockEvaluation(question);
+              }
+
+              // Add relevance validation as a comment if validation failed (for fallback evaluations)
+              if (!relevanceValidation.isValid && relevanceValidation.reason) {
+                // Set relevancy and score to 0 when answer is not relevant
+                evaluation.relevancy = 0;
+                evaluation.score = 0;
+                if (!evaluation.comments) {
+                  evaluation.comments = [];
+                }
+                const relevanceComment = `Your answer is not relevant to the question. ${relevanceValidation.reason}`;
+                evaluation.comments.unshift(relevanceComment);
+                // Limit to max 4 comments
+                evaluation.comments = evaluation.comments.slice(0, 4);
+                // Update analysis sections with relevance message
+                if (evaluation.analysis.introduction.length === 0 || evaluation.analysis.introduction[0].includes('No content')) {
+                  evaluation.analysis.introduction = ['Your answer is not relevant to the question.'];
+                }
+                if (evaluation.analysis.body.length === 0 || evaluation.analysis.body[0].includes('No content')) {
+                  evaluation.analysis.body = ['Your answer is not relevant to the question.'];
+                }
+                if (evaluation.analysis.conclusion.length === 0 || evaluation.analysis.conclusion[0].includes('No content')) {
+                  evaluation.analysis.conclusion = ['Your answer is not relevant to the question.'];
+                }
+                if (!evaluation.remark || evaluation.remark.includes('No remark')) {
+                  evaluation.remark = 'Your answer is not relevant to the question.';
+                }
               }
 
               // Generate Hindi evaluation for fallback evaluation if language is Hindi
@@ -2411,6 +2568,17 @@ router.post(
             } catch (evaluationError) {
               console.error("AI evaluation failed:", evaluationError.message);
               evaluation = generateMockEvaluation(question);
+
+              // Add relevance validation as a comment if validation failed
+              if (!relevanceValidation.isValid && relevanceValidation.reason) {
+                if (!evaluation.comments) {
+                  evaluation.comments = [];
+                }
+                const relevanceComment = `Relevance Check: ${relevanceValidation.reason}`;
+                evaluation.comments.unshift(relevanceComment);
+                // Limit to max 4 comments
+                evaluation.comments = evaluation.comments.slice(0, 4);
+              }
 
               // Generate Hindi evaluation for error fallback if language is Hindi
               if (

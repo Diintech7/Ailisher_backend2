@@ -3,6 +3,7 @@ const { validationResult } = require('express-validator');
 const { getEvaluationFrameworkText } = require('../services/aiServices');
 const { generatePresignedUrl, generateGetPresignedUrl, deleteObject } = require('../utils/r2');
 const UserAnswer = require('../models/UserAnswer');
+const UserProfile = require('../models/UserProfile');
 
 // Create question (User uploads)
 const createQuestion = async (req, res) => {
@@ -426,7 +427,7 @@ const deleteQuestion = async (req, res) => {
 const getPendingFormatting = async (req, res) => {
   try {
     const clientId = req.user.clientId || req.user.userId;
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, status = 'pending' } = req.query;
 
     if (!clientId) {
       return res.status(400).json({
@@ -441,20 +442,19 @@ const getPendingFormatting = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const questions = await MyQuestion.find({
-      clientId,
-      status: 'pending'
-    })
+    // Build query with status filter
+    const query = { clientId };
+    if (status && ['pending', 'formatted', 'active', 'archived'].includes(status)) {
+      query.status = status;
+    }
+
+    const questions = await MyQuestion.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
       .populate('createdBy', 'name mobile');
 
-    const total = await MyQuestion.countDocuments({
-      clientId,
-      status: 'pending'
-    });
-
+    const total = await MyQuestion.countDocuments(query);
     res.status(200).json({
       success: true,
       data: {
@@ -465,7 +465,7 @@ const getPendingFormatting = async (req, res) => {
           maximumMarks: q.maximumMarks,
           subject: q.subject,
           exam: q.exam,
-          answerFilesCount: q.answerFiles ? q.answerFiles.length : 0,
+          status: q.status,
           createdAt: q.createdAt.toISOString(),
           createdBy: q.createdBy
         })),
@@ -482,6 +482,54 @@ const getPendingFormatting = async (req, res) => {
 
   } catch (error) {
     console.error('Get pending questions error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: {
+        code: "SERVER_ERROR",
+        details: error.message
+      }
+    });
+  }
+};
+
+const getAnswersForEvaluation = async (req, res) => {
+  try {
+    const { questionId } = req.params;
+    const clientId = req.user.clientId || req.user.userId;
+    const userId = req.user.id;
+    const question = await MyQuestion.findById(questionId);
+    if (!question) {
+      return res.status(404).json({
+        success: false,
+        message: "Question not found",
+        error: {
+          code: "QUESTION_NOT_FOUND",
+          details: "The specified question does not exist"
+        }
+      });
+    }
+    if (question.clientId !== clientId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+        error: {
+          code: "ACCESS_DENIED",
+          details: "You can only evaluate questions for your client"
+        }
+      });
+    }
+    const answers = await UserAnswer.find({ questionId: questionId, testType: 'myquestion' });
+    // console.log("answers", answers)
+    return res.status(200).json({
+      success: true,
+      data: {
+        answers: answers
+      }
+    });
+
+  } catch (error) {
+    console.error('Get answers for evaluation error:', error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -513,6 +561,7 @@ const formatQuestion = async (req, res) => {
     const userId = req.user.id;
 
     const question = await MyQuestion.findById(questionId);
+    const questionData = req.body;
 
     if (!question) {
       return res.status(404).json({
@@ -548,47 +597,36 @@ const formatQuestion = async (req, res) => {
       });
     }
 
-    const {
-      detailedAnswer,
-      modalAnswer,
-      modalAnswerPdfKey,
-      answerVideoUrls,
-      metadata,
-      languageMode,
-      evaluationMode,
-      evaluationType,
-      evaluationGuideline
-    } = req.body;
+// Set default evaluation guideline if not provided
+if (!questionData.evaluationGuideline || questionData.evaluationGuideline.trim() === '') {
+  questionData.evaluationGuideline = getEvaluationFrameworkText();
+}
 
-    // Update question with formatting data
-    question.detailedAnswer = detailedAnswer;
-    question.modalAnswer = modalAnswer || '';
-    question.modalAnswerPdfKey = modalAnswerPdfKey || [];
-    question.answerVideoUrls = answerVideoUrls || [];
-    question.metadata = {
-      ...question.metadata,
-      ...metadata,
-      wordLimit: metadata.wordLimit || question.wordLimit,
-      maximumMarks: metadata.maximumMarks || question.maximumMarks
-    };
-    question.languageMode = languageMode;
-    question.evaluationMode = evaluationMode;
-    question.evaluationType = evaluationType;
-    question.evaluationGuideline = evaluationGuideline || getEvaluationFrameworkText();
-    question.formattedBy = userId;
-    question.status = 'formatted';
+// Update question fields
+Object.assign(question, questionData);
+question.status = 'formatted';
+question.formattedBy = userId;
+question.formattedAt = new Date();
 
-    await question.save();
+await question.save();
 
-    res.status(200).json({
-      success: true,
-      message: "Question formatted successfully",
-      data: {
-        id: question._id.toString(),
-        status: question.status,
-        formattedAt: question.formattedAt.toISOString()
-      }
-    });
+res.status(200).json({
+  success: true,
+  message: "Question updated successfully",
+  data: {
+    id: question._id.toString(),
+    question: question.question,
+    detailedAnswer: question.detailedAnswer,
+    modalAnswer: question.modalAnswer,
+    answerVideoUrls: question.answerVideoUrls || [], // Updated to handle array
+    metadata: question.metadata,
+    languageMode: question.languageMode,
+    evaluationMode: question.evaluationMode,
+    evaluationType: question.evaluationType,
+    evaluationGuideline: question.evaluationGuideline,
+    updatedAt: question.updatedAt.toISOString()
+  }
+});
 
   } catch (error) {
     console.error('Format question error:', error);
@@ -954,6 +992,7 @@ module.exports = {
   activateQuestion,
   generateTemporaryFileUploadUrl,
   confirmFileUpload,
-  createQuestionWithAnswer
+  createQuestionWithAnswer,
+  getAnswersForEvaluation
 };
 

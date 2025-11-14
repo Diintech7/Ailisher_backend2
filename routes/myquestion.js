@@ -6,6 +6,9 @@ const { authenticateMobileUser } = require('../middleware/mobileAuth');
 const { verifyToken } = require('../middleware/auth');
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const { validationResult } = require('express-validator');
+const MyQuestion = require('../models/MyQuestion');
+const UserAnswer = require('../models/UserAnswer');
 const cloudinary = require("cloudinary").v2;
 
 // User routes (mobile authentication)
@@ -74,9 +77,15 @@ router.get('/questions/pending',
 );
 
 router.get('/questions/:questionId',
-  authenticateMobileUser,
+  verifyToken,
   myQuestionValidation.validateQuestionId,
   myQuestionController.getQuestion
+);
+
+router.get('/questions/:questionId/answers',
+  verifyToken,
+  myQuestionValidation.validateQuestionId,
+  myQuestionController.getAnswersForEvaluation
 );
 
 router.put('/questions/:questionId',

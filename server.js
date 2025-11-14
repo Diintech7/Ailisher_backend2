@@ -113,6 +113,7 @@ app.use('/api/qrcode', qrCodeRoutes);
 app.use('/api/books', pdfSplitsRoutes);
 app.use('/api/aiswb', aiswbRoutes);
 app.use('/api/myquestion', myQuestionRoutes);
+app.use('/api/userAnswers', userAnswersRoutes);
 app.use('/api/mybooks', myBooksRoutes);
 app.use('/api/evaluators', evaluatorsRoutes);
 app.use('/api/homepage', mainBookstoreRoutes);
