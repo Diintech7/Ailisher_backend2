@@ -81,6 +81,11 @@ router.patch('/questions/:answerId/send-to-expert',
   myQuestionController.sendToExpert
 );
 
+router.patch('/questions/:questionId/reject',
+  verifyToken,
+  myQuestionController.rejectQuestion
+);
+
 router.get('/questions/:questionId',
   verifyToken,
   myQuestionValidation.validateQuestionId,

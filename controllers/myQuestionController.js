@@ -1029,6 +1029,38 @@ const sendToExpert = async (req,res) => {
   }
 }
 
+const rejectQuestion = async (req,res) => {
+  try {
+    const { questionId } = req.params;
+    const question = await MyQuestion.findById(questionId);
+    if (!question) {
+      return res.status(404).json({
+        success: false,
+        message: "Question not found"
+      });
+    }
+    question.status = "rejected";
+    await question.save();
+    return res.status(200).json({
+      success: true,
+      message: "Question rejected successfully",
+      data: {
+        question: question
+      }
+    });
+  } catch (error) {
+    console.error('Reject question error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: {
+        code: "SERVER_ERROR",
+        details: error.message
+      }
+    });
+  }
+}
+
 module.exports = {
   createQuestion,
   getQuestion,
@@ -1042,6 +1074,7 @@ module.exports = {
   confirmFileUpload,
   createQuestionWithAnswer,
   getAnswersForEvaluation,
-  sendToExpert
+  sendToExpert,
+  rejectQuestion
 };
 
