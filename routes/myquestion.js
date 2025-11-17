@@ -76,6 +76,11 @@ router.get('/questions/pending',
   myQuestionController.getPendingFormatting
 );
 
+router.patch('/questions/:answerId/send-to-expert',
+  verifyToken,
+  myQuestionController.sendToExpert
+);
+
 router.get('/questions/:questionId',
   verifyToken,
   myQuestionValidation.validateQuestionId,

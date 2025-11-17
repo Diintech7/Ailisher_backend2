@@ -124,7 +124,7 @@ const myQuestionSchema = new mongoose.Schema({
           // Status Tracking
           status: {
             type: String,
-            enum: ['pending', 'formatted', 'active', 'archived'],
+            enum: ['pending', 'formatted', 'rejected'],
             default: 'pending',
             index: true
           },

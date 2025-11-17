@@ -2365,6 +2365,9 @@ router.post("/publishwithannotation", async (req, res) => {
       } else if (userAnswer.testType === "subjective") {
         const SubjectiveTestQuestion = require("../models/SubjectiveTestQuestion");
         question = await SubjectiveTestQuestion.findById(userAnswer.questionId);
+      } else if (userAnswer.testType === "myquestion") {
+        const MyQuestion = require("../models/MyQuestion");
+        question = await MyQuestion.findById(userAnswer.questionId);
       } else {
         const AiswbQuestion = require("../models/AiswbQuestion");
         question = await AiswbQuestion.findById(userAnswer.questionId);
@@ -2394,6 +2397,7 @@ router.post("/publishwithannotation", async (req, res) => {
 
     userAnswer.publishStatus = "published";
     userAnswer.submissionStatus = "evaluated";
+    userAnswer.evaluationStatus = "completed";
     userAnswer.evaluatedAt = new Date();
 
      await userAnswer.save();

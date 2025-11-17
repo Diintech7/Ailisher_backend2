@@ -311,6 +311,11 @@ const userAnswerSchema = new mongoose.Schema({
     enum: ['published', 'not_published'],
     default: 'not_published'
   },
+  evaluationStatus:{
+    type: String,
+    enum : ['pending', 'ai_evaluated', 'expert_evaluated', 'completed'],
+    default: 'pending'
+  },
   requestID: {
     type: String,
     default: null

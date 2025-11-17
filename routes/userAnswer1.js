@@ -10,6 +10,7 @@ const { validationResult, param, body, query } = require('express-validator');
 const { authenticateMobileUser } = require('../middleware/mobileAuth');
 const axios = require('axios');
 const SubjectiveTestQuestion = require('../models/SubjectiveTestQuestion');
+const MyQuestion = require('../models/MyQuestion');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
@@ -991,6 +992,18 @@ router.get('/questions/:questionId/answers/:answerId/evaluation',
             questionData = await AiswbQuestion.findById(answerBefore.questionId).select('question metadata');
             if(testType === 'subjective')
             questionData = await SubjectiveTestQuestion.findById(answerBefore.questionId).select('question metadata');
+            if(testType === 'myquestion')
+            questionData = await MyQuestion.findById(answerBefore.questionId).select('question metadata');
+            if(!questionData) {
+              return res.status(404).json({
+                success: false,
+                message: "Question not found",
+                error: {
+                  code: "QUESTION_NOT_FOUND",
+                  details: "Question not found"
+                }
+              });
+            }
           } catch (_) {
             // ignore and handle below if still missing
           }

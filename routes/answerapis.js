@@ -74,8 +74,28 @@ router.get('/answers', [
     }
 
     // Build aggregation pipeline
+    // For evaluators: Include myquestion answers ONLY with expert_evaluated status and submitted submissionStatus
+    // The filter should show:
+    // 1. Non-myquestion answers matching the regular filter criteria
+    // 2. myquestion answers ONLY with evaluationStatus='expert_evaluated' AND submissionStatus='submitted'
+    const matchFilter = {
+      $or: [
+        // Non-myquestion answers with regular filter
+        {
+          ...filter,
+          testType: { $ne: 'myquestion' }
+        },
+        // myquestion answers ONLY with expert_evaluated and submitted
+        {
+          testType: 'myquestion',
+          evaluationStatus: 'expert_evaluated',
+          submissionStatus: 'submitted'
+        }
+      ]
+    };
+
     const pipeline = [
-      { $match: filter },
+      { $match: matchFilter },
       // Lookup questions based on testType
       {
         $lookup: {
@@ -83,6 +103,14 @@ router.get('/answers', [
           localField: 'questionId',
           foreignField: '_id',
           as: 'aiswbQuestion'
+        }
+      },
+      {
+        $lookup: {
+          from: 'myquestions',
+          localField: 'questionId',
+          foreignField: '_id',
+          as: 'myQuestion'
         }
       },
       {
@@ -125,7 +153,13 @@ router.get('/answers', [
             $cond: {
               if: { $eq: ['$testType', 'subjective'] },
               then: { $arrayElemAt: ['$subjectiveQuestion', 0] },
-              else: { $arrayElemAt: ['$aiswbQuestion', 0] }
+              else: {
+                $cond: {
+                  if: { $eq: ['$testType', 'myquestion'] },
+                  then: { $arrayElemAt: ['$myQuestion', 0] },
+                  else: { $arrayElemAt: ['$aiswbQuestion', 0] }
+                }
+              }
             }
           }
         }
@@ -1051,6 +1085,10 @@ router.put('/answers/:answerId/status', [
     .optional()
     .isIn(['review_pending', 'review_accepted', 'review_completed'])
     .withMessage('Review status must be valid'),
+  body('evaluationStatus')
+    .optional()
+    .isIn(['pending', 'ai_evaluated', 'expert_evaluated', 'completed'])
+    .withMessage('Evaluation status must be valid'),
   body('popularityStatus')
     .optional()
     .isIn(['popular', 'not_popular'])
@@ -1070,7 +1108,7 @@ router.put('/answers/:answerId/status', [
     }
 
     const { answerId } = req.params;
-    const { publishStatus, submissionStatus, reviewStatus, popularityStatus } = req.body;
+    const { publishStatus, submissionStatus, reviewStatus, evaluationStatus, popularityStatus } = req.body;
 
     const answer = await UserAnswer.findById(answerId);
     if (!answer) {
@@ -1097,6 +1135,10 @@ router.put('/answers/:answerId/status', [
     
     if (reviewStatus !== undefined) {
       updateData.reviewStatus = reviewStatus;
+    }
+    
+    if (evaluationStatus !== undefined) {
+      updateData.evaluationStatus = evaluationStatus;
     }
     
     if (popularityStatus !== undefined) {
@@ -1374,6 +1416,14 @@ router.get('/answers/evaluator/evaluated', verifyTokenforevaluator, [
       },
       {
         $lookup: {
+          from: 'myquestions',
+          localField: 'questionId',
+          foreignField: '_id',
+          as: 'myQuestion'
+        }
+      },
+      {
+        $lookup: {
           from: 'subjectivetestquestions',
           localField: 'questionId',
           foreignField: '_id',
@@ -1412,7 +1462,13 @@ router.get('/answers/evaluator/evaluated', verifyTokenforevaluator, [
             $cond: {
               if: { $eq: ['$testType', 'subjective'] },
               then: { $arrayElemAt: ['$subjectiveQuestion', 0] },
-              else: { $arrayElemAt: ['$aiswbQuestion', 0] }
+              else: {
+                $cond: {
+                  if: { $eq: ['$testType', 'myquestion'] },
+                  then: { $arrayElemAt: ['$myQuestion', 0] },
+                  else: { $arrayElemAt: ['$aiswbQuestion', 0] }
+                }
+              }
             }
           }
         }
@@ -1625,6 +1681,14 @@ router.get('/answers/evaluator/accepted', verifyTokenforevaluator, [
       },
       {
         $lookup: {
+          from: 'myquestions',
+          localField: 'questionId',
+          foreignField: '_id',
+          as: 'myQuestion'
+        }
+      },
+      {
+        $lookup: {
           from: 'subjectivetestquestions',
           localField: 'questionId',
           foreignField: '_id',
@@ -1663,7 +1727,13 @@ router.get('/answers/evaluator/accepted', verifyTokenforevaluator, [
             $cond: {
               if: { $eq: ['$testType', 'subjective'] },
               then: { $arrayElemAt: ['$subjectiveQuestion', 0] },
-              else: { $arrayElemAt: ['$aiswbQuestion', 0] }
+              else: {
+                $cond: {
+                  if: { $eq: ['$testType', 'myquestion'] },
+                  then: { $arrayElemAt: ['$myQuestion', 0] },
+                  else: { $arrayElemAt: ['$aiswbQuestion', 0] }
+                }
+              }
             }
           }
         }

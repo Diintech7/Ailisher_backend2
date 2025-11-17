@@ -444,7 +444,7 @@ const getPendingFormatting = async (req, res) => {
 
     // Build query with status filter
     const query = { clientId };
-    if (status && ['pending', 'formatted', 'active', 'archived'].includes(status)) {
+    if (status && ['pending', 'formatted','rejected'].includes(status)) {
       query.status = status;
     }
 
@@ -497,7 +497,18 @@ const getAnswersForEvaluation = async (req, res) => {
   try {
     const { questionId } = req.params;
     const clientId = req.user.clientId || req.user.userId;
-    const userId = req.user.id;
+    const {status} = req.query;
+    console.log("status", status)
+    if (status && !['pending', 'ai_evaluated', 'expert_evaluated', 'completed'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status",
+        error: {
+          code: "INVALID_STATUS",
+          details: "Status must be one of: pending, ai_evaluated, expert_evaluated, completed"
+        }
+      });
+    }
     const question = await MyQuestion.findById(questionId);
     if (!question) {
       return res.status(404).json({
@@ -519,12 +530,15 @@ const getAnswersForEvaluation = async (req, res) => {
         }
       });
     }
-    const answers = await UserAnswer.find({ questionId: questionId, testType: 'myquestion' });
-    // console.log("answers", answers)
+    const answers = await UserAnswer.find({ questionId: questionId, testType: 'myquestion', evaluationStatus: status });
+    console.log("answers", answers)
+    const total = await answers.length;
+    console.log("total", total)
     return res.status(200).json({
       success: true,
       data: {
-        answers: answers
+        answers: answers,
+        total: total
       }
     });
 
@@ -540,6 +554,8 @@ const getAnswersForEvaluation = async (req, res) => {
     });
   }
 };
+
+// const 
 
 // Format question (Client)
 const formatQuestion = async (req, res) => {
@@ -981,6 +997,38 @@ const createQuestionWithAnswer = async (req, res) => {
   }
 };
 
+const sendToExpert = async (req,res) => {
+  try {
+    const { answerId } = req.params;
+    const answer = await UserAnswer.findById(answerId);
+    if (!answer) {
+      return res.status(404).json({
+        success: false,
+        message: "Answer not found"
+      });
+    }
+    answer.evaluationStatus = "expert_evaluated";
+    await answer.save();
+    return res.status(200).json({
+      success: true,
+      message: "Answer sent to expert successfully",
+      data: {
+        answer: answer
+      }
+    });
+  } catch (error) {
+    console.error('Send to expert error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: {
+        code: "SERVER_ERROR",
+        details: error.message
+      }
+    });
+  }
+}
+
 module.exports = {
   createQuestion,
   getQuestion,
@@ -993,6 +1041,7 @@ module.exports = {
   generateTemporaryFileUploadUrl,
   confirmFileUpload,
   createQuestionWithAnswer,
-  getAnswersForEvaluation
+  getAnswersForEvaluation,
+  sendToExpert
 };
 

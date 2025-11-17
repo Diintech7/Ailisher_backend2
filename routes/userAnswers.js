@@ -3651,6 +3651,7 @@ router.post(
 
       const update = {
         evaluation,
+        evaluationStatus: includeImageAnnotations ? 'completed' : 'ai_evaluated',
         submissionStatus: includeImageAnnotations ? 'evaluated' : 'submitted',
         reviewStatus: null,
         evaluatedAt: includeImageAnnotations ? new Date() : undefined,
