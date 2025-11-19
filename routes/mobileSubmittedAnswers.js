@@ -202,7 +202,7 @@ router.get('/', async (req, res) => {
       if (answer.testType === 'myquestion') {
         // For myquestion questions, populate from MyQuestion
         populatedQuestion = await MyQuestion.findById(answer.questionId)
-          .select('question detailedAnswer modalAnswer answerVideoUrls metadata languageMode evaluationMode test')
+          .select('question detailedAnswer modalAnswer answerVideoUrls metadata languageMode evaluationMode test exam subject')
           .lean();
       } else {
         // For AISWB questions, populate from AiswbQuestion
@@ -284,7 +284,9 @@ router.get('/', async (req, res) => {
           wordLimit: answer.questionId?.metadata?.wordLimit,
           estimatedTime: answer.questionId?.metadata?.estimatedTime,
           languageMode: answer.questionId?.languageMode,
-          evaluationMode: answer.questionId?.evaluationMode
+          evaluationMode: answer.questionId?.evaluationMode,
+          exam: answer.questionId?.exam,
+          subject: answer.questionId?.subject
         };
       }
       
