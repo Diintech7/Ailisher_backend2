@@ -202,7 +202,7 @@ router.get('/', async (req, res) => {
       if (answer.testType === 'myquestion') {
         // For myquestion questions, populate from MyQuestion
         populatedQuestion = await MyQuestion.findById(answer.questionId)
-          .select('question detailedAnswer modalAnswer answerVideoUrls metadata languageMode evaluationMode test exam subject')
+          .select('question detailedAnswer modalAnswer answerVideoUrls metadata languageMode evaluationMode test exam subject paper')
           .lean();
       } else {
         // For AISWB questions, populate from AiswbQuestion
@@ -286,7 +286,8 @@ router.get('/', async (req, res) => {
           languageMode: answer.questionId?.languageMode,
           evaluationMode: answer.questionId?.evaluationMode,
           exam: answer.questionId?.exam,
-          subject: answer.questionId?.subject
+          subject: answer.questionId?.subject,
+          paper: answer.questionId?.paper
         };
       }
       
