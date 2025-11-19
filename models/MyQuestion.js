@@ -27,6 +27,11 @@ const myQuestionSchema = new mongoose.Schema({
       required: true,
       trim: true
     },
+    paper:{
+      type:String,
+      required:true,
+      trim:true
+    },
     
     // Client Formatting (AISWB-like fields - Optional until formatted)
     detailedAnswer: {

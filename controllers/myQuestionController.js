@@ -20,7 +20,7 @@ const createQuestion = async (req, res) => {
       });
     }
 
-    const { question, wordLimit, maximumMarks, subject, exam, key} = req.body;
+    const { question, wordLimit, maximumMarks, subject, exam, paper} = req.body;
     const clientId = req.user.clientId || req.user.userId;
     const userId = req.user.id;
 
@@ -41,10 +41,7 @@ const createQuestion = async (req, res) => {
       maximumMarks,
       subject,
       exam,
-      answerFiles:{
-        fileKey: key,
-        uploadedAt: new Date()
-      },
+      paper,
       clientId,
       createdBy: userId,
       status: 'pending'
@@ -62,7 +59,7 @@ const createQuestion = async (req, res) => {
         maximumMarks: myQuestion.maximumMarks,
         subject: myQuestion.subject,
         exam: myQuestion.exam,
-        answerFiles: myQuestion.answerFiles,
+        paper: myQuestion.paper,
         status: myQuestion.status,
         createdAt: myQuestion.createdAt.toISOString()
       }
@@ -141,7 +138,7 @@ const getQuestion = async (req, res) => {
         maximumMarks: question.maximumMarks,
         subject: question.subject,
         exam: question.exam,
-        answerFiles: answerFilesWithUrls,
+        paper: question.paper,
         detailedAnswer: question.detailedAnswer,
         modalAnswer: question.modalAnswer,
         modalAnswerPdfKey: question.modalAnswerPdfKey,
@@ -235,6 +232,7 @@ const getQuestions = async (req, res) => {
           maximumMarks: q.maximumMarks,
           subject: q.subject,
           exam: q.exam,
+          paper: q.paper,
           status: q.status,
           answerFilesCount: q.answerFiles ? q.answerFiles.length : 0,
           createdAt: q.createdAt.toISOString(),
@@ -325,6 +323,7 @@ const updateQuestion = async (req, res) => {
     if (updateData.maximumMarks) question.maximumMarks = updateData.maximumMarks;
     if (updateData.subject) question.subject = updateData.subject;
     if (updateData.exam) question.exam = updateData.exam;
+    if (updateData.paper) question.paper = updateData.paper;
     if (updateData.answerFiles) question.answerFiles = updateData.answerFiles;
 
     await question.save();
