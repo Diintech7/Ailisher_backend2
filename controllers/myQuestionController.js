@@ -278,7 +278,6 @@ const updateQuestion = async (req, res) => {
     }
 
     const { questionId } = req.params;
-    const userId = req.user.id;
     const updateData = req.body;
 
     const question = await MyQuestion.findById(questionId);
@@ -294,29 +293,6 @@ const updateQuestion = async (req, res) => {
       });
     }
 
-    // Only owner can update, and only if status is pending
-    if (question.createdBy.toString() !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied",
-        error: {
-          code: "ACCESS_DENIED",
-          details: "You can only update your own questions"
-        }
-      });
-    }
-
-    if (question.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot update question",
-        error: {
-          code: "INVALID_STATUS",
-          details: "Question can only be updated when status is 'pending'"
-        }
-      });
-    }
-
     // Update allowed fields
     if (updateData.question) question.question = updateData.question;
     if (updateData.wordLimit) question.wordLimit = updateData.wordLimit;
@@ -324,7 +300,6 @@ const updateQuestion = async (req, res) => {
     if (updateData.subject) question.subject = updateData.subject;
     if (updateData.exam) question.exam = updateData.exam;
     if (updateData.paper) question.paper = updateData.paper;
-    if (updateData.answerFiles) question.answerFiles = updateData.answerFiles;
 
     await question.save();
 

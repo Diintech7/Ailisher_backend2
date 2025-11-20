@@ -99,7 +99,7 @@ router.get('/questions/:questionId/answers',
 );
 
 router.put('/questions/:questionId',
-  authenticateMobileUser,
+  verifyToken,
   myQuestionValidation.validateQuestionId,
   myQuestionValidation.validateQuestionUpdate,
   myQuestionController.updateQuestion

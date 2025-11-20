@@ -29,7 +29,7 @@ const myQuestionSchema = new mongoose.Schema({
     },
     paper:{
       type:String,
-      required:true,
+      // required:true,
       trim:true
     },
     
