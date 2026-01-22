@@ -667,35 +667,28 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
       });
     }
 
-    if(profile){
-      return res.status(401).json({
-        success: false,
-        responseCode: 1520, // Same as original profile not found
-        is_profile_complete: false,
-        message: "Profile not found. Please complete your profile setup.",
-      });
-    }
+    
 
-    // res.status(200).json({
-    //   success: true,
-    //   responseCode: 1520, // Same as original profile found
-    //   is_profile_complete: true,
-    //   profile: {
-    //     name: profile.name,
-    //     age: profile.age,
-    //     gender: profile.gender,
-    //     exams: profile.exams,
-    //     native_language: profile.nativeLanguage,
-    //     city:profile.city,
-    //     pincode:profile.pincode,
-    //     mobile: profile.userId.mobile,
-    //     isEvaluator: profile.isEvaluator,
-    //     institute_name: client.businessName,
-    //     institute_logo: client.businessLogo,
-    //     created_at: profile.createdAt,
-    //     updated_at: profile.updatedAt,
-    //   },
-    // });
+    res.status(200).json({
+      success: true,
+      responseCode: 1520, // Same as original profile found
+      is_profile_complete: true,
+      profile: {
+        name: profile.name,
+        age: profile.age,
+        gender: profile.gender,
+        exams: profile.exams,
+        native_language: profile.nativeLanguage,
+        city:profile.city,
+        pincode:profile.pincode,
+        mobile: profile.userId.mobile,
+        isEvaluator: profile.isEvaluator,
+        institute_name: client.businessName,
+        institute_logo: client.businessLogo,
+        created_at: profile.createdAt,
+        updated_at: profile.updatedAt,
+      },
+    });
   } catch (error) {
     console.error("Get profile error:", error);
     res.status(500).json({
