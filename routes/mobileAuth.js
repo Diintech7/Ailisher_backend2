@@ -15,11 +15,129 @@ const {
 const CreditAccount = require("../models/CreditAccount");
 const OrgClient = require("../models/OrgClient");
 const { Telegraf } = require('telegraf');
+const OTP = require("../models/OTP");
+const crypto = require("crypto");
 
 // Validation helpers
 const validateMobile = (mobile) => /^\d{10}$/.test(mobile);
 const validateAgeGroup = (age) =>
   ["<15", "15-18", "19-25", "26-31", "32-40", "40+"].includes(age);
+const validateOtp = (otp) => /^\d{6}$/.test(String(otp || "").trim());
+
+// ================= WhatsApp OTP (for App Login) =================
+const whatsappEnabled =
+  String(process.env.USE_WHATSAPP || process.env.WHATSAPP_ENABLED || "false") ===
+  "true";
+
+function generateSixDigitOtp() {
+  return crypto.randomInt(0, 1000000).toString().padStart(6, "0");
+}
+
+function normalizeWhatsAppTo(mobile) {
+  // WhatsApp Graph API expects E.164 phone number.
+  const m = String(mobile || "").trim();
+  if (m.startsWith("+")) return m;
+  return `+91${m}`;
+}
+
+async function sendWhatsAppTemplateOtp({ to, otp }) {
+  const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+  const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID;
+  const GRAPH_VERSION = process.env.GRAPH_VERSION || "v20.0";
+  const templateName = process.env.WHATSAPP_TEMPLATE_NAME || "otp_verification";
+  const templateLanguage =
+    process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en_US";
+
+  if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_ID) {
+    throw new Error("WhatsApp API credentials are not configured");
+  }
+
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${WHATSAPP_PHONE_ID}/messages`;
+  const headers = {
+    Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+    "Content-Type": "application/json",
+  };
+
+  const data = {
+    messaging_product: "whatsapp",
+    to,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: templateLanguage },
+      components: [
+        {
+          type: "body",
+          parameters: [
+            {
+              type: "text",
+              text: otp,
+            },
+          ],
+        },
+        {
+          type: "button",
+          sub_type: "url",
+          index: "0",
+          parameters: [
+            {
+              type: "text",
+              text: otp,
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  const response = await axios.post(url, data, { headers });
+  return response.data;
+}
+
+async function sendLoginOtpToWhatsApp({ mobile, clientKey }) {
+  if (!whatsappEnabled) {
+    throw new Error("WhatsApp OTP is not enabled");
+  }
+
+  const otp = generateSixDigitOtp();
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+  // Store OTP with TTL in DB
+  await OTP.create({
+    mobile,
+    otp,
+    client: clientKey,
+    expiresAt,
+    isUsed: false,
+  });
+
+  await sendWhatsAppTemplateOtp({
+    to: normalizeWhatsAppTo(mobile),
+    otp,
+  });
+
+  return { otp };
+}
+
+async function verifyLoginOtpFromWhatsApp({ mobile, otp, clientKey }) {
+  const record = await OTP.findOne({
+    mobile,
+    otp: String(otp).trim(),
+    client: clientKey,
+    isUsed: false,
+  });
+
+  if (!record) return { success: false, message: "Invalid OTP" };
+
+  if (record.expiresAt && new Date(record.expiresAt).getTime() < Date.now()) {
+    return { success: false, message: "OTP expired" };
+  }
+
+  record.isUsed = true;
+  await record.save();
+
+  return { success: true, message: "OTP verified successfully" };
+}
 
 // Enhanced client validation middleware
 const validateClient = async (req, res, next) => {
@@ -138,7 +256,7 @@ router.post("/check-user", validateClient, async (req, res) => {
 // Enhanced Login Route with clearer duplicate handling
 router.post("/login", validateClient, async (req, res) => {
   try {
-    const { mobile } = req.body;
+    const { mobile, otp } = req.body;
     const clientId = req.params.clientId;
     const client = req.client;
     let org = null;
@@ -151,6 +269,43 @@ router.post("/login", validateClient, async (req, res) => {
         success: false,
         responseCode: 1509,
         message: "Please enter a valid 10-digit mobile number.",
+      });
+    }
+
+    // WhatsApp OTP verification (App Login)
+    // If `otp` is not provided, we send an OTP and ask the client to verify.
+    const otpClientKey = "ailisher";
+    if (!otp) {
+      await sendLoginOtpToWhatsApp({ mobile, clientKey: otpClientKey });
+      return res.status(200).json({
+        success: true,
+        responseCode: 1562,
+        otp_required: true,
+        message: "OTP sent to WhatsApp. Please verify to login.",
+        client_id: clientId,
+        mobile,
+      });
+    }
+
+    if (!validateOtp(otp)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1563,
+        message: "Please enter a valid 6-digit OTP.",
+      });
+    }
+
+    const otpResult = await verifyLoginOtpFromWhatsApp({
+      mobile,
+      otp,
+      clientKey: otpClientKey,
+    });
+
+    if (!otpResult.success) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1563,
+        message: otpResult.message,
       });
     }
 
