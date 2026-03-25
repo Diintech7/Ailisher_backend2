@@ -272,22 +272,56 @@ router.post("/login", validateClient, async (req, res) => {
       });
     }
 
-    // WhatsApp OTP verification (App Login)
-    // If `otp` is not provided, we send an OTP and ask the client to verify.
     const otpClientKey = "ailisher";
-    if (!otp) {
-      await sendLoginOtpToWhatsApp({ mobile, clientKey: otpClientKey });
-      return res.status(200).json({
-        success: true,
-        responseCode: 1562,
-        otp_required: true,
-        message: "OTP sent to WhatsApp. Please verify to login.",
-        client_id: clientId,
-        mobile,
+    // OTP verification must happen on a separate API.
+    if (otp) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1563,
+        message: "OTP verification is not supported in /login. Use /verify-login-otp.",
       });
     }
 
-    if (!validateOtp(otp)) {
+    await sendLoginOtpToWhatsApp({ mobile, clientKey: otpClientKey });
+    return res.status(200).json({
+      success: true,
+      responseCode: 1562,
+      otp_required: true,
+      message: "OTP sent to WhatsApp. Please verify to login.",
+      client_id: clientId,
+      mobile,
+    });
+
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+});
+
+// Route: Verify OTP and perform login/register
+router.post("/verify-login-otp", validateClient, async (req, res) => {
+  try {
+    const { mobile, otp } = req.body;
+    const clientId = req.params.clientId;
+    const client = req.client;
+    let org = null;
+    if (client.organization && client.organization !== null) {
+      org = client.organization.toString();
+    }
+
+    if (!mobile || !validateMobile(mobile)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1509,
+        message: "Please enter a valid 10-digit mobile number.",
+      });
+    }
+
+    if (!otp || !validateOtp(otp)) {
       return res.status(400).json({
         success: false,
         responseCode: 1563,
@@ -295,6 +329,7 @@ router.post("/login", validateClient, async (req, res) => {
       });
     }
 
+    const otpClientKey = "ailisher";
     const otpResult = await verifyLoginOtpFromWhatsApp({
       mobile,
       otp,
@@ -322,15 +357,6 @@ router.post("/login", validateClient, async (req, res) => {
       mobileUser.authToken = token;
       await mobileUser.save(); // This will increment loginCount via pre-save hook
 
-      // // Send Telegram alert for existing user login
-      // try {
-      //   await axios.post(`https://test.ailisher.com/api/clients/CLI147189HIGB/telegram/send-text`, {
-      //     text: `👤 <b>User Login</b>\n\n📱 Mobile: ${mobile}\n🏢 Client ID: ${clientId}\n⏰ Time: ${new Date().toLocaleString()}\n🆔 User ID: ${mobileUser._id}\n🔢 Login Count: ${mobileUser.loginCount || 1}`
-      //   });
-      // } catch (telegramError) {
-      //   console.error('Failed to send Telegram alert:', telegramError.message);
-      //   // Don't fail the login if Telegram fails
-      // }
       // 2. Immediately create a credit account for this user
       const existing = await CreditAccount.findOne({
         userId: mobileUser._id,
@@ -366,40 +392,39 @@ router.post("/login", validateClient, async (req, res) => {
 
         await mobileUser.save();
 
-        if(clientId === "CLI147189HIGB")
-        {
-        // Send Telegram alert for new user
-        try {
-          await axios.post(
-            `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
-            {
-              text: `🆕 <b>New User Registered!</b>\n\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>User No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`
-            },
-          );
-        } catch (telegramError) {
-          console.error(
-            "Failed to send Telegram alert:",
-            telegramError.message
-          );
-          // Don't fail the registration if Telegram fails
-        }
+        if (clientId === "CLI147189HIGB") {
+          // Send Telegram alert for new user
+          try {
+            await axios.post(
+              `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
+              {
+                text: `🆕 <b>New User Registered!</b>\n\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>User No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`,
+              }
+            );
+          } catch (telegramError) {
+            console.error(
+              "Failed to send Telegram alert:",
+              telegramError.message
+            );
+            // Don't fail the registration if Telegram fails
+          }
         }
 
-        if(org === "68eceaefbc63e372b4906b67")
-          {
-            try {
-              const bot = new Telegraf("8220122553:AAG6_abPeoseq25BASSkaVRBi7w4kDBB3Gs");
-              const chatId = '-1003219979462';
-              if (!chatId) {
-                throw new Error('Chat ID not configured');
-              }
-              const text = `🆕 <b>New User Registered in ${client.businessName}</b>\n\n🏢 <b>ClientId:</b> ${clientId}\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>User No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`;
-              await bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' });
-            } catch (error) {
-              console.error('Error sending text to Telegram:', error);
+        if (org === "68eceaefbc63e372b4906b67") {
+          try {
+            const bot = new Telegraf("8220122553:AAG6_abPeoseq25BASSkaVRBi7w4kDBB3Gs");
+            const chatId = "-1003219979462";
+            if (!chatId) {
+              throw new Error("Chat ID not configured");
             }
+            const text = `🆕 <b>New User Registered in ${client.businessName}</b>\n\n🏢 <b>ClientId:</b> ${clientId}\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>User No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`;
+            await bot.telegram.sendMessage(chatId, text, {
+              parse_mode: "HTML",
+            });
+          } catch (error) {
+            console.error("Error sending text to Telegram:", error);
           }
-        
+        }
 
         // 2. Immediately create a credit account for this user
         const existing = await CreditAccount.findOne({
@@ -427,11 +452,7 @@ router.post("/login", validateClient, async (req, res) => {
         );
       } catch (saveError) {
         // Handle race condition where user might have been created between our check and save
-        if (
-          saveError.message.includes(
-            "Mobile number already exists for this client"
-          )
-        ) {
+        if (saveError.message.includes("Mobile number already exists for this client")) {
           console.log(
             `Race condition detected - user created concurrently: ${mobile} for client: ${clientId}`
           );
@@ -540,7 +561,7 @@ router.post("/login", validateClient, async (req, res) => {
 
     res.status(200).json(response);
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("Verify-login-otp error:", error);
     res.status(500).json({
       success: false,
       responseCode: 1512,
