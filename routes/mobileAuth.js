@@ -838,11 +838,25 @@ router.post("/onboarding/register-email-password", validateClient, async (req, r
           message: "Email already registered. Sign in or use Google login.",
         });
       }
-      return res.status(400).json({
-        success: false,
-        responseCode: 1592,
-        message:
-          "Verification already pending for this email. Use verify-email-otp or resend-email-otp.",
+      // Verification still pending: allow repeat calls — update password and send a fresh OTP each time
+      existing.passwordHash = await bcrypt.hash(String(password), 10);
+      existing.loginProvider = "email";
+      await existing.save();
+
+      await createAndSendEmailOtp({
+        email: emailNorm,
+        clientId,
+        clientName: client.businessName,
+      });
+
+      return res.status(200).json({
+        success: true,
+        responseCode: 1597,
+        email_otp_required: true,
+        message: "Verification code sent to your email.",
+        email: emailNorm,
+        next_step: 1,
+        resent: true,
       });
     }
 
@@ -871,6 +885,7 @@ router.post("/onboarding/register-email-password", validateClient, async (req, r
       message: "Verification code sent to your email.",
       email: emailNorm,
       next_step: 1,
+      resent: false,
     });
   } catch (error) {
     console.error("register-email-password error:", error);
@@ -924,7 +939,8 @@ router.post("/onboarding/resend-email-otp", validateClient, async (req, res) => 
       success: true,
       responseCode: 1597,
       email_otp_required: true,
-      message: "Verification code resent to your email.",
+      message:
+        "Verification code sent to your email. You can request a new code again anytime before you verify.",
       email: emailNorm,
       next_step: 1,
     });
@@ -1290,11 +1306,8 @@ async function handleForgotOrResendPasswordEmail(req, res) {
   }
 }
 
-router.post("/forgot-password-email", validateClient, handleForgotOrResendPasswordEmail);
-router.post("/resend-password-reset-email", validateClient, handleForgotOrResendPasswordEmail);
-
 // Reset password using token from email (body: token, newPassword)
-router.post("/reset-password-email", validateClient, async (req, res) => {
+async function handleResetPasswordEmail(req, res) {
   try {
     const { token, newPassword } = req.body;
     const clientId = req.params.clientId;
@@ -1354,7 +1367,27 @@ router.post("/reset-password-email", validateClient, async (req, res) => {
       message: "Internal server error. Please try again later.",
     });
   }
-});
+}
+
+router.post("/forgot-password-email", validateClient, handleForgotOrResendPasswordEmail);
+router.post("/resend-password-reset-email", validateClient, handleForgotOrResendPasswordEmail);
+router.post("/reset-password-email", validateClient, handleResetPasswordEmail);
+// Same handlers under /onboarding/ for frontend grouping
+router.post(
+  "/onboarding/forgot-password-email",
+  validateClient,
+  handleForgotOrResendPasswordEmail
+);
+router.post(
+  "/onboarding/resend-password-reset-email",
+  validateClient,
+  handleForgotOrResendPasswordEmail
+);
+router.post(
+  "/onboarding/reset-password-email",
+  validateClient,
+  handleResetPasswordEmail
+);
 
 router.post("/resend-welcome-email", validateClient, async (req, res) => {
   try {
