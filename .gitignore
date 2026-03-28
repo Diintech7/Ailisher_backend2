@@ -10,6 +10,9 @@ yarn-error.log
 .env.local
 .env.*.local
 
+# Never commit ad-hoc env dumps (GitHub push protection)
+Untitled
+
 # IDE
 .idea/
 .vscode/

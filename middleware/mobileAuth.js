@@ -1,6 +1,7 @@
 // middleware/mobileAuth.js - Improved version
 const jwt = require('jsonwebtoken');
 const MobileUser = require('../models/MobileUser');
+const MobileEmailUser = require('../models/MobileEmailUser');
 const User = require('../models/User');
 const OrgClient = require('../models/OrgClient');
 
@@ -16,6 +17,145 @@ const generateToken = (userId, mobile, clientId) => {
     process.env.JWT_SECRET,
     { expiresIn: '30d' }
   );
+};
+
+// JWT for Google / email sign-in (MobileEmailUser)
+const generateEmailUserToken = (userId, email, clientId) => {
+  return jwt.sign(
+    {
+      id: userId,
+      email,
+      clientId,
+      type: 'mobile_email',
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '30d' }
+  );
+};
+
+// Accepts Bearer tokens issued for MobileUser (type: mobile) or MobileEmailUser (type: mobile_email)
+const authenticateMobileOrEmailUser = async (req, res, next) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access denied. No token provided.',
+        error: {
+          code: 'NO_TOKEN',
+          details: 'Authorization header with Bearer token is required',
+        },
+      });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token.',
+        error: {
+          code: 'INVALID_TOKEN',
+          details: jwtError.message,
+        },
+      });
+    }
+
+    const clientIdFromUrl = req.params.clientId || req.clientId;
+
+    if (decoded.type === 'mobile') {
+      const user = await MobileUser.findOne({
+        _id: decoded.id,
+        authToken: token,
+      });
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid token or user not found.',
+          error: {
+            code: 'USER_NOT_FOUND',
+            details: 'User associated with this token does not exist or token has been revoked',
+          },
+        });
+      }
+      if (clientIdFromUrl && user.clientId !== clientIdFromUrl) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. Client mismatch.',
+          error: {
+            code: 'CLIENT_MISMATCH',
+            details: `User belongs to client ${user.clientId} but trying to access ${clientIdFromUrl}`,
+          },
+        });
+      }
+      req.user = {
+        id: user._id,
+        mobile: user.mobile,
+        clientId: user.clientId,
+        userId: user.clientId,
+        authType: 'mobile',
+        isAuthenticated: true,
+      };
+      return next();
+    }
+
+    if (decoded.type === 'mobile_email') {
+      const user = await MobileEmailUser.findOne({
+        _id: decoded.id,
+        authToken: token,
+        isActive: true,
+      });
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid token or user not found.',
+          error: {
+            code: 'USER_NOT_FOUND',
+            details: 'User associated with this token does not exist or token has been revoked',
+          },
+        });
+      }
+      if (clientIdFromUrl && user.clientId !== clientIdFromUrl) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. Client mismatch.',
+          error: {
+            code: 'CLIENT_MISMATCH',
+            details: `User belongs to client ${user.clientId} but trying to access ${clientIdFromUrl}`,
+          },
+        });
+      }
+      req.user = {
+        id: user._id,
+        email: user.email,
+        clientId: user.clientId,
+        userId: user.clientId,
+        authType: 'email',
+        isAuthenticated: true,
+      };
+      return next();
+    }
+
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid token type.',
+      error: {
+        code: 'INVALID_TOKEN_TYPE',
+        details: 'This endpoint requires a mobile or email (Google) user token',
+      },
+    });
+  } catch (error) {
+    console.error('Authentication error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error during authentication.',
+      error: {
+        code: 'AUTH_SERVER_ERROR',
+        details: error.message,
+      },
+    });
+  }
 };
 
 // Authenticate mobile user
@@ -358,7 +498,9 @@ const authenticateQRCode = async (req, res, next) => {
 
 module.exports = {
   generateToken,
+  generateEmailUserToken,
   authenticateMobileUser,
+  authenticateMobileOrEmailUser,
   checkClientAccess,
   ensureUserBelongsToClient,
   authenticateQRCode,

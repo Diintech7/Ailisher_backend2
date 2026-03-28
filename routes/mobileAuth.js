@@ -9,14 +9,27 @@ const UserProfile = require("../models/UserProfile");
 const User = require("../models/User");
 const {
   generateToken,
-  authenticateMobileUser,
+  generateEmailUserToken,
+  authenticateMobileOrEmailUser,
   checkClientAccess,
 } = require("../middleware/mobileAuth");
 const CreditAccount = require("../models/CreditAccount");
 const OrgClient = require("../models/OrgClient");
+const MobileEmailUser = require("../models/MobileEmailUser");
+const EmailResetToken = require("../models/EmailResetToken");
 const { Telegraf } = require('telegraf');
 const OTP = require("../models/OTP");
 const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
+const {
+  sendWelcomeEmail,
+  sendPasswordResetEmail,
+} = require("../services/emailService");
+const EmailOtp = require("../models/EmailOtp");
+const {
+  brevoEnabled,
+  sendEmailOtp: sendEmailOtpViaBrevo,
+} = require("../services/brevoService");
 
 // Validation helpers
 const validateMobile = (mobile) => /^\d{10}$/.test(mobile);
@@ -137,6 +150,192 @@ async function verifyLoginOtpFromWhatsApp({ mobile, otp, clientKey }) {
   await record.save();
 
   return { success: true, message: "OTP verified successfully" };
+}
+
+const validateEmail = (email) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
+
+function profileOptionsPayload() {
+  return {
+    exams: [
+      "UPSC",
+      "CA",
+      "CMA",
+      "CS",
+      "ACCA",
+      "CFA",
+      "FRM",
+      "NEET",
+      "JEE",
+      "GATE",
+      "CAT",
+      "GMAT",
+      "GRE",
+      "IELTS",
+      "TOEFL",
+      "NET/JRF",
+      "BPSC",
+      "UPPCS",
+      "NDA",
+      "SSC",
+      "Teacher",
+      "CLAT",
+      "Judiciary",
+      "Other",
+    ],
+    languages: [
+      "Hindi",
+      "English",
+      "Bengali",
+      "Telugu",
+      "Marathi",
+      "Tamil",
+      "Gujarati",
+      "Urdu",
+      "Kannada",
+      "Odia",
+      "Malayalam",
+      "Punjabi",
+      "Assamese",
+      "Other",
+    ],
+    age_groups: ["<15", "15-18", "19-25", "26-31", "32-40", "40+"],
+    genders: ["Male", "Female", "Other"],
+  };
+}
+
+// ----- Email (Brevo) OTP + onboarding (steps 1–3) -----
+function step1EmailComplete(user) {
+  if (user.loginProvider === "google") return true;
+  return user.emailOtpVerified !== false;
+}
+
+function step2MobileComplete(user, profile) {
+  if (user.mobileOtpVerified && user.linkedMobile) return true;
+  if (profile) return true;
+  return false;
+}
+
+function attachOnboarding(user, profile, payload) {
+  const s1 = step1EmailComplete(user);
+  const s2 = step2MobileComplete(user, profile);
+  const s3 = !!profile;
+  const next = !s1 ? 1 : !s2 ? 2 : !s3 ? 3 : null;
+  payload.onboarding_complete = next === null;
+  payload.next_step = next;
+  payload.step1_email_verified = s1;
+  payload.step2_mobile_verified = s2;
+  payload.step3_profile_complete = s3;
+}
+
+async function createAndSendEmailOtp({ email, clientId, clientName }) {
+  if (!brevoEnabled()) {
+    throw new Error(
+      "Email OTP requires Brevo: set USE_BREVO=true and BREVO_API_KEY in .env"
+    );
+  }
+  const emailNorm = String(email).toLowerCase().trim();
+  await EmailOtp.updateMany(
+    { email: emailNorm, clientId, isUsed: false },
+    { isUsed: true }
+  );
+  const otp = crypto.randomInt(0, 1000000).toString().padStart(6, "0");
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  await EmailOtp.create({
+    email: emailNorm,
+    clientId,
+    otp,
+    expiresAt,
+    isUsed: false,
+  });
+  const result = await sendEmailOtpViaBrevo({
+    to: emailNorm,
+    otp,
+    clientName,
+  });
+  if (!result.sent) {
+    throw new Error(
+      result.reason === "missing_api_key"
+        ? "BREVO_API_KEY is not set"
+        : "Failed to send verification email"
+    );
+  }
+}
+
+async function verifyEmailOtpRecord({ email, clientId, otp }) {
+  const emailNorm = String(email).toLowerCase().trim();
+  const record = await EmailOtp.findOne({
+    email: emailNorm,
+    clientId,
+    otp: String(otp).trim(),
+    isUsed: false,
+  });
+  if (!record) return { ok: false, message: "Invalid OTP" };
+  if (new Date(record.expiresAt).getTime() < Date.now()) {
+    return { ok: false, message: "OTP expired" };
+  }
+  record.isUsed = true;
+  await record.save();
+  return { ok: true };
+}
+
+async function finalizeEmailUserSessionResponse(
+  user,
+  clientId,
+  client,
+  isNewUser,
+  authTypeLabel
+) {
+  const profile = await UserProfile.findOne({ userId: user._id });
+  const isProfileComplete = !!profile;
+
+  const response = {
+    success: true,
+    responseCode: isNewUser ? 1591 : 1590,
+    token: user.authToken,
+    auth_type: authTypeLabel,
+    is_profile_complete: isProfileComplete,
+    is_new_user: isNewUser,
+    user_id: user._id,
+    email: user.email,
+    client_id: clientId,
+    client_name: client.businessName,
+    login_count: user.loginCount,
+  };
+
+  attachOnboarding(user, profile, response);
+
+  const fullyDone = response.onboarding_complete && isProfileComplete;
+  response.status = fullyDone ? "LOGIN_SUCCESS" : "ONBOARDING_OR_PROFILE_REQUIRED";
+
+  if (fullyDone) {
+    response.message = isNewUser
+      ? "Account created and login successful."
+      : "Login successful.";
+    response.profile = {
+      name: profile.name,
+      age: profile.age,
+      gender: profile.gender,
+      exams: profile.exams,
+      native_language: profile.nativeLanguage,
+    };
+  } else {
+    if (response.next_step === 2) {
+      response.message =
+        "Step 1 complete. Verify your mobile number with WhatsApp OTP (step 2).";
+    } else if (response.next_step === 3) {
+      response.message = "Complete your profile (step 3).";
+    } else if (response.next_step === 1) {
+      response.message = "Verify your email with the OTP sent to your inbox.";
+    } else {
+      response.message = "Please complete onboarding and your profile.";
+    }
+    if (!isProfileComplete) {
+      response.profile_options = profileOptionsPayload();
+    }
+  }
+
+  return response;
 }
 
 // Enhanced client validation middleware
@@ -412,15 +611,19 @@ router.post("/verify-login-otp", validateClient, async (req, res) => {
 
         if (org === "68eceaefbc63e372b4906b67") {
           try {
-            const bot = new Telegraf("8220122553:AAG6_abPeoseq25BASSkaVRBi7w4kDBB3Gs");
-            const chatId = "-1003219979462";
-            if (!chatId) {
-              throw new Error("Chat ID not configured");
+            const botToken = process.env.TELEGRAM_ORG_ALERT_BOT_TOKEN;
+            const chatId = process.env.TELEGRAM_ORG_ALERT_CHAT_ID;
+            if (!botToken || !chatId) {
+              console.warn(
+                "Org Telegram alert skipped: set TELEGRAM_ORG_ALERT_BOT_TOKEN and TELEGRAM_ORG_ALERT_CHAT_ID in .env"
+              );
+            } else {
+              const bot = new Telegraf(botToken);
+              const text = `🆕 <b>New User Registered in ${client.businessName}</b>\n\n🏢 <b>ClientId:</b> ${clientId}\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>User No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`;
+              await bot.telegram.sendMessage(chatId, text, {
+                parse_mode: "HTML",
+              });
             }
-            const text = `🆕 <b>New User Registered in ${client.businessName}</b>\n\n🏢 <b>ClientId:</b> ${clientId}\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>User No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`;
-            await bot.telegram.sendMessage(chatId, text, {
-              parse_mode: "HTML",
-            });
           } catch (error) {
             console.error("Error sending text to Telegram:", error);
           }
@@ -510,58 +713,725 @@ router.post("/verify-login-otp", validateClient, async (req, res) => {
         native_language: profile.nativeLanguage,
       };
     } else {
-      // Add profile options for incomplete profiles
-      response.profile_options = {
-        exams: [
-          "UPSC",
-          "CA",
-          "CMA",
-          "CS",
-          "ACCA",
-          "CFA",
-          "FRM",
-          "NEET",
-          "JEE",
-          "GATE",
-          "CAT",
-          "GMAT",
-          "GRE",
-          "IELTS",
-          "TOEFL",
-          "NET/JRF",
-          "BPSC",
-          "UPPCS",
-          "NDA",
-          "SSC",
-          "Teacher",
-          "CLAT",
-          "Judiciary",
-          "Other",
-        ],
-        languages: [
-          "Hindi",
-          "English",
-          "Bengali",
-          "Telugu",
-          "Marathi",
-          "Tamil",
-          "Gujarati",
-          "Urdu",
-          "Kannada",
-          "Odia",
-          "Malayalam",
-          "Punjabi",
-          "Assamese",
-          "Other",
-        ],
-        age_groups: ["<15", "15-18", "19-25", "26-31", "32-40", "40+"],
-        genders: ["Male", "Female", "Other"],
-      };
+      response.profile_options = profileOptionsPayload();
     }
 
     res.status(200).json(response);
   } catch (error) {
     console.error("Verify-login-otp error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+});
+
+// Google sign-in: email + clientId — no email OTP; step 1 done. New users continue to mobile OTP (step 2).
+router.post("/google-login", validateClient, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const clientId = req.params.clientId;
+    const client = req.client;
+    const emailNorm = String(email || "").toLowerCase().trim();
+
+    if (!emailNorm || !validateEmail(emailNorm)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "A valid email is required.",
+      });
+    }
+
+    let user = await MobileEmailUser.findOne({
+      email: emailNorm,
+      clientId,
+      isActive: true,
+    });
+    let isNewUser = false;
+
+    if (user) {
+      if (user.loginProvider === "email" && user.passwordHash) {
+        return res.status(409).json({
+          success: false,
+          responseCode: 1592,
+          message:
+            "This email is registered with a password. Sign in with email and password or use the account that matches Google.",
+        });
+      }
+      const token = generateEmailUserToken(user._id, user.email, clientId);
+      user.authToken = token;
+      user.loginProvider = "google";
+      await user.save();
+    } else {
+      isNewUser = true;
+      user = new MobileEmailUser({
+        email: emailNorm,
+        clientId,
+        loginProvider: "google",
+        isVerified: true,
+        emailOtpVerified: true,
+        mobileOtpVerified: false,
+      });
+      await user.save();
+      const token = generateEmailUserToken(user._id, user.email, clientId);
+      user.authToken = token;
+      await user.save();
+      await sendWelcomeEmail({
+        to: user.email,
+        clientName: client.businessName,
+        clientId,
+      });
+    }
+
+    const response = await finalizeEmailUserSessionResponse(
+      user,
+      clientId,
+      client,
+      isNewUser,
+      "google_email"
+    );
+    res.status(200).json(response);
+  } catch (error) {
+    console.error("Google login error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+});
+
+// Step 1a — Email + password: creates account, sends Brevo OTP (no auth token until verify-email-otp)
+router.post("/onboarding/register-email-password", validateClient, async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const clientId = req.params.clientId;
+    const client = req.client;
+    const emailNorm = String(email || "").toLowerCase().trim();
+
+    if (!emailNorm || !validateEmail(emailNorm)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "A valid email is required.",
+      });
+    }
+    if (!password || String(password).length < 6) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "Password must be at least 6 characters.",
+      });
+    }
+
+    const existing = await MobileEmailUser.findOne({
+      email: emailNorm,
+      clientId,
+      isActive: true,
+    });
+    if (existing) {
+      if (existing.emailOtpVerified !== false) {
+        return res.status(409).json({
+          success: false,
+          responseCode: 1592,
+          message: "Email already registered. Sign in or use Google login.",
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message:
+          "Verification already pending for this email. Use verify-email-otp or resend-email-otp.",
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    const user = new MobileEmailUser({
+      email: emailNorm,
+      clientId,
+      passwordHash,
+      loginProvider: "email",
+      emailOtpVerified: false,
+      mobileOtpVerified: false,
+      authToken: null,
+    });
+    await user.save();
+
+    await createAndSendEmailOtp({
+      email: emailNorm,
+      clientId,
+      clientName: client.businessName,
+    });
+
+    return res.status(200).json({
+      success: true,
+      responseCode: 1597,
+      email_otp_required: true,
+      message: "Verification code sent to your email.",
+      email: emailNorm,
+      next_step: 1,
+    });
+  } catch (error) {
+    console.error("register-email-password error:", error);
+    const msg =
+      error.message && String(error.message).includes("Brevo")
+        ? error.message
+        : "Internal server error. Please try again later.";
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: msg,
+    });
+  }
+});
+
+router.post("/onboarding/resend-email-otp", validateClient, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const clientId = req.params.clientId;
+    const client = req.client;
+    const emailNorm = String(email || "").toLowerCase().trim();
+
+    if (!emailNorm || !validateEmail(emailNorm)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "A valid email is required.",
+      });
+    }
+
+    const user = await MobileEmailUser.findOne({
+      email: emailNorm,
+      clientId,
+      isActive: true,
+    });
+    if (!user || user.emailOtpVerified !== false) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "No pending email verification for this address.",
+      });
+    }
+
+    await createAndSendEmailOtp({
+      email: emailNorm,
+      clientId,
+      clientName: client.businessName,
+    });
+
+    return res.status(200).json({
+      success: true,
+      responseCode: 1597,
+      email_otp_required: true,
+      message: "Verification code resent to your email.",
+      email: emailNorm,
+      next_step: 1,
+    });
+  } catch (error) {
+    console.error("resend-email-otp error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: error.message || "Internal server error.",
+    });
+  }
+});
+
+// Step 1b — Verify Brevo email OTP → JWT; then continue to step 2 (mobile)
+router.post("/onboarding/verify-email-otp", validateClient, async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const clientId = req.params.clientId;
+    const client = req.client;
+    const emailNorm = String(email || "").toLowerCase().trim();
+
+    if (!emailNorm || !validateEmail(emailNorm) || !otp || !validateOtp(otp)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "Valid email and 6-digit OTP are required.",
+      });
+    }
+
+    const chk = await verifyEmailOtpRecord({
+      email: emailNorm,
+      clientId,
+      otp,
+    });
+    if (!chk.ok) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: chk.message,
+      });
+    }
+
+    const user = await MobileEmailUser.findOne({
+      email: emailNorm,
+      clientId,
+      isActive: true,
+    });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        responseCode: 1592,
+        message: "User not found.",
+      });
+    }
+
+    user.emailOtpVerified = true;
+    const token = generateEmailUserToken(user._id, user.email, clientId);
+    user.authToken = token;
+    await user.save();
+
+    const profile = await UserProfile.findOne({ userId: user._id });
+    const isNewUser = !profile;
+
+    const response = await finalizeEmailUserSessionResponse(
+      user,
+      clientId,
+      client,
+      isNewUser,
+      "email_password"
+    );
+    response.responseCode = 1598;
+    res.status(200).json(response);
+  } catch (error) {
+    console.error("verify-email-otp error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+});
+
+// Step 1 — Sign in with email + password (after email OTP was verified once)
+router.post("/onboarding/login-email-password", validateClient, async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const clientId = req.params.clientId;
+    const client = req.client;
+    const emailNorm = String(email || "").toLowerCase().trim();
+
+    if (!emailNorm || !validateEmail(emailNorm) || !password) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "Email and password are required.",
+      });
+    }
+
+    const user = await MobileEmailUser.findOne({
+      email: emailNorm,
+      clientId,
+      isActive: true,
+    });
+    if (!user || !user.passwordHash) {
+      return res.status(401).json({
+        success: false,
+        responseCode: 1592,
+        message: "Invalid email or password.",
+      });
+    }
+    if (user.emailOtpVerified === false) {
+      return res.status(403).json({
+        success: false,
+        responseCode: 1592,
+        message: "Verify your email with the OTP first.",
+      });
+    }
+
+    const match = await bcrypt.compare(String(password), user.passwordHash);
+    if (!match) {
+      return res.status(401).json({
+        success: false,
+        responseCode: 1592,
+        message: "Invalid email or password.",
+      });
+    }
+
+    const token = generateEmailUserToken(user._id, user.email, clientId);
+    user.authToken = token;
+    user.loginProvider = "email";
+    await user.save();
+
+    const profile = await UserProfile.findOne({ userId: user._id });
+    const response = await finalizeEmailUserSessionResponse(
+      user,
+      clientId,
+      client,
+      false,
+      "email_password"
+    );
+    response.is_new_user = !profile;
+    res.status(200).json(response);
+  } catch (error) {
+    console.error("login-email-password error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+});
+
+// Step 2 — Send WhatsApp OTP for mobile (requires email/Google JWT)
+router.post(
+  "/onboarding/send-mobile-otp",
+  validateClient,
+  authenticateMobileOrEmailUser,
+  async (req, res) => {
+    try {
+      if (req.user.authType !== "email") {
+        return res.status(403).json({
+          success: false,
+          responseCode: 1592,
+          message: "This step requires an email or Google login session.",
+        });
+      }
+
+      const clientId = req.params.clientId;
+      const { mobile } = req.body;
+
+      const user = await MobileEmailUser.findOne({
+        _id: req.user.id,
+        clientId,
+        isActive: true,
+      });
+      if (!user || !step1EmailComplete(user)) {
+        return res.status(403).json({
+          success: false,
+          responseCode: 1592,
+          message: "Complete email verification (step 1) first.",
+        });
+      }
+
+      if (!mobile || !validateMobile(mobile)) {
+        return res.status(400).json({
+          success: false,
+          responseCode: 1509,
+          message: "Please enter a valid 10-digit mobile number.",
+        });
+      }
+
+      const otpClientKey = "ailisher";
+      await sendLoginOtpToWhatsApp({ mobile, clientKey: otpClientKey });
+
+      return res.status(200).json({
+        success: true,
+        responseCode: 1599,
+        otp_required: true,
+        message: "OTP sent to WhatsApp. Use verify-mobile-otp next.",
+        client_id: clientId,
+        mobile,
+        next_step: 2,
+      });
+    } catch (error) {
+      console.error("onboarding send-mobile-otp error:", error);
+      res.status(500).json({
+        success: false,
+        responseCode: 1512,
+        message: "Internal server error. Please try again later.",
+      });
+    }
+  }
+);
+
+// Step 2 — Verify WhatsApp OTP and link mobile
+router.post(
+  "/onboarding/verify-mobile-otp",
+  validateClient,
+  authenticateMobileOrEmailUser,
+  async (req, res) => {
+    try {
+      if (req.user.authType !== "email") {
+        return res.status(403).json({
+          success: false,
+          responseCode: 1592,
+          message: "This step requires an email or Google login session.",
+        });
+      }
+
+      const clientId = req.params.clientId;
+      const client = req.client;
+      const { mobile, otp } = req.body;
+
+      if (!mobile || !validateMobile(mobile) || !otp || !validateOtp(otp)) {
+        return res.status(400).json({
+          success: false,
+          responseCode: 1592,
+          message: "Valid 10-digit mobile and 6-digit OTP are required.",
+        });
+      }
+
+      const otpClientKey = "ailisher";
+      const otpResult = await verifyLoginOtpFromWhatsApp({
+        mobile,
+        otp,
+        clientKey: otpClientKey,
+      });
+      if (!otpResult.success) {
+        return res.status(400).json({
+          success: false,
+          responseCode: 1563,
+          message: otpResult.message,
+        });
+      }
+
+      const user = await MobileEmailUser.findOne({
+        _id: req.user.id,
+        clientId,
+        isActive: true,
+      });
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          responseCode: 1592,
+          message: "User not found.",
+        });
+      }
+
+      user.linkedMobile = mobile;
+      user.mobileOtpVerified = true;
+      await user.save();
+
+      const profile = await UserProfile.findOne({ userId: user._id });
+      const response = await finalizeEmailUserSessionResponse(
+        user,
+        clientId,
+        client,
+        false,
+        user.loginProvider === "google" ? "google_email" : "email_password"
+      );
+      response.responseCode = 1600;
+      response.is_new_user = !profile;
+      res.status(200).json(response);
+    } catch (error) {
+      console.error("onboarding verify-mobile-otp error:", error);
+      res.status(500).json({
+        success: false,
+        responseCode: 1512,
+        message: "Internal server error. Please try again later.",
+      });
+    }
+  }
+);
+
+// Forgot password / resend reset email (email accounts with password only).
+async function handleForgotOrResendPasswordEmail(req, res) {
+  try {
+    const { email } = req.body;
+    const clientId = req.params.clientId;
+    const client = req.client;
+    const emailNorm = String(email || "").toLowerCase().trim();
+
+    if (!emailNorm || !validateEmail(emailNorm)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "A valid email is required.",
+      });
+    }
+
+    const user = await MobileEmailUser.findOne({
+      email: emailNorm,
+      clientId,
+      isActive: true,
+    });
+
+    const generic = {
+      success: true,
+      responseCode: 1593,
+      message:
+        "If an account with this email exists, a password reset link has been sent.",
+    };
+
+    if (!user || !user.passwordHash) {
+      return res.status(200).json(generic);
+    }
+
+    await EmailResetToken.updateMany(
+      { email: emailNorm, clientId, used: false },
+      { used: true }
+    );
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await EmailResetToken.create({
+      email: emailNorm,
+      clientId,
+      token: rawToken,
+      expiresAt,
+      used: false,
+    });
+
+    const base =
+      process.env.PASSWORD_RESET_BASE_URL ||
+      process.env.MOBILE_APP_URL ||
+      "https://example.com";
+    const resetUrl = `${String(base).replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(rawToken)}&clientId=${encodeURIComponent(clientId)}`;
+
+    await sendPasswordResetEmail({
+      to: emailNorm,
+      resetUrl,
+      clientName: client.businessName,
+    });
+
+    return res.status(200).json(generic);
+  } catch (error) {
+    console.error("Forgot-password-email error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+}
+
+router.post("/forgot-password-email", validateClient, handleForgotOrResendPasswordEmail);
+router.post("/resend-password-reset-email", validateClient, handleForgotOrResendPasswordEmail);
+
+// Reset password using token from email (body: token, newPassword)
+router.post("/reset-password-email", validateClient, async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    const clientId = req.params.clientId;
+
+    if (!token || !newPassword || String(newPassword).length < 6) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "Valid token and new password (min 6 characters) are required.",
+      });
+    }
+
+    const record = await EmailResetToken.findOne({
+      token: String(token).trim(),
+      clientId,
+      used: false,
+    });
+
+    if (!record || new Date(record.expiresAt).getTime() < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "Invalid or expired reset token.",
+      });
+    }
+
+    const user = await MobileEmailUser.findOne({
+      email: record.email,
+      clientId,
+      isActive: true,
+    });
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "User not found.",
+      });
+    }
+
+    user.passwordHash = await bcrypt.hash(String(newPassword), 10);
+    user.loginProvider = "email";
+    await user.save();
+
+    record.used = true;
+    await record.save();
+
+    res.status(200).json({
+      success: true,
+      responseCode: 1594,
+      message: "Password updated successfully.",
+    });
+  } catch (error) {
+    console.error("Reset-password-email error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+});
+
+router.post("/resend-welcome-email", validateClient, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const clientId = req.params.clientId;
+    const client = req.client;
+    const emailNorm = String(email || "").toLowerCase().trim();
+
+    if (!emailNorm || !validateEmail(emailNorm)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "A valid email is required.",
+      });
+    }
+
+    const user = await MobileEmailUser.findOne({
+      email: emailNorm,
+      clientId,
+      isActive: true,
+    });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        responseCode: 1592,
+        message: "No account found for this email and client.",
+      });
+    }
+
+    await sendWelcomeEmail({
+      to: user.email,
+      clientName: client.businessName,
+      clientId,
+    });
+
+    res.status(200).json({
+      success: true,
+      responseCode: 1595,
+      message: "Welcome email sent.",
+    });
+  } catch (error) {
+    console.error("Resend-welcome-email error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+});
+
+// Resend WhatsApp login OTP (same behaviour as POST /login)
+router.post("/resend-login-otp", validateClient, async (req, res) => {
+  try {
+    const { mobile } = req.body;
+    const clientId = req.params.clientId;
+
+    if (!mobile || !validateMobile(mobile)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1509,
+        message: "Please enter a valid 10-digit mobile number.",
+      });
+    }
+
+    const otpClientKey = "ailisher";
+    await sendLoginOtpToWhatsApp({ mobile, clientKey: otpClientKey });
+
+    res.status(200).json({
+      success: true,
+      responseCode: 1562,
+      otp_required: true,
+      message: "OTP resent to WhatsApp. Please verify to login.",
+      client_id: clientId,
+      mobile,
+    });
+  } catch (error) {
+    console.error("Resend-login-otp error:", error);
     res.status(500).json({
       success: false,
       responseCode: 1512,
@@ -677,7 +1547,7 @@ router.post("/bulk-check", validateClient, async (req, res) => {
 });
 
 // Route: Create/Update Profile
-router.post("/profile", authenticateMobileUser, async (req, res) => {
+router.post("/profile", authenticateMobileOrEmailUser, async (req, res) => {
   try {
     console.log("=== PROFILE CREATE ROUTE HIT ===");
     const { name, age, gender, exams, native_language, city, pincode } = req.body;
@@ -690,14 +1560,19 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     org = client.organization.toString()
     }
     console.log(req.body)
-    const mobileUser = await MobileUser.findOne({ _id: userId, clientId });
-    if (!mobileUser) {
+    const account =
+      req.user.authType === "email"
+        ? await MobileEmailUser.findOne({ _id: userId, clientId })
+        : await MobileUser.findOne({ _id: userId, clientId });
+    if (!account) {
       return res.status(403).json({
         success: false,
         responseCode: 1513, // Same as original profile access denied
         message: "Access denied. User does not belong to this client.",
       });
     }
+    const contactLabel =
+      req.user.authType === "email" ? account.email : account.mobile;
 
     // Validation
     const errors = [];
@@ -761,7 +1636,7 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
         await axios.post(
           `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
           {
-            text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${name}\n📱 Mobile: ${mobileUser.mobile}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
+            text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${name}\n📱 ${req.user.authType === "email" ? "Email" : "Mobile"}: ${contactLabel}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
           }
         );
       } catch (telegramError) {
@@ -773,13 +1648,17 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     if(org === "68eceaefbc63e372b4906b67")
       {
         try {
-          const bot = new Telegraf("8220122553:AAG6_abPeoseq25BASSkaVRBi7w4kDBB3Gs");
-          const chatId = '-1003219979462';
-          if (!chatId) {
-            throw new Error('Chat ID not configured');
+          const botToken = process.env.TELEGRAM_ORG_ALERT_BOT_TOKEN;
+          const chatId = process.env.TELEGRAM_ORG_ALERT_CHAT_ID;
+          if (!botToken || !chatId) {
+            console.warn(
+              "Org Telegram alert skipped: set TELEGRAM_ORG_ALERT_BOT_TOKEN and TELEGRAM_ORG_ALERT_CHAT_ID in .env"
+            );
+          } else {
+            const bot = new Telegraf(botToken);
+            const text = `📄 <b>New Profile Created in ${client.businessName}</b>\n\n👤 Name: ${name}\n📱 ${req.user.authType === "email" ? "Email" : "Mobile"}: ${contactLabel}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+            await bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' });
           }
-          const text = `📄 <b>New Profile Created in ${client.businessName}</b>\n\n👤 Name: ${name}\n📱 Mobile: ${mobileUser.mobile}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
-          await bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' });
         } catch (error) {
           console.error('Error sending text to Telegram:', error);
         }
@@ -813,15 +1692,18 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
 });
 
 // Route: Get Profile
-router.get("/profile", authenticateMobileUser, async (req, res) => {
+router.get("/profile", authenticateMobileOrEmailUser, async (req, res) => {
   try {
     console.log("=== GET PROFILE ROUTE HIT ===");
     const clientId = req.params.clientId;
     const userId = req.user.id;
     const client = await User.findOne({ userId: clientId });
     console.log("client", client)
-    const mobileUser = await MobileUser.findOne({ _id: userId, clientId });
-    if (!mobileUser) {
+    const account =
+      req.user.authType === "email"
+        ? await MobileEmailUser.findOne({ _id: userId, clientId })
+        : await MobileUser.findOne({ _id: userId, clientId });
+    if (!account) {
       return res.status(403).json({
         success: false,
         responseCode: 1518, // Same as original get profile access denied
@@ -829,10 +1711,7 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
       });
     }
 
-    const profile = await UserProfile.findOne({ userId }).populate(
-      "userId",
-      "mobile createdAt"
-    );
+    const profile = await UserProfile.findOne({ userId });
 
     if (!profile) {
       return res.status(200).json({
@@ -843,13 +1722,7 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
       });
     }
 
-    
-
-    res.status(200).json({
-      success: true,
-      responseCode: 1520, // Same as original profile found
-      is_profile_complete: true,
-      profile: {
+    const profileOut = {
         name: profile.name,
         age: profile.age,
         gender: profile.gender,
@@ -857,13 +1730,24 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
         native_language: profile.nativeLanguage,
         city:profile.city,
         pincode:profile.pincode,
-        mobile: profile.userId.mobile,
         isEvaluator: profile.isEvaluator,
-        institute_name: client.businessName,
-        institute_logo: client.businessLogo,
+        institute_name: client?.businessName,
+        institute_logo: client?.businessLogo,
         created_at: profile.createdAt,
         updated_at: profile.updatedAt,
-      },
+    };
+    if (req.user.authType === "email") {
+      profileOut.email = account.email;
+      profileOut.mobile = null;
+    } else {
+      profileOut.mobile = account.mobile;
+    }
+
+    res.status(200).json({
+      success: true,
+      responseCode: 1520, // Same as original profile found
+      is_profile_complete: true,
+      profile: profileOut,
     });
   } catch (error) {
     console.error("Get profile error:", error);
@@ -876,15 +1760,18 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
 });
 
 // Route: Update Profile
-router.put("/profile", authenticateMobileUser, async (req, res) => {
+router.put("/profile", authenticateMobileOrEmailUser, async (req, res) => {
   try {
     console.log("=== UPDATE PROFILE ROUTE HIT ===");
     const { name, age, gender, exams, native_language, city, pincode } = req.body;
     const clientId = req.params.clientId;
     const userId = req.user.id;
 
-    const mobileUser = await MobileUser.findOne({ _id: userId, clientId });
-    if (!mobileUser) {
+    const account =
+      req.user.authType === "email"
+        ? await MobileEmailUser.findOne({ _id: userId, clientId })
+        : await MobileUser.findOne({ _id: userId, clientId });
+    if (!account) {
       return res.status(403).json({
         success: false,
         responseCode: 1522, // Same as original update profile access denied
@@ -901,6 +1788,7 @@ router.put("/profile", authenticateMobileUser, async (req, res) => {
       });
     }
 
+    const errors = [];
     // Update only provided fields with validation
     if (name !== undefined) profile.name = name.trim();
     if (age !== undefined) {
@@ -923,7 +1811,16 @@ router.put("/profile", authenticateMobileUser, async (req, res) => {
       if (!/^\d{6}$/.test(pinStr)) {
         errors.push("Please enter a valid 6-digit pincode.");
       }
-    } profile.pincode = pincode;
+    }
+    if (errors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1524,
+        message: "Validation failed.",
+        errors,
+      });
+    }
+    if (pincode !== undefined) profile.pincode = pincode;
     profile.updatedAt = new Date();
     await profile.save();
 
@@ -952,16 +1849,23 @@ router.put("/profile", authenticateMobileUser, async (req, res) => {
 });
 
 // Route: Logout (invalidate token)
-router.post("/logout", authenticateMobileUser, async (req, res) => {
+router.post("/logout", authenticateMobileOrEmailUser, async (req, res) => {
   try {
     console.log("=== LOGOUT ROUTE HIT ===");
     const clientId = req.params.clientId;
     const userId = req.user.id;
 
-    await MobileUser.findOneAndUpdate(
-      { _id: userId, clientId },
-      { authToken: null }
-    );
+    if (req.user.authType === "email") {
+      await MobileEmailUser.findOneAndUpdate(
+        { _id: userId, clientId },
+        { authToken: null }
+      );
+    } else {
+      await MobileUser.findOneAndUpdate(
+        { _id: userId, clientId },
+        { authToken: null }
+      );
+    }
 
     res.status(200).json({
       success: true,
