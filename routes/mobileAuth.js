@@ -277,6 +277,60 @@ async function verifyEmailOtpRecord({ email, clientId, otp }) {
   return { ok: true };
 }
 
+/**
+ * Keeps `mobileUser`, copies email credentials from `emailUser`, migrates profile/credit, deletes `emailUser`.
+ */
+async function mergeEmailUserIntoMobileUser({
+  emailUser,
+  mobileUser,
+  mobile,
+  clientId,
+}) {
+  mobileUser.email = emailUser.email || mobileUser.email;
+  mobileUser.passwordHash = emailUser.passwordHash || mobileUser.passwordHash;
+  mobileUser.loginProvider = mobileUser.passwordHash
+    ? "email"
+    : mobileUser.loginProvider || "mobile";
+  if (emailUser.emailOtpVerified !== undefined) {
+    mobileUser.emailOtpVerified = emailUser.emailOtpVerified;
+  }
+  mobileUser.mobile = mobile;
+  mobileUser.mobileOtpVerified = true;
+
+  const fromProfile = await UserProfile.findOne({ userId: emailUser._id });
+  const toProfile = await UserProfile.findOne({ userId: mobileUser._id });
+  if (fromProfile && !toProfile) {
+    await UserProfile.updateOne(
+      { _id: fromProfile._id },
+      { $set: { userId: mobileUser._id } }
+    );
+  }
+
+  const fromCredit = await CreditAccount.findOne({ userId: emailUser._id });
+  const toCredit = await CreditAccount.findOne({ userId: mobileUser._id });
+  if (fromCredit && !toCredit) {
+    await CreditAccount.updateOne(
+      { _id: fromCredit._id },
+      { $set: { userId: mobileUser._id, mobile } }
+    );
+  } else if (toCredit) {
+    await CreditAccount.updateOne(
+      { _id: toCredit._id },
+      { $set: { mobile } }
+    );
+  }
+
+  const mergedToken = generateToken(
+    mobileUser._id,
+    mobileUser.mobile ?? undefined,
+    clientId
+  );
+  mobileUser.authToken = mergedToken;
+  await mobileUser.save();
+  await MobileUser.deleteOne({ _id: emailUser._id });
+  return MobileUser.findById(mobileUser._id);
+}
+
 async function finalizeEmailUserSessionResponse(
   user,
   clientId,
@@ -1345,11 +1399,13 @@ router.post("/onboarding/login-mobile", validateClient, async (req, res) => {
 });
 
 // Main onboarding mobile login (WhatsApp OTP) — verify OTP and finalize response
+// Pass optional `email` if you already registered with email+password so both merge into one MobileUser.
 router.post("/onboarding/verify-mobile-login-otp", validateClient, async (req, res) => {
   try {
-    const { mobile, otp } = req.body;
+    const { mobile, otp, email } = req.body;
     const clientId = req.params.clientId;
     const client = req.client;
+    const emailNorm = email ? String(email || "").toLowerCase().trim() : "";
 
     if (!mobile || !validateMobile(mobile)) {
       return res.status(400).json({
@@ -1363,6 +1419,13 @@ router.post("/onboarding/verify-mobile-login-otp", validateClient, async (req, r
         success: false,
         responseCode: 1563,
         message: "Please enter a valid 6-digit OTP.",
+      });
+    }
+    if (emailNorm && !validateEmail(emailNorm)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "Please enter a valid email address.",
       });
     }
 
@@ -1395,25 +1458,55 @@ router.post("/onboarding/verify-mobile-login-otp", validateClient, async (req, r
       await user.save();
     }
 
-    // Mark step2 complete for mobile logins
-    user.mobile = mobile;
-    user.mobileOtpVerified = true;
-    if (user.emailOtpVerified === false) user.emailOtpVerified = true;
-    user.loginProvider = user.loginProvider || "mobile";
+    let merged = false;
+    if (emailNorm) {
+      const emailUser = await MobileUser.findOne({
+        email: emailNorm,
+        clientId,
+        isActive: true,
+      });
+      if (emailUser && String(emailUser._id) !== String(user._id)) {
+        if (user.email && user.email !== emailNorm) {
+          return res.status(409).json({
+            success: false,
+            responseCode: 1592,
+            message: "This mobile is already linked to a different email for this client.",
+          });
+        }
+        user = await mergeEmailUserIntoMobileUser({
+          emailUser,
+          mobileUser: user,
+          mobile,
+          clientId,
+        });
+        merged = true;
+        isNewUser = false;
+      }
+    }
 
-    const token = generateToken(user._id, user.mobile ?? undefined, clientId);
-    user.authToken = token;
-    await user.save();
+    if (!merged) {
+      user.mobile = mobile;
+      user.mobileOtpVerified = true;
+      if (user.emailOtpVerified === false) user.emailOtpVerified = true;
+      user.loginProvider = user.loginProvider || "mobile";
+
+      const token = generateToken(user._id, user.mobile ?? undefined, clientId);
+      user.authToken = token;
+      await user.save();
+    }
 
     const response = await finalizeEmailUserSessionResponse(
       user,
       clientId,
       client,
       isNewUser,
-      "whatsapp_mobile"
+      merged ? "email_password" : "whatsapp_mobile"
     );
-    // Keep legacy-ish code for OTP verify success, but with onboarding response body.
     response.responseCode = isNewUser ? 1591 : 1590;
+    if (merged) {
+      response.merged_user = true;
+      response.auth_type = "email_password";
+    }
     res.status(200).json(response);
   } catch (error) {
     console.error("onboarding verify-mobile-login-otp error:", error);
@@ -1548,56 +1641,18 @@ router.post(
         });
 
         if (emailUser && mobileUser && String(emailUser._id) !== String(mobileUser._id)) {
-          // Keep mobileUser, move email credentials onto it.
-          mobileUser.email = emailUser.email || mobileUser.email;
-          mobileUser.passwordHash = emailUser.passwordHash || mobileUser.passwordHash;
-          mobileUser.loginProvider =
-            mobileUser.passwordHash ? "email" : mobileUser.loginProvider || "mobile";
-          if (emailUser.emailOtpVerified !== undefined) {
-            mobileUser.emailOtpVerified = emailUser.emailOtpVerified;
-          }
-          mobileUser.mobile = mobile;
-          mobileUser.mobileOtpVerified = true;
-
-          // migrate profile (UserProfile has unique userId)
-          const fromProfile = await UserProfile.findOne({ userId: emailUser._id });
-          const toProfile = await UserProfile.findOne({ userId: mobileUser._id });
-          if (fromProfile && !toProfile) {
-            await UserProfile.updateOne(
-              { _id: fromProfile._id },
-              { $set: { userId: mobileUser._id } }
-            );
-          }
-
-          // migrate credit account ownership + keep mobile in sync
-          const fromCredit = await CreditAccount.findOne({ userId: emailUser._id });
-          const toCredit = await CreditAccount.findOne({ userId: mobileUser._id });
-          if (fromCredit && !toCredit) {
-            await CreditAccount.updateOne(
-              { _id: fromCredit._id },
-              { $set: { userId: mobileUser._id, mobile } }
-            );
-          } else if (toCredit) {
-            await CreditAccount.updateOne({ _id: toCredit._id }, { $set: { mobile } });
-          }
-
-          const mergedToken = generateToken(
-            mobileUser._id,
-            mobileUser.mobile ?? undefined,
-            clientId
-          );
-          mobileUser.authToken = mergedToken;
-          await mobileUser.save();
-
-          // delete the email user after migration
-          await MobileUser.deleteOne({ _id: emailUser._id });
-
-          const response = await finalizeEmailUserSessionResponse(
+          const mergedUser = await mergeEmailUserIntoMobileUser({
+            emailUser,
             mobileUser,
+            mobile,
+            clientId,
+          });
+          const response = await finalizeEmailUserSessionResponse(
+            mergedUser,
             clientId,
             client,
             false,
-            mobileUser.loginProvider === "google" ? "google_email" : "email_password"
+            mergedUser.loginProvider === "google" ? "google_email" : "email_password"
           );
           response.responseCode = 1600;
           response.merged_user = true;
@@ -1621,58 +1676,18 @@ router.post(
             message: "This mobile number is already registered for this client.",
           });
         }
-        // Merge: move email+password from current user -> existing mobile user.
-        // Also migrate profile + credit account ownership if they exist.
-        const fromUser = user;
-        const toUser = existingWithMobile;
-
-        toUser.email = fromUser.email || toUser.email;
-        toUser.passwordHash = fromUser.passwordHash || toUser.passwordHash;
-        toUser.loginProvider =
-          toUser.passwordHash ? "email" : toUser.loginProvider || "mobile";
-        toUser.emailOtpVerified =
-          fromUser.emailOtpVerified !== undefined
-            ? fromUser.emailOtpVerified
-            : toUser.emailOtpVerified;
-        toUser.mobile = mobile;
-        toUser.mobileOtpVerified = true;
-
-        // migrate profile (UserProfile has unique userId)
-        const fromProfile = await UserProfile.findOne({ userId: fromUser._id });
-        const toProfile = await UserProfile.findOne({ userId: toUser._id });
-        if (fromProfile && !toProfile) {
-          await UserProfile.updateOne(
-            { _id: fromProfile._id },
-            { $set: { userId: toUser._id } }
-          );
-        }
-
-        // migrate credit account ownership + keep mobile in sync
-        const fromCredit = await CreditAccount.findOne({ userId: fromUser._id });
-        const toCredit = await CreditAccount.findOne({ userId: toUser._id });
-        if (fromCredit && !toCredit) {
-          await CreditAccount.updateOne(
-            { _id: fromCredit._id },
-            { $set: { userId: toUser._id, mobile } }
-          );
-        } else if (toCredit) {
-          await CreditAccount.updateOne({ _id: toCredit._id }, { $set: { mobile } });
-        }
-
-        // Generate token on merged user
-        const mergedToken = generateToken(toUser._id, toUser.mobile ?? undefined, clientId);
-        toUser.authToken = mergedToken;
-        await toUser.save();
-
-        // Delete the duplicate "from" user after migration
-        await MobileUser.deleteOne({ _id: fromUser._id });
-
+        const mergedUser = await mergeEmailUserIntoMobileUser({
+          emailUser: user,
+          mobileUser: existingWithMobile,
+          mobile,
+          clientId,
+        });
         const response = await finalizeEmailUserSessionResponse(
-          toUser,
+          mergedUser,
           clientId,
           client,
           false,
-          toUser.loginProvider === "google" ? "google_email" : "email_password"
+          mergedUser.loginProvider === "google" ? "google_email" : "email_password"
         );
         response.responseCode = 1600;
         response.merged_user = true;
