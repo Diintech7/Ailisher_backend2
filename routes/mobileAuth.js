@@ -302,6 +302,7 @@ async function finalizeEmailUserSessionResponse(
     is_new_user: isNewUser,
     user_id: user._id,
     email: user.email,
+    mobile: user.linkedMobile || null,
     client_id: clientId,
     client_name: client.businessName,
     login_count: user.loginCount,
@@ -397,10 +398,68 @@ const validateClient = async (req, res, next) => {
 // Route: Enhanced Check User Status with cross-client info
 router.post("/check-user", validateClient, async (req, res) => {
   try {
-    const { mobile } = req.body;
+    const { mobile, email } = req.body;
     const clientId = req.params.clientId;
     const client = req.client;
 
+    // If email is provided, check email-user and (if already verified) the linked mobile profile.
+    if (email) {
+      const emailNorm = String(email || "").toLowerCase().trim();
+      if (!validateEmail(emailNorm)) {
+        return res.status(400).json({
+          success: false,
+          responseCode: 1502,
+          message: "Please enter a valid email address.",
+        });
+      }
+
+      const emailUser = await MobileEmailUser.findOne({
+        email: emailNorm,
+        clientId,
+        isActive: true,
+      });
+
+      if (!emailUser) {
+        return res.status(200).json({
+          success: true,
+          responseCode: 1503,
+          user_exists: false,
+          client_id: clientId,
+          client_name: client.businessName,
+          email: emailNorm,
+          mobile: null,
+          message: "New user. Registration required.",
+        });
+      }
+
+      let mobileUser = null;
+      if (emailUser.linkedMobileUserId) {
+        mobileUser = await MobileUser.findById(emailUser.linkedMobileUserId);
+      }
+
+      const profile = mobileUser
+        ? await UserProfile.findOne({ userId: mobileUser._id })
+        : null;
+
+      return res.status(200).json({
+        success: true,
+        responseCode: profile ? 1504 : 1505,
+        user_exists: true,
+        is_profile_complete: !!profile,
+        client_id: clientId,
+        client_name: client.businessName,
+        user_id: mobileUser ? mobileUser._id : null,
+        email: emailNorm,
+        mobile: emailUser.linkedMobile || null,
+        last_login: mobileUser ? mobileUser.lastLoginAt : null,
+        login_count: mobileUser ? mobileUser.loginCount : 0,
+        message: profile
+          ? "User exists with complete profile."
+          : "User exists but profile incomplete.",
+      });
+    }
+
+    // Mobile (legacy) check-user flow
     if (!mobile || !validateMobile(mobile)) {
       return res.status(400).json({
         success: false,
@@ -704,6 +763,7 @@ router.post("/verify-login-otp", validateClient, async (req, res) => {
       user_id: mobileUser._id,
       client_id: clientId,
       client_name: client.businessName,
+      mobile: mobileUser.mobile,
       login_count: mobileUser.loginCount,
       message: isProfileComplete
         ? isNewUser
