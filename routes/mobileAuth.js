@@ -286,16 +286,14 @@ async function mergeEmailUserIntoMobileUser({
   mobile,
   clientId,
 }) {
-  mobileUser.email = emailUser.email || mobileUser.email;
-  mobileUser.passwordHash = emailUser.passwordHash || mobileUser.passwordHash;
-  mobileUser.loginProvider = mobileUser.passwordHash
-    ? "email"
-    : mobileUser.loginProvider || "mobile";
-  if (emailUser.emailOtpVerified !== undefined) {
-    mobileUser.emailOtpVerified = emailUser.emailOtpVerified;
-  }
-  mobileUser.mobile = mobile;
-  mobileUser.mobileOtpVerified = true;
+  // Copy fields before deleting — unique index (email, clientId) allows only one doc with that email.
+  // Must delete `emailUser` before saving `mobileUser` with the same email.
+  const mergedEmail = emailUser.email || mobileUser.email;
+  const mergedPasswordHash = emailUser.passwordHash || mobileUser.passwordHash;
+  const mergedEmailOtpVerified =
+    emailUser.emailOtpVerified !== undefined
+      ? emailUser.emailOtpVerified
+      : mobileUser.emailOtpVerified;
 
   const fromProfile = await UserProfile.findOne({ userId: emailUser._id });
   const toProfile = await UserProfile.findOne({ userId: mobileUser._id });
@@ -320,6 +318,17 @@ async function mergeEmailUserIntoMobileUser({
     );
   }
 
+  await MobileUser.deleteOne({ _id: emailUser._id });
+
+  mobileUser.email = mergedEmail;
+  mobileUser.passwordHash = mergedPasswordHash;
+  mobileUser.loginProvider = mergedPasswordHash
+    ? "email"
+    : mobileUser.loginProvider || "mobile";
+  mobileUser.emailOtpVerified = mergedEmailOtpVerified;
+  mobileUser.mobile = mobile;
+  mobileUser.mobileOtpVerified = true;
+
   const mergedToken = generateToken(
     mobileUser._id,
     mobileUser.mobile ?? undefined,
@@ -327,7 +336,6 @@ async function mergeEmailUserIntoMobileUser({
   );
   mobileUser.authToken = mergedToken;
   await mobileUser.save();
-  await MobileUser.deleteOne({ _id: emailUser._id });
   return MobileUser.findById(mobileUser._id);
 }
 
