@@ -9,6 +9,7 @@ const UserProfile = require("../models/UserProfile");
 const User = require("../models/User");
 const {
   generateToken,
+  authenticateMobileUser,
   checkClientAccess,
 } = require("../middleware/mobileAuth");
 const CreditAccount = require("../models/CreditAccount");
@@ -1782,7 +1783,7 @@ router.post("/bulk-check", validateClient, async (req, res) => {
 });
 
 // Route: Create/Update Profile
-router.post("/profile", authenticateMobileOrEmailUser, async (req, res) => {
+router.post("/profile", authenticateMobileUser, async (req, res) => {
   try {
     console.log("=== PROFILE CREATE ROUTE HIT ===");
     const { name, age, gender, exams, native_language, city, pincode } = req.body;
@@ -1977,7 +1978,7 @@ router.post("/profile", authenticateMobileOrEmailUser, async (req, res) => {
 });
 
 // Route: Get Profile
-router.get("/profile", authenticateMobileOrEmailUser, async (req, res) => {
+router.get("/profile", authenticateMobileUser, async (req, res) => {
   try {
     console.log("=== GET PROFILE ROUTE HIT ===");
     const clientId = req.params.clientId;
@@ -2057,7 +2058,7 @@ router.get("/profile", authenticateMobileOrEmailUser, async (req, res) => {
 });
 
 // Route: Update Profile
-router.put("/profile", authenticateMobileOrEmailUser, async (req, res) => {
+router.put("/profile", authenticateMobileUser, async (req, res) => {
   try {
     console.log("=== UPDATE PROFILE ROUTE HIT ===");
     const { name, age, gender, exams, native_language, city, pincode } = req.body;
@@ -2158,7 +2159,7 @@ router.put("/profile", authenticateMobileOrEmailUser, async (req, res) => {
 });
 
 // Route: Logout (invalidate token)
-router.post("/logout", authenticateMobileOrEmailUser, async (req, res) => {
+router.post("/logout", authenticateMobileUser, async (req, res) => {
   try {
     console.log("=== LOGOUT ROUTE HIT ===");
     const clientId = req.params.clientId;
