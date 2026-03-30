@@ -311,6 +311,9 @@ async function finalizeEmailUserSessionResponse(
   response.status = fullyDone ? "LOGIN_SUCCESS" : "ONBOARDING_OR_PROFILE_REQUIRED";
   response.token = fullyDone ? user.authToken : undefined;
   response.temp_token = !fullyDone ? user.authToken : undefined;
+  if (!fullyDone && response.next_step === 2) {
+    response.whatsapp_otp_required = true;
+  }
 
   if (fullyDone) {
     response.message = isNewUser
@@ -1203,7 +1206,7 @@ router.post("/onboarding/verify-email-otp", validateClient, async (req, res) => 
 // Step 1 — Sign in with email + password (after email OTP was verified once)
 router.post("/onboarding/login-email-password", validateClient, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, mobile } = req.body;
     const clientId = req.params.clientId;
     const client = req.client;
     const emailNorm = String(email || "").toLowerCase().trim();
@@ -1258,9 +1261,134 @@ router.post("/onboarding/login-email-password", validateClient, async (req, res)
       false,
       "email_password"
     );
+
+    // Optional: if the client app already has a mobile and wants to trigger WhatsApp OTP immediately,
+    // allow it in the same login call (still verified via /onboarding/verify-mobile-otp).
+    if (response.next_step === 2 && mobile && validateMobile(mobile)) {
+      const otpClientKey = "ailisher";
+      await sendLoginOtpToWhatsApp({ mobile, clientKey: otpClientKey });
+      response.otp_required = true;
+      response.mobile_for_otp = mobile;
+      response.message =
+        "Step 1 complete. OTP sent to WhatsApp for mobile verification (step 2).";
+    }
+
     res.status(200).json(response);
   } catch (error) {
     console.error("login-email-password error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+});
+
+// Main onboarding mobile login (WhatsApp OTP) — send OTP
+router.post("/onboarding/login-mobile", validateClient, async (req, res) => {
+  try {
+    const { mobile } = req.body;
+    const clientId = req.params.clientId;
+    if (!mobile || !validateMobile(mobile)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1509,
+        message: "Please enter a valid 10-digit mobile number.",
+      });
+    }
+    const otpClientKey = "ailisher";
+    await sendLoginOtpToWhatsApp({ mobile, clientKey: otpClientKey });
+    return res.status(200).json({
+      success: true,
+      responseCode: 1562,
+      otp_required: true,
+      message: "OTP sent to WhatsApp. Please verify to continue.",
+      client_id: clientId,
+      mobile,
+    });
+  } catch (error) {
+    console.error("onboarding login-mobile error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+});
+
+// Main onboarding mobile login (WhatsApp OTP) — verify OTP and finalize response
+router.post("/onboarding/verify-mobile-login-otp", validateClient, async (req, res) => {
+  try {
+    const { mobile, otp } = req.body;
+    const clientId = req.params.clientId;
+    const client = req.client;
+
+    if (!mobile || !validateMobile(mobile)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1509,
+        message: "Please enter a valid 10-digit mobile number.",
+      });
+    }
+    if (!otp || !validateOtp(otp)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1563,
+        message: "Please enter a valid 6-digit OTP.",
+      });
+    }
+
+    const otpClientKey = "ailisher";
+    const otpResult = await verifyLoginOtpFromWhatsApp({
+      mobile,
+      otp,
+      clientKey: otpClientKey,
+    });
+    if (!otpResult.success) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1563,
+        message: otpResult.message,
+      });
+    }
+
+    let user = await MobileUser.findByMobileAndClient(mobile, clientId);
+    let isNewUser = false;
+    if (!user) {
+      isNewUser = true;
+      user = new MobileUser({
+        mobile,
+        clientId,
+        isVerified: true,
+        loginProvider: "mobile",
+        emailOtpVerified: true,
+        mobileOtpVerified: true,
+      });
+      await user.save();
+    }
+
+    // Mark step2 complete for mobile logins
+    user.mobile = mobile;
+    user.mobileOtpVerified = true;
+    if (user.emailOtpVerified === false) user.emailOtpVerified = true;
+    user.loginProvider = user.loginProvider || "mobile";
+
+    const token = generateToken(user._id, user.mobile ?? undefined, clientId);
+    user.authToken = token;
+    await user.save();
+
+    const response = await finalizeEmailUserSessionResponse(
+      user,
+      clientId,
+      client,
+      isNewUser,
+      "whatsapp_mobile"
+    );
+    // Keep legacy-ish code for OTP verify success, but with onboarding response body.
+    response.responseCode = isNewUser ? 1591 : 1590;
+    res.status(200).json(response);
+  } catch (error) {
+    console.error("onboarding verify-mobile-login-otp error:", error);
     res.status(500).json({
       success: false,
       responseCode: 1512,
