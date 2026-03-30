@@ -209,9 +209,9 @@ function step1EmailComplete(user) {
 }
 
 function step2MobileComplete(user, profile) {
-  if (user.mobileOtpVerified && user.mobile) return true;
-  if (profile) return true;
-  return false;
+  // Step 2 is strictly "mobile linked + OTP verified".
+  // Profile existence must NOT imply mobile verification (some legacy users may have profiles without mobile).
+  return !!(user.mobileOtpVerified && user.mobile);
 }
 
 function attachOnboarding(user, profile, payload) {
@@ -936,7 +936,7 @@ router.post("/google-login", validateClient, async (req, res) => {
             "This email is registered with a password. Sign in with email and password or use the account that matches Google.",
         });
       }
-      const token = generateToken(user._id, user.mobile || "", clientId);
+      const token = generateToken(user._id, user.mobile ?? undefined, clientId);
       user.authToken = token;
       user.loginProvider = "google";
       await user.save();
@@ -951,7 +951,7 @@ router.post("/google-login", validateClient, async (req, res) => {
         mobileOtpVerified: false,
       });
       await user.save();
-      const token = generateToken(user._id, user.mobile || "", clientId);
+      const token = generateToken(user._id, user.mobile ?? undefined, clientId);
       user.authToken = token;
       await user.save();
       await sendWelcomeEmail({
@@ -1174,7 +1174,7 @@ router.post("/onboarding/verify-email-otp", validateClient, async (req, res) => 
     }
 
     user.emailOtpVerified = true;
-    const token = generateToken(user._id, user.mobile || "", clientId);
+    const token = generateToken(user._id, user.mobile ?? undefined, clientId);
     user.authToken = token;
     await user.save();
 
@@ -1245,7 +1245,7 @@ router.post("/onboarding/login-email-password", validateClient, async (req, res)
       });
     }
 
-    const token = generateToken(user._id, user.mobile || "", clientId);
+    const token = generateToken(user._id, user.mobile ?? undefined, clientId);
     user.authToken = token;
     user.loginProvider = "email";
     await user.save();
