@@ -516,6 +516,145 @@ router.post("/check-user", validateClient, async (req, res) => {
   }
 });
 
+// Route: Delete user (mobile/email) + related profile
+// POST /api/clients/:clientId/mobile/auth/delete-user
+// Body: { "mobile": "9876543210" } OR { "email": "user@gmail.com" }
+router.post("/delete-user", validateClient, async (req, res) => {
+  try {
+    const clientId = req.params.clientId;
+    const { mobile, email } = req.body || {};
+
+    const hasMobile = typeof mobile !== "undefined" && mobile !== null && String(mobile).trim() !== "";
+    const hasEmail = typeof email !== "undefined" && email !== null && String(email).trim() !== "";
+
+    if (!hasMobile && !hasEmail) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1602,
+        message: "Provide either mobile or email.",
+      });
+    }
+    if (hasMobile && hasEmail) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1603,
+        message: "Provide only one of mobile or email.",
+      });
+    }
+
+    let deleted = {
+      mobile_user: false,
+      email_user: false,
+      profile: false,
+      credit_account: false,
+    };
+
+    let mobileUserId = null;
+    let emailUserId = null;
+
+    if (hasMobile) {
+      const mobileNorm = String(mobile).trim();
+      if (!validateMobile(mobileNorm)) {
+        return res.status(400).json({
+          success: false,
+          responseCode: 1502,
+          message: "Please enter a valid 10-digit mobile number.",
+        });
+      }
+
+      const mobileUser = await MobileUser.findByMobileAndClient(
+        mobileNorm,
+        clientId
+      );
+      if (!mobileUser) {
+        return res.status(404).json({
+          success: false,
+          responseCode: 1604,
+          message: "User not found for this mobile and client.",
+        });
+      }
+
+      mobileUserId = mobileUser._id;
+      deleted.mobile_user = true;
+
+      // Delete profile (UserProfile belongs to MobileUser.userId)
+      const profileRes = await UserProfile.deleteMany({ userId: mobileUserId });
+      deleted.profile = profileRes.deletedCount > 0;
+
+      // Delete credit account
+      const creditRes = await CreditAccount.deleteMany({ userId: mobileUserId });
+      deleted.credit_account = creditRes.deletedCount > 0;
+
+      // Delete any email-user that links to this mobile-user (complete delete)
+      const emailUser = await MobileEmailUser.findOne({
+        linkedMobileUserId: mobileUserId,
+        clientId,
+        isActive: true,
+      });
+      emailUserId = emailUser?._id || null;
+      if (emailUser) {
+        await MobileEmailUser.deleteMany({ _id: emailUserId });
+        deleted.email_user = true;
+      }
+
+      await MobileUser.deleteMany({ _id: mobileUserId });
+    } else {
+      const emailNorm = String(email).toLowerCase().trim();
+      if (!validateEmail(emailNorm)) {
+        return res.status(400).json({
+          success: false,
+          responseCode: 1605,
+          message: "Please enter a valid email address.",
+        });
+      }
+
+      const emailUser = await MobileEmailUser.findOne({
+        email: emailNorm,
+        clientId,
+        isActive: true,
+      });
+      if (!emailUser) {
+        return res.status(404).json({
+          success: false,
+          responseCode: 1606,
+          message: "User not found for this email and client.",
+        });
+      }
+
+      emailUserId = emailUser._id;
+      deleted.email_user = true;
+      mobileUserId = emailUser.linkedMobileUserId || null;
+
+      if (mobileUserId) {
+        const profileRes = await UserProfile.deleteMany({ userId: mobileUserId });
+        deleted.profile = profileRes.deletedCount > 0;
+
+        const creditRes = await CreditAccount.deleteMany({ userId: mobileUserId });
+        deleted.credit_account = creditRes.deletedCount > 0;
+
+        await MobileUser.deleteMany({ _id: mobileUserId });
+        deleted.mobile_user = true;
+      }
+
+      await MobileEmailUser.deleteMany({ _id: emailUserId });
+    }
+
+    return res.status(200).json({
+      success: true,
+      responseCode: 1601,
+      message: "User deleted successfully.",
+      deleted,
+    });
+  } catch (error) {
+    console.error("delete-user error:", error);
+    return res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+});
+
 // Route: Enhanced Login/Register with better duplicate handling
 // Enhanced Login Route with clearer duplicate handling
 router.post("/login", validateClient, async (req, res) => {
