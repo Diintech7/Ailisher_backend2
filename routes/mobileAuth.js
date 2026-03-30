@@ -209,7 +209,7 @@ function step1EmailComplete(user) {
 }
 
 function step2MobileComplete(user, profile) {
-  if (user.mobileOtpVerified && user.linkedMobile) return true;
+  if (user.mobileOtpVerified && user.mobile) return true;
   if (profile) return true;
   return false;
 }
@@ -410,7 +410,7 @@ router.post("/check-user", validateClient, async (req, res) => {
         });
       }
 
-      const emailUser = await MobileEmailUser.findOne({
+      const emailUser = await MobileUser.findOne({
         email: emailNorm,
         clientId,
         isActive: true,
@@ -429,14 +429,7 @@ router.post("/check-user", validateClient, async (req, res) => {
         });
       }
 
-      let mobileUser = null;
-      if (emailUser.linkedMobileUserId) {
-        mobileUser = await MobileUser.findById(emailUser.linkedMobileUserId);
-      }
-
-      const profile = mobileUser
-        ? await UserProfile.findOne({ userId: mobileUser._id })
-        : null;
+      const profile = await UserProfile.findOne({ userId: emailUser._id });
 
       return res.status(200).json({
         success: true,
@@ -445,11 +438,11 @@ router.post("/check-user", validateClient, async (req, res) => {
         is_profile_complete: !!profile,
         client_id: clientId,
         client_name: client.businessName,
-        user_id: mobileUser ? mobileUser._id : null,
+        user_id: emailUser._id,
         email: emailNorm,
-        mobile: emailUser.linkedMobile || null,
-        last_login: mobileUser ? mobileUser.lastLoginAt : null,
-        login_count: mobileUser ? mobileUser.loginCount : 0,
+        mobile: emailUser.mobile || null,
+        last_login: emailUser.lastLoginAt || null,
+        login_count: emailUser.loginCount || 0,
         message: profile
           ? "User exists with complete profile."
           : "User exists but profile incomplete.",
@@ -547,7 +540,6 @@ router.post("/delete-user", validateClient, async (req, res) => {
     };
 
     let mobileUserId = null;
-    let emailUserId = null;
 
     if (hasMobile) {
       const mobileNorm = String(mobile).trim();
@@ -582,18 +574,6 @@ router.post("/delete-user", validateClient, async (req, res) => {
       const creditRes = await CreditAccount.deleteMany({ userId: mobileUserId });
       deleted.credit_account = creditRes.deletedCount > 0;
 
-      // Delete any email-user that links to this mobile-user (complete delete)
-      const emailUser = await MobileEmailUser.findOne({
-        linkedMobileUserId: mobileUserId,
-        clientId,
-        isActive: true,
-      });
-      emailUserId = emailUser?._id || null;
-      if (emailUser) {
-        await MobileEmailUser.deleteMany({ _id: emailUserId });
-        deleted.email_user = true;
-      }
-
       await MobileUser.deleteMany({ _id: mobileUserId });
     } else {
       const emailNorm = String(email).toLowerCase().trim();
@@ -605,7 +585,7 @@ router.post("/delete-user", validateClient, async (req, res) => {
         });
       }
 
-      const emailUser = await MobileEmailUser.findOne({
+      const emailUser = await MobileUser.findOne({
         email: emailNorm,
         clientId,
         isActive: true,
@@ -618,22 +598,14 @@ router.post("/delete-user", validateClient, async (req, res) => {
         });
       }
 
-      emailUserId = emailUser._id;
       deleted.email_user = true;
-      mobileUserId = emailUser.linkedMobileUserId || null;
-
-      if (mobileUserId) {
-        const profileRes = await UserProfile.deleteMany({ userId: mobileUserId });
-        deleted.profile = profileRes.deletedCount > 0;
-
-        const creditRes = await CreditAccount.deleteMany({ userId: mobileUserId });
-        deleted.credit_account = creditRes.deletedCount > 0;
-
-        await MobileUser.deleteMany({ _id: mobileUserId });
-        deleted.mobile_user = true;
-      }
-
-      await MobileEmailUser.deleteMany({ _id: emailUserId });
+      mobileUserId = emailUser._id;
+      const profileRes = await UserProfile.deleteMany({ userId: mobileUserId });
+      deleted.profile = profileRes.deletedCount > 0;
+      const creditRes = await CreditAccount.deleteMany({ userId: mobileUserId });
+      deleted.credit_account = creditRes.deletedCount > 0;
+      await MobileUser.deleteMany({ _id: mobileUserId });
+      deleted.mobile_user = true;
     }
 
     return res.status(200).json({
@@ -1244,7 +1216,7 @@ router.post("/onboarding/login-email-password", validateClient, async (req, res)
       });
     }
 
-    const user = await MobileEmailUser.findOne({
+    const user = await MobileUser.findOne({
       email: emailNorm,
       clientId,
       isActive: true,
@@ -1273,7 +1245,7 @@ router.post("/onboarding/login-email-password", validateClient, async (req, res)
       });
     }
 
-    const token = generateEmailUserToken(user._id, user.email, clientId);
+    const token = generateToken(user._id, user.mobile || "", clientId);
     user.authToken = token;
     user.loginProvider = "email";
     await user.save();
@@ -1286,7 +1258,6 @@ router.post("/onboarding/login-email-password", validateClient, async (req, res)
       false,
       "email_password"
     );
-    response.is_new_user = !profile;
     res.status(200).json(response);
   } catch (error) {
     console.error("login-email-password error:", error);
@@ -1424,7 +1395,6 @@ router.post(
         user.loginProvider === "google" ? "google_email" : "email_password"
       );
       response.responseCode = 1600;
-      response.is_new_user = !profile;
       res.status(200).json(response);
     } catch (error) {
       console.error("onboarding verify-mobile-otp error:", error);
@@ -1453,7 +1423,7 @@ async function handleForgotOrResendPasswordEmail(req, res) {
       });
     }
 
-    const user = await MobileEmailUser.findOne({
+    const user = await MobileUser.findOne({
       email: emailNorm,
       clientId,
       isActive: true,
@@ -1536,7 +1506,7 @@ async function handleResetPasswordEmail(req, res) {
       });
     }
 
-    const user = await MobileEmailUser.findOne({
+    const user = await MobileUser.findOne({
       email: record.email,
       clientId,
       isActive: true,
@@ -1607,7 +1577,7 @@ router.post("/resend-welcome-email", validateClient, async (req, res) => {
     }
     
 
-    const user = await MobileEmailUser.findOne({
+    const user = await MobileUser.findOne({
       email: emailNorm,
       clientId,
       isActive: true,
@@ -1796,10 +1766,7 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     org = client.organization.toString()
     }
     console.log(req.body)
-    const account =
-      req.user.authType === "email"
-        ? await MobileEmailUser.findOne({ _id: userId, clientId })
-        : await MobileUser.findOne({ _id: userId, clientId });
+    const account = await MobileUser.findOne({ _id: userId, clientId });
     if (!account) {
       return res.status(403).json({
         success: false,
@@ -1807,21 +1774,8 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
         message: "Access denied. User does not belong to this client.",
       });
     }
-    // UserProfile.userId always belongs to MobileUser.
-    let profileOwnerId = userId;
-    if (req.user.authType === "email") {
-      if (!account.linkedMobileUserId) {
-        return res.status(400).json({
-          success: false,
-          responseCode: 1592,
-          message: "Verify mobile with WhatsApp OTP before creating profile.",
-        });
-      }
-      profileOwnerId = account.linkedMobileUserId;
-    }
-
-    const contactLabel =
-      req.user.authType === "email" ? account.email : account.mobile;
+    const profileOwnerId = userId;
+    const contactLabel = account.mobile || account.email || "-";
 
     // Validation
     const errors = [];
@@ -1885,7 +1839,7 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
         await axios.post(
           `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
           {
-            text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${name}\n📱 ${req.user.authType === "email" ? "Email" : "Mobile"}: ${contactLabel}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
+            text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${name}\n📱 Contact: ${contactLabel}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
           }
         );
       } catch (telegramError) {
@@ -1904,7 +1858,7 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
             );
           } else {
             const bot = new Telegraf(botToken);
-            const text = `📄 <b>New Profile Created in ${client.businessName}</b>\n\n👤 Name: ${name}\n📱 ${req.user.authType === "email" ? "Email" : "Mobile"}: ${contactLabel}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+            const text = `📄 <b>New Profile Created in ${client.businessName}</b>\n\n👤 Name: ${name}\n📱 Contact: ${contactLabel}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
             await bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' });
           }
         } catch (error) {
@@ -1915,39 +1869,7 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     // Token should be returned only after step 3 (profile saved).
     // For mobile flow, keep the same token used for this request.
     // For email flow, create the final mobile token now.
-    let finalToken = null;
-    if (req.user.authType === "mobile") {
-      finalToken = account.authToken;
-    } else {
-      const mobileUser = await MobileUser.findOne({
-        _id: profileOwnerId,
-        clientId,
-      });
-      if (!mobileUser) {
-        return res.status(500).json({
-          success: false,
-          responseCode: 1512,
-          message: "Mobile user not found for this profile.",
-        });
-      }
-      finalToken = generateToken(mobileUser._id, mobileUser.mobile, clientId);
-      mobileUser.authToken = finalToken;
-      await mobileUser.save();
-
-      // Ensure credit account exists for this user
-      const existingCredit = await CreditAccount.findOne({ userId: mobileUser._id });
-      if (!existingCredit) {
-        const creditAccount = new CreditAccount({
-          userId: mobileUser._id,
-          mobile: mobileUser.mobile,
-          clientId: mobileUser.clientId,
-          balance: 0,
-          totalEarned: 0,
-          totalSpent: 0,
-        });
-        await creditAccount.save();
-      }
-    }
+    const finalToken = account.authToken;
 
     res.status(200).json({
       status: "PROFILE_SAVED",
@@ -1985,10 +1907,7 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
     const userId = req.user.id;
     const client = await User.findOne({ userId: clientId });
     console.log("client", client)
-    const account =
-      req.user.authType === "email"
-        ? await MobileEmailUser.findOne({ _id: userId, clientId })
-        : await MobileUser.findOne({ _id: userId, clientId });
+    const account = await MobileUser.findOne({ _id: userId, clientId });
     if (!account) {
       return res.status(403).json({
         success: false,
@@ -1997,18 +1916,7 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
       });
     }
 
-    let profileOwnerId = userId;
-    if (req.user.authType === "email") {
-      if (!account.linkedMobileUserId) {
-        return res.status(400).json({
-          success: false,
-          responseCode: 1592,
-          message: "Verify mobile with WhatsApp OTP before fetching profile.",
-        });
-      }
-      profileOwnerId = account.linkedMobileUserId;
-    }
-
+    const profileOwnerId = userId;
     const profile = await UserProfile.findOne({ userId: profileOwnerId });
 
     if (!profile) {
@@ -2034,12 +1942,8 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
         created_at: profile.createdAt,
         updated_at: profile.updatedAt,
     };
-    if (req.user.authType === "email") {
-      profileOut.email = account.email;
-      profileOut.mobile = null;
-    } else {
-      profileOut.mobile = account.mobile;
-    }
+    profileOut.email = account.email || null;
+    profileOut.mobile = account.mobile || null;
 
     res.status(200).json({
       success: true,
@@ -2065,10 +1969,7 @@ router.put("/profile", authenticateMobileUser, async (req, res) => {
     const clientId = req.params.clientId;
     const userId = req.user.id;
 
-    const account =
-      req.user.authType === "email"
-        ? await MobileEmailUser.findOne({ _id: userId, clientId })
-        : await MobileUser.findOne({ _id: userId, clientId });
+    const account = await MobileUser.findOne({ _id: userId, clientId });
     if (!account) {
       return res.status(403).json({
         success: false,
@@ -2077,18 +1978,7 @@ router.put("/profile", authenticateMobileUser, async (req, res) => {
       });
     }
 
-    let profileOwnerId = userId;
-    if (req.user.authType === "email") {
-      if (!account.linkedMobileUserId) {
-        return res.status(400).json({
-          success: false,
-          responseCode: 1592,
-          message: "Verify mobile with WhatsApp OTP before updating profile.",
-        });
-      }
-      profileOwnerId = account.linkedMobileUserId;
-    }
-
+    const profileOwnerId = userId;
     const profile = await UserProfile.findOne({ userId: profileOwnerId });
     if (!profile) {
       return res.status(404).json({
@@ -2165,17 +2055,10 @@ router.post("/logout", authenticateMobileUser, async (req, res) => {
     const clientId = req.params.clientId;
     const userId = req.user.id;
 
-    if (req.user.authType === "email") {
-      await MobileEmailUser.findOneAndUpdate(
-        { _id: userId, clientId },
-        { authToken: null }
-      );
-    } else {
-      await MobileUser.findOneAndUpdate(
-        { _id: userId, clientId },
-        { authToken: null }
-      );
-    }
+    await MobileUser.findOneAndUpdate(
+      { _id: userId, clientId },
+      { authToken: null }
+    );
 
     res.status(200).json({
       success: true,
