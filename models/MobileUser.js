@@ -6,6 +6,7 @@ const MobileUserSchema = new mongoose.Schema({
   mobile: {
     type: String,
     required: false,
+    default: undefined,
     trim: true,
     match: [/^\d{10}$/, 'Please enter a valid 10-digit mobile number']
     // NOTE: No unique constraint here - uniqueness is handled by compound index
@@ -13,6 +14,7 @@ const MobileUserSchema = new mongoose.Schema({
   email: {
     type: String,
     required: false,
+    default: undefined,
     lowercase: true,
     trim: true,
     match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Invalid email"],
@@ -87,7 +89,7 @@ MobileUserSchema.index(
   {
     unique: true,
     name: "mobile_1_clientId_1",
-    partialFilterExpression: { mobile: { $type: "string" } },
+    partialFilterExpression: { mobile: { $exists: true, $type: "string" } },
   }
 );
 
@@ -97,7 +99,7 @@ MobileUserSchema.index(
   {
     unique: true,
     name: "email_1_clientId_1",
-    partialFilterExpression: { email: { $type: "string" } },
+    partialFilterExpression: { email: { $exists: true, $type: "string" } },
   }
 );
 
@@ -187,6 +189,13 @@ MobileUserSchema.pre('validate', function(next) {
   // Require at least one identifier
   if (!this.mobile && !this.email) {
     this.invalidate('mobile', 'Mobile or email is required');
+  }
+  // Normalize empty strings to undefined (so partial indexes work)
+  if (typeof this.mobile === "string" && this.mobile.trim() === "") {
+    this.mobile = undefined;
+  }
+  if (typeof this.email === "string" && this.email.trim() === "") {
+    this.email = undefined;
   }
   next();
 });
