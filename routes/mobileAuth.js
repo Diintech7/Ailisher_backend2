@@ -1206,29 +1206,56 @@ router.post("/onboarding/verify-email-otp", validateClient, async (req, res) => 
 // Step 1 — Sign in with email + password (after email OTP was verified once)
 router.post("/onboarding/login-email-password", validateClient, async (req, res) => {
   try {
-    const { email, password, mobile } = req.body;
+    const { email, password, mobile, mobile_for_otp } = req.body;
     const clientId = req.params.clientId;
     const client = req.client;
     const emailNorm = String(email || "").toLowerCase().trim();
+    const mobileNorm = String(mobile || "").trim();
 
-    if (!emailNorm || !validateEmail(emailNorm) || !password) {
+    // Allow: (email + password) OR (mobile + password)
+    const hasEmail = !!emailNorm;
+    const hasMobile = !!mobileNorm;
+
+    if ((!hasEmail && !hasMobile) || !password) {
       return res.status(400).json({
         success: false,
         responseCode: 1592,
-        message: "Email and password are required.",
+        message: "Email or mobile, and password are required.",
+      });
+    }
+    if (hasEmail && !validateEmail(emailNorm)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "Please enter a valid email address.",
+      });
+    }
+    if (hasMobile && !validateMobile(mobileNorm)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "Please enter a valid 10-digit mobile number.",
       });
     }
 
-    const user = await MobileUser.findOne({
-      email: emailNorm,
-      clientId,
-      isActive: true,
-    });
-    if (!user || !user.passwordHash) {
+    const user = await MobileUser.findOne(
+      hasEmail
+        ? { email: emailNorm, clientId, isActive: true }
+        : { mobile: mobileNorm, clientId, isActive: true }
+    );
+    if (!user) {
       return res.status(401).json({
         success: false,
         responseCode: 1592,
-        message: "Invalid email or password.",
+        message: "Invalid credentials.",
+      });
+    }
+    if (!user.passwordHash) {
+      return res.status(409).json({
+        success: false,
+        responseCode: 1592,
+        message:
+          "This account does not have a password. Please login using WhatsApp OTP.",
       });
     }
     if (user.emailOtpVerified === false) {
@@ -1244,7 +1271,7 @@ router.post("/onboarding/login-email-password", validateClient, async (req, res)
       return res.status(401).json({
         success: false,
         responseCode: 1592,
-        message: "Invalid email or password.",
+        message: "Invalid credentials.",
       });
     }
 
@@ -1264,11 +1291,12 @@ router.post("/onboarding/login-email-password", validateClient, async (req, res)
 
     // Optional: if the client app already has a mobile and wants to trigger WhatsApp OTP immediately,
     // allow it in the same login call (still verified via /onboarding/verify-mobile-otp).
-    if (response.next_step === 2 && mobile && validateMobile(mobile)) {
+    // NOTE: use `mobile_for_otp` to avoid conflicting with "login by mobile + password"
+    if (response.next_step === 2 && mobile_for_otp && validateMobile(mobile_for_otp)) {
       const otpClientKey = "ailisher";
-      await sendLoginOtpToWhatsApp({ mobile, clientKey: otpClientKey });
+      await sendLoginOtpToWhatsApp({ mobile: mobile_for_otp, clientKey: otpClientKey });
       response.otp_required = true;
-      response.mobile_for_otp = mobile;
+      response.mobile_for_otp = mobile_for_otp;
       response.message =
         "Step 1 complete. OTP sent to WhatsApp for mobile verification (step 2).";
     }
@@ -1496,7 +1524,8 @@ router.post(
           message: "User not found.",
         });
       }
-      // Enforce unique mobile per client across all users
+      // Enforce unique mobile per client across all users.
+      // If this mobile already exists on another "mobile-only" user, MERGE accounts into one record.
       const existingWithMobile = await MobileUser.findOne({
         mobile,
         clientId,
@@ -1504,11 +1533,70 @@ router.post(
         _id: { $ne: user._id },
       });
       if (existingWithMobile) {
-        return res.status(409).json({
-          success: false,
-          responseCode: 1592,
-          message: "This mobile number is already registered for this client.",
-        });
+        // If the existing record already has an email, we cannot merge safely (would violate unique email).
+        if (existingWithMobile.email) {
+          return res.status(409).json({
+            success: false,
+            responseCode: 1592,
+            message: "This mobile number is already registered for this client.",
+          });
+        }
+        // Merge: move email+password from current user -> existing mobile user.
+        // Also migrate profile + credit account ownership if they exist.
+        const fromUser = user;
+        const toUser = existingWithMobile;
+
+        toUser.email = fromUser.email || toUser.email;
+        toUser.passwordHash = fromUser.passwordHash || toUser.passwordHash;
+        toUser.loginProvider =
+          toUser.passwordHash ? "email" : toUser.loginProvider || "mobile";
+        toUser.emailOtpVerified =
+          fromUser.emailOtpVerified !== undefined
+            ? fromUser.emailOtpVerified
+            : toUser.emailOtpVerified;
+        toUser.mobile = mobile;
+        toUser.mobileOtpVerified = true;
+
+        // migrate profile (UserProfile has unique userId)
+        const fromProfile = await UserProfile.findOne({ userId: fromUser._id });
+        const toProfile = await UserProfile.findOne({ userId: toUser._id });
+        if (fromProfile && !toProfile) {
+          await UserProfile.updateOne(
+            { _id: fromProfile._id },
+            { $set: { userId: toUser._id } }
+          );
+        }
+
+        // migrate credit account ownership + keep mobile in sync
+        const fromCredit = await CreditAccount.findOne({ userId: fromUser._id });
+        const toCredit = await CreditAccount.findOne({ userId: toUser._id });
+        if (fromCredit && !toCredit) {
+          await CreditAccount.updateOne(
+            { _id: fromCredit._id },
+            { $set: { userId: toUser._id, mobile } }
+          );
+        } else if (toCredit) {
+          await CreditAccount.updateOne({ _id: toCredit._id }, { $set: { mobile } });
+        }
+
+        // Generate token on merged user
+        const mergedToken = generateToken(toUser._id, toUser.mobile ?? undefined, clientId);
+        toUser.authToken = mergedToken;
+        await toUser.save();
+
+        // Delete the duplicate "from" user after migration
+        await MobileUser.deleteOne({ _id: fromUser._id });
+
+        const response = await finalizeEmailUserSessionResponse(
+          toUser,
+          clientId,
+          client,
+          false,
+          toUser.loginProvider === "google" ? "google_email" : "email_password"
+        );
+        response.responseCode = 1600;
+        response.merged_user = true;
+        return res.status(200).json(response);
       }
 
       user.mobile = mobile;
