@@ -37,6 +37,11 @@ const MobileEmailUserSchema = new mongoose.Schema(
       default: null,
       trim: true,
     },
+    linkedMobileUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MobileUser",
+      default: null,
+    },
     mobileOtpVerified: {
       type: Boolean,
       default: false,

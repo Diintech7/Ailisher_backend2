@@ -23,6 +23,13 @@ const MobileUserSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // Step-2 onboarding: link the email user that owns this mobile within a client
+  emailUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "MobileEmailUser",
+    default: null,
+    index: true,
+  },
   lastLoginAt: {
     type: Date,
     default: Date.now

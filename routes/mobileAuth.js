@@ -286,13 +286,17 @@ async function finalizeEmailUserSessionResponse(
   isNewUser,
   authTypeLabel
 ) {
-  const profile = await UserProfile.findOne({ userId: user._id });
+  // UserProfile.userId always belongs to MobileUser.
+  // For email onboarding, MobileUser is linked after step 2.
+  const profileOwnerId = user.linkedMobileUserId || user._id;
+  const profile = await UserProfile.findOne({ userId: profileOwnerId });
   const isProfileComplete = !!profile;
 
   const response = {
     success: true,
     responseCode: isNewUser ? 1591 : 1590,
-    token: user.authToken,
+    token: undefined, // final auth token only after step 3 completes
+    temp_token: undefined, // used for onboarding steps (step 1 + step 2)
     auth_type: authTypeLabel,
     is_profile_complete: isProfileComplete,
     is_new_user: isNewUser,
@@ -307,6 +311,8 @@ async function finalizeEmailUserSessionResponse(
 
   const fullyDone = response.onboarding_complete && isProfileComplete;
   response.status = fullyDone ? "LOGIN_SUCCESS" : "ONBOARDING_OR_PROFILE_REQUIRED";
+  response.token = fullyDone ? user.authToken : undefined;
+  response.temp_token = !fullyDone ? user.authToken : undefined;
 
   if (fullyDone) {
     response.message = isNewUser
@@ -689,7 +695,10 @@ router.post("/verify-login-otp", validateClient, async (req, res) => {
       status: isProfileComplete ? "LOGIN_SUCCESS" : "PROFILE_REQUIRED",
       success: true,
       responseCode: isProfileComplete ? 1510 : 1511,
-      token: mobileUser.authToken,
+      // Only return final auth token after profile completion (step 3).
+      token: isProfileComplete ? mobileUser.authToken : undefined,
+      // Use this token to call `/profile` when profile is incomplete.
+      temp_token: !isProfileComplete ? mobileUser.authToken : undefined,
       is_profile_complete: isProfileComplete,
       is_new_user: isNewUser,
       user_id: mobileUser._id,
@@ -1209,11 +1218,41 @@ router.post(
         });
       }
 
+      // Enforce "one mobile per client" across email signups:
+      // - MobileUser is unique by (mobile, clientId) via compound index
+      // - If the mobile already belongs to another email user, block linking.
+      let mobileUser = await MobileUser.findOne({ mobile, clientId, isActive: true });
+
+      if (mobileUser) {
+        if (
+          mobileUser.emailUserId &&
+          mobileUser.emailUserId.toString() !== req.user.id.toString()
+        ) {
+          return res.status(409).json({
+            success: false,
+            responseCode: 1592,
+            message: "This mobile number is already registered for this client.",
+          });
+        }
+
+        mobileUser.emailUserId = req.user.id;
+        await mobileUser.save();
+      } else {
+        mobileUser = new MobileUser({
+          mobile,
+          clientId,
+          isVerified: true,
+          authToken: null, // final token will be issued after profile completion (step 3)
+          emailUserId: req.user.id,
+        });
+        await mobileUser.save();
+      }
+
       user.linkedMobile = mobile;
+      user.linkedMobileUserId = mobileUser._id;
       user.mobileOtpVerified = true;
       await user.save();
 
-      const profile = await UserProfile.findOne({ userId: user._id });
       const response = await finalizeEmailUserSessionResponse(
         user,
         clientId,
@@ -1604,6 +1643,19 @@ router.post("/profile", authenticateMobileOrEmailUser, async (req, res) => {
         message: "Access denied. User does not belong to this client.",
       });
     }
+    // UserProfile.userId always belongs to MobileUser.
+    let profileOwnerId = userId;
+    if (req.user.authType === "email") {
+      if (!account.linkedMobileUserId) {
+        return res.status(400).json({
+          success: false,
+          responseCode: 1592,
+          message: "Verify mobile with WhatsApp OTP before creating profile.",
+        });
+      }
+      profileOwnerId = account.linkedMobileUserId;
+    }
+
     const contactLabel =
       req.user.authType === "email" ? account.email : account.mobile;
 
@@ -1634,7 +1686,7 @@ router.post("/profile", authenticateMobileOrEmailUser, async (req, res) => {
       });
     }
 
-    let profile = await UserProfile.findOne({ userId });
+    let profile = await UserProfile.findOne({ userId: profileOwnerId });
     const isNewProfile = !profile;
     console.log(profile);
 
@@ -1649,7 +1701,7 @@ router.post("/profile", authenticateMobileOrEmailUser, async (req, res) => {
       profile.updatedAt = new Date();
     } else {
       profile = new UserProfile({
-        userId,
+        userId: profileOwnerId,
         name: name.trim(),
         age,
         gender,
@@ -1696,6 +1748,43 @@ router.post("/profile", authenticateMobileOrEmailUser, async (req, res) => {
         }
       }
 
+    // Token should be returned only after step 3 (profile saved).
+    // For mobile flow, keep the same token used for this request.
+    // For email flow, create the final mobile token now.
+    let finalToken = null;
+    if (req.user.authType === "mobile") {
+      finalToken = account.authToken;
+    } else {
+      const mobileUser = await MobileUser.findOne({
+        _id: profileOwnerId,
+        clientId,
+      });
+      if (!mobileUser) {
+        return res.status(500).json({
+          success: false,
+          responseCode: 1512,
+          message: "Mobile user not found for this profile.",
+        });
+      }
+      finalToken = generateToken(mobileUser._id, mobileUser.mobile, clientId);
+      mobileUser.authToken = finalToken;
+      await mobileUser.save();
+
+      // Ensure credit account exists for this user
+      const existingCredit = await CreditAccount.findOne({ userId: mobileUser._id });
+      if (!existingCredit) {
+        const creditAccount = new CreditAccount({
+          userId: mobileUser._id,
+          mobile: mobileUser.mobile,
+          clientId: mobileUser.clientId,
+          balance: 0,
+          totalEarned: 0,
+          totalSpent: 0,
+        });
+        await creditAccount.save();
+      }
+    }
+
     res.status(200).json({
       status: "PROFILE_SAVED",
       success: true,
@@ -1703,6 +1792,7 @@ router.post("/profile", authenticateMobileOrEmailUser, async (req, res) => {
       message: isNewProfile
         ? "Profile created successfully."
         : "Profile updated successfully.",
+      token: finalToken,
       profile: {
         name: profile.name,
         age: profile.age,
@@ -1743,7 +1833,19 @@ router.get("/profile", authenticateMobileOrEmailUser, async (req, res) => {
       });
     }
 
-    const profile = await UserProfile.findOne({ userId });
+    let profileOwnerId = userId;
+    if (req.user.authType === "email") {
+      if (!account.linkedMobileUserId) {
+        return res.status(400).json({
+          success: false,
+          responseCode: 1592,
+          message: "Verify mobile with WhatsApp OTP before fetching profile.",
+        });
+      }
+      profileOwnerId = account.linkedMobileUserId;
+    }
+
+    const profile = await UserProfile.findOne({ userId: profileOwnerId });
 
     if (!profile) {
       return res.status(200).json({
@@ -1811,7 +1913,19 @@ router.put("/profile", authenticateMobileOrEmailUser, async (req, res) => {
       });
     }
 
-    const profile = await UserProfile.findOne({ userId });
+    let profileOwnerId = userId;
+    if (req.user.authType === "email") {
+      if (!account.linkedMobileUserId) {
+        return res.status(400).json({
+          success: false,
+          responseCode: 1592,
+          message: "Verify mobile with WhatsApp OTP before updating profile.",
+        });
+      }
+      profileOwnerId = account.linkedMobileUserId;
+    }
+
+    const profile = await UserProfile.findOne({ userId: profileOwnerId });
     if (!profile) {
       return res.status(404).json({
         success: false,
