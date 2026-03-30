@@ -1488,13 +1488,21 @@ router.post(
     try {
       const clientId = req.params.clientId;
       const client = req.client;
-      const { mobile, otp } = req.body;
+      const { mobile, otp, email } = req.body;
+      const emailNorm = email ? String(email || "").toLowerCase().trim() : "";
 
       if (!mobile || !validateMobile(mobile) || !otp || !validateOtp(otp)) {
         return res.status(400).json({
           success: false,
           responseCode: 1592,
           message: "Valid 10-digit mobile and 6-digit OTP are required.",
+        });
+      }
+      if (emailNorm && !validateEmail(emailNorm)) {
+        return res.status(400).json({
+          success: false,
+          responseCode: 1592,
+          message: "Please enter a valid email address.",
         });
       }
 
@@ -1523,6 +1531,78 @@ router.post(
           responseCode: 1592,
           message: "User not found.",
         });
+      }
+
+      // If caller provides an email, and that email belongs to a different user in this client,
+      // merge that email-user into the mobile-owner user so both identifiers live in ONE document.
+      if (emailNorm) {
+        const emailUser = await MobileUser.findOne({
+          email: emailNorm,
+          clientId,
+          isActive: true,
+        });
+        const mobileUser = await MobileUser.findOne({
+          mobile,
+          clientId,
+          isActive: true,
+        });
+
+        if (emailUser && mobileUser && String(emailUser._id) !== String(mobileUser._id)) {
+          // Keep mobileUser, move email credentials onto it.
+          mobileUser.email = emailUser.email || mobileUser.email;
+          mobileUser.passwordHash = emailUser.passwordHash || mobileUser.passwordHash;
+          mobileUser.loginProvider =
+            mobileUser.passwordHash ? "email" : mobileUser.loginProvider || "mobile";
+          if (emailUser.emailOtpVerified !== undefined) {
+            mobileUser.emailOtpVerified = emailUser.emailOtpVerified;
+          }
+          mobileUser.mobile = mobile;
+          mobileUser.mobileOtpVerified = true;
+
+          // migrate profile (UserProfile has unique userId)
+          const fromProfile = await UserProfile.findOne({ userId: emailUser._id });
+          const toProfile = await UserProfile.findOne({ userId: mobileUser._id });
+          if (fromProfile && !toProfile) {
+            await UserProfile.updateOne(
+              { _id: fromProfile._id },
+              { $set: { userId: mobileUser._id } }
+            );
+          }
+
+          // migrate credit account ownership + keep mobile in sync
+          const fromCredit = await CreditAccount.findOne({ userId: emailUser._id });
+          const toCredit = await CreditAccount.findOne({ userId: mobileUser._id });
+          if (fromCredit && !toCredit) {
+            await CreditAccount.updateOne(
+              { _id: fromCredit._id },
+              { $set: { userId: mobileUser._id, mobile } }
+            );
+          } else if (toCredit) {
+            await CreditAccount.updateOne({ _id: toCredit._id }, { $set: { mobile } });
+          }
+
+          const mergedToken = generateToken(
+            mobileUser._id,
+            mobileUser.mobile ?? undefined,
+            clientId
+          );
+          mobileUser.authToken = mergedToken;
+          await mobileUser.save();
+
+          // delete the email user after migration
+          await MobileUser.deleteOne({ _id: emailUser._id });
+
+          const response = await finalizeEmailUserSessionResponse(
+            mobileUser,
+            clientId,
+            client,
+            false,
+            mobileUser.loginProvider === "google" ? "google_email" : "email_password"
+          );
+          response.responseCode = 1600;
+          response.merged_user = true;
+          return res.status(200).json(response);
+        }
       }
       // Enforce unique mobile per client across all users.
       // If this mobile already exists on another "mobile-only" user, MERGE accounts into one record.
