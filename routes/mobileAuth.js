@@ -9,13 +9,10 @@ const UserProfile = require("../models/UserProfile");
 const User = require("../models/User");
 const {
   generateToken,
-  generateEmailUserToken,
-  authenticateMobileOrEmailUser,
   checkClientAccess,
 } = require("../middleware/mobileAuth");
 const CreditAccount = require("../models/CreditAccount");
 const OrgClient = require("../models/OrgClient");
-const MobileEmailUser = require("../models/MobileEmailUser");
 const EmailResetToken = require("../models/EmailResetToken");
 const { Telegraf } = require('telegraf');
 const OTP = require("../models/OTP");
@@ -286,9 +283,8 @@ async function finalizeEmailUserSessionResponse(
   isNewUser,
   authTypeLabel
 ) {
-  // UserProfile.userId always belongs to MobileUser.
-  // For email onboarding, MobileUser is linked after step 2.
-  const profileOwnerId = user.linkedMobileUserId || user._id;
+  // UserProfile.userId belongs to MobileUser (single model flow).
+  const profileOwnerId = user._id;
   const profile = await UserProfile.findOne({ userId: profileOwnerId });
   const isProfileComplete = !!profile;
 
@@ -302,7 +298,7 @@ async function finalizeEmailUserSessionResponse(
     is_new_user: isNewUser,
     user_id: user._id,
     email: user.email,
-    mobile: user.linkedMobile || null,
+    mobile: user.mobile || null,
     client_id: clientId,
     client_name: client.businessName,
     login_count: user.loginCount,
@@ -951,7 +947,7 @@ router.post("/google-login", validateClient, async (req, res) => {
       });
     }
 
-    let user = await MobileEmailUser.findOne({
+    let user = await MobileUser.findOne({
       email: emailNorm,
       clientId,
       isActive: true,
@@ -967,13 +963,13 @@ router.post("/google-login", validateClient, async (req, res) => {
             "This email is registered with a password. Sign in with email and password or use the account that matches Google.",
         });
       }
-      const token = generateEmailUserToken(user._id, user.email, clientId);
+      const token = generateToken(user._id, user.mobile || "", clientId);
       user.authToken = token;
       user.loginProvider = "google";
       await user.save();
     } else {
       isNewUser = true;
-      user = new MobileEmailUser({
+      user = new MobileUser({
         email: emailNorm,
         clientId,
         loginProvider: "google",
@@ -982,7 +978,7 @@ router.post("/google-login", validateClient, async (req, res) => {
         mobileOtpVerified: false,
       });
       await user.save();
-      const token = generateEmailUserToken(user._id, user.email, clientId);
+      const token = generateToken(user._id, user.mobile || "", clientId);
       user.authToken = token;
       await user.save();
       await sendWelcomeEmail({
@@ -1033,7 +1029,7 @@ router.post("/onboarding/register-email-password", validateClient, async (req, r
       });
     }
 
-    const existing = await MobileEmailUser.findOne({
+    const existing = await MobileUser.findOne({
       email: emailNorm,
       clientId,
       isActive: true,
@@ -1069,7 +1065,7 @@ router.post("/onboarding/register-email-password", validateClient, async (req, r
     }
 
     const passwordHash = await bcrypt.hash(String(password), 10);
-    const user = new MobileEmailUser({
+    const user = new MobileUser({
       email: emailNorm,
       clientId,
       passwordHash,
@@ -1124,7 +1120,7 @@ router.post("/onboarding/resend-email-otp", validateClient, async (req, res) => 
       });
     }
 
-    const user = await MobileEmailUser.findOne({
+    const user = await MobileUser.findOne({
       email: emailNorm,
       clientId,
       isActive: true,
@@ -1191,7 +1187,7 @@ router.post("/onboarding/verify-email-otp", validateClient, async (req, res) => 
       });
     }
 
-    const user = await MobileEmailUser.findOne({
+    const user = await MobileUser.findOne({
       email: emailNorm,
       clientId,
       isActive: true,
@@ -1205,7 +1201,7 @@ router.post("/onboarding/verify-email-otp", validateClient, async (req, res) => 
     }
 
     user.emailOtpVerified = true;
-    const token = generateEmailUserToken(user._id, user.email, clientId);
+    const token = generateToken(user._id, user.mobile || "", clientId);
     user.authToken = token;
     await user.save();
 
@@ -1305,21 +1301,13 @@ router.post("/onboarding/login-email-password", validateClient, async (req, res)
 router.post(
   "/onboarding/send-mobile-otp",
   validateClient,
-  authenticateMobileOrEmailUser,
+  authenticateMobileUser,
   async (req, res) => {
     try {
-      if (req.user.authType !== "email") {
-        return res.status(403).json({
-          success: false,
-          responseCode: 1592,
-          message: "This step requires an email or Google login session.",
-        });
-      }
-
       const clientId = req.params.clientId;
       const { mobile } = req.body;
 
-      const user = await MobileEmailUser.findOne({
+      const user = await MobileUser.findOne({
         _id: req.user.id,
         clientId,
         isActive: true,
@@ -1367,17 +1355,9 @@ router.post(
 router.post(
   "/onboarding/verify-mobile-otp",
   validateClient,
-  authenticateMobileOrEmailUser,
+  authenticateMobileUser,
   async (req, res) => {
     try {
-      if (req.user.authType !== "email") {
-        return res.status(403).json({
-          success: false,
-          responseCode: 1592,
-          message: "This step requires an email or Google login session.",
-        });
-      }
-
       const clientId = req.params.clientId;
       const client = req.client;
       const { mobile, otp } = req.body;
@@ -1404,7 +1384,7 @@ router.post(
         });
       }
 
-      const user = await MobileEmailUser.findOne({
+      const user = await MobileUser.findOne({
         _id: req.user.id,
         clientId,
         isActive: true,
@@ -1416,39 +1396,22 @@ router.post(
           message: "User not found.",
         });
       }
-
-      // Enforce "one mobile per client" across email signups:
-      // - MobileUser is unique by (mobile, clientId) via compound index
-      // - If the mobile already belongs to another email user, block linking.
-      let mobileUser = await MobileUser.findOne({ mobile, clientId, isActive: true });
-
-      if (mobileUser) {
-        if (
-          mobileUser.emailUserId &&
-          mobileUser.emailUserId.toString() !== req.user.id.toString()
-        ) {
-          return res.status(409).json({
-            success: false,
-            responseCode: 1592,
-            message: "This mobile number is already registered for this client.",
-          });
-        }
-
-        mobileUser.emailUserId = req.user.id;
-        await mobileUser.save();
-      } else {
-        mobileUser = new MobileUser({
-          mobile,
-          clientId,
-          isVerified: true,
-          authToken: null, // final token will be issued after profile completion (step 3)
-          emailUserId: req.user.id,
+      // Enforce unique mobile per client across all users
+      const existingWithMobile = await MobileUser.findOne({
+        mobile,
+        clientId,
+        isActive: true,
+        _id: { $ne: user._id },
+      });
+      if (existingWithMobile) {
+        return res.status(409).json({
+          success: false,
+          responseCode: 1592,
+          message: "This mobile number is already registered for this client.",
         });
-        await mobileUser.save();
       }
 
-      user.linkedMobile = mobile;
-      user.linkedMobileUserId = mobileUser._id;
+      user.mobile = mobile;
       user.mobileOtpVerified = true;
       await user.save();
 

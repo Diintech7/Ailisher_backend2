@@ -5,10 +5,35 @@ const mongoose = require('mongoose');
 const MobileUserSchema = new mongoose.Schema({
   mobile: {
     type: String,
-    required: true,
+    required: false,
     trim: true,
     match: [/^\d{10}$/, 'Please enter a valid 10-digit mobile number']
     // NOTE: No unique constraint here - uniqueness is handled by compound index
+  },
+  email: {
+    type: String,
+    required: false,
+    lowercase: true,
+    trim: true,
+    match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Invalid email"],
+  },
+  passwordHash: {
+    type: String,
+    default: null,
+  },
+  loginProvider: {
+    type: String,
+    enum: ["google", "email", "mobile"],
+    default: "mobile",
+  },
+  // Step 1 (email+password): false until Brevo OTP verified; undefined = legacy treated as verified
+  emailOtpVerified: {
+    type: Boolean,
+  },
+  // Step 2 (mobile OTP)
+  mobileOtpVerified: {
+    type: Boolean,
+    default: false,
   },
   isVerified: {
     type: Boolean,
@@ -22,13 +47,6 @@ const MobileUserSchema = new mongoose.Schema({
   authToken: {
     type: String,
     default: null
-  },
-  // Step-2 onboarding: link the email user that owns this mobile within a client
-  emailUserId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "MobileEmailUser",
-    default: null,
-    index: true,
   },
   lastLoginAt: {
     type: Date,
@@ -63,12 +81,25 @@ MobileUserSchema.virtual('profile', {
   justOne: true
 });
 
-// CRITICAL: Compound index for mobile and clientId combination
-// This ensures same mobile can exist across different clients but not within same client
-MobileUserSchema.index({ mobile: 1, clientId: 1 }, { 
-  unique: true, 
-  name: 'mobile_1_clientId_1'  // Explicitly name the index
-});
+// CRITICAL: Unique per client, but allow onboarding records without mobile yet (partial index)
+MobileUserSchema.index(
+  { mobile: 1, clientId: 1 },
+  {
+    unique: true,
+    name: "mobile_1_clientId_1",
+    partialFilterExpression: { mobile: { $type: "string" } },
+  }
+);
+
+// Unique email per client (partial index)
+MobileUserSchema.index(
+  { email: 1, clientId: 1 },
+  {
+    unique: true,
+    name: "email_1_clientId_1",
+    partialFilterExpression: { email: { $type: "string" } },
+  }
+);
 
 // Additional indexes for better performance
 MobileUserSchema.index({ clientId: 1, isActive: 1 });
@@ -152,6 +183,10 @@ MobileUserSchema.post('save', function(error, doc, next) {
 MobileUserSchema.pre('validate', function(next) {
   if (!this.clientId) {
     this.invalidate('clientId', 'Client ID is required');
+  }
+  // Require at least one identifier
+  if (!this.mobile && !this.email) {
+    this.invalidate('mobile', 'Mobile or email is required');
   }
   next();
 });
