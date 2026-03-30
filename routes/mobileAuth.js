@@ -1641,6 +1641,7 @@ router.post("/resend-welcome-email", validateClient, async (req, res) => {
         message: "A valid email is required.",
       });
     }
+    
 
     const user = await MobileEmailUser.findOne({
       email: emailNorm,
