@@ -35,6 +35,12 @@ const validateAgeGroup = (age) =>
   ["<15", "15-18", "19-25", "26-31", "32-40", "40+"].includes(age);
 const validateOtp = (otp) => /^\d{6}$/.test(String(otp || "").trim());
 
+/** Store pincode as string; never coerce with Number() (empty becomes 0 and breaks validation). */
+function normalizeProfilePincode(pincode) {
+  if (pincode === undefined || pincode === null) return "";
+  return String(pincode).trim();
+}
+
 // ================= WhatsApp OTP (for App Login) =================
 const whatsappEnabled =
   String(process.env.USE_WHATSAPP || process.env.WHATSAPP_ENABLED || "false") ===
@@ -2096,57 +2102,35 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     const profileOwnerId = userId;
     const contactLabel = account.mobile || account.email || "-";
 
-    // Validation
-    const errors = [];
-    if (!name || name.trim().length === 0) errors.push("Name is required.");
-    if (!age || !validateAgeGroup(age))
-      errors.push("Please select a valid age group.");
-    if (!gender || !["Male", "Female", "Other"].includes(gender))
-      errors.push("Please select a valid gender.");
-    if (!exams || !Array.isArray(exams) || exams.length === 0)
-      errors.push("Please select at least one exam.");
-    if (!native_language) errors.push("Please select your native language.");
-    // Optional: basic pincode validation if provided
-    if (typeof pincode !== 'undefined' && pincode !== null && pincode !== '') {
-      const pinStr = String(pincode).trim();
-      if (!/^\d{6}$/.test(pinStr)) {
-        errors.push("Please enter a valid 6-digit pincode.");
-      }
-    }
-
-    if (errors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        responseCode: 1514, // Same as original profile validation failed
-        message: "Validation failed.",
-        errors,
-      });
-    }
+    const pinStr = normalizeProfilePincode(pincode);
+    const examsArr = Array.isArray(exams) ? exams : [];
 
     let profile = await UserProfile.findOne({ userId: profileOwnerId });
     const isNewProfile = !profile;
     console.log(profile);
 
     if (profile) {
-      profile.name = name.trim();
-      profile.age = age;
-      profile.gender = gender;
-      profile.exams = exams;
-      profile.nativeLanguage = native_language;
-      profile.city = city;
-      profile.pincode = Number(pincode) || 0;
+      if (name !== undefined && name !== null)
+        profile.name = String(name).trim();
+      if (age !== undefined && age !== null) profile.age = String(age);
+      if (gender !== undefined && gender !== null) profile.gender = String(gender);
+      if (exams !== undefined) profile.exams = examsArr;
+      if (native_language !== undefined && native_language !== null)
+        profile.nativeLanguage = String(native_language);
+      if (city !== undefined && city !== null) profile.city = String(city);
+      if (pincode !== undefined) profile.pincode = pinStr;
       profile.updatedAt = new Date();
     } else {
       profile = new UserProfile({
         userId: profileOwnerId,
-        name: name.trim(),
-        age,
-        gender,
-        exams,
-        nativeLanguage: native_language,
+        name: name != null ? String(name).trim() : "",
+        age: age != null ? String(age) : "",
+        gender: gender != null ? String(gender) : "",
+        exams: examsArr,
+        nativeLanguage: native_language != null ? String(native_language) : "",
         clientId,
-        city: typeof city !== 'undefined' ? city : '',
-        pincode: typeof pincode !== 'undefined' ? (Number(pincode) || 0) : 0,
+        city: city != null ? String(city) : "",
+        pincode: pinStr,
       });
     }
 
@@ -2158,7 +2142,7 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
         await axios.post(
           `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
           {
-            text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${name}\n📱 Contact: ${contactLabel}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
+            text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${profile.name || "-"}\n📱 Contact: ${contactLabel}\n🎂 Age: ${profile.age || "-"}\n📝 Exams: ${profile.exams || []}\n🗣️ Native Language: ${profile.nativeLanguage || "-"}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
           }
         );
       } catch (telegramError) {
@@ -2177,7 +2161,7 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
             );
           } else {
             const bot = new Telegraf(botToken);
-            const text = `📄 <b>New Profile Created in ${client.businessName}</b>\n\n👤 Name: ${name}\n📱 Contact: ${contactLabel}\n🎂 Age: ${age}\n📝 Exams: ${exams}\n🗣️ Native Language: ${native_language}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+            const text = `📄 <b>New Profile Created in ${client.businessName}</b>\n\n👤 Name: ${profile.name || "-"}\n📱 Contact: ${contactLabel}\n🎂 Age: ${profile.age || "-"}\n📝 Exams: ${profile.exams || []}\n🗣️ Native Language: ${profile.nativeLanguage || "-"}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
             await bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' });
           }
         } catch (error) {
@@ -2307,39 +2291,20 @@ router.put("/profile", authenticateMobileUser, async (req, res) => {
       });
     }
 
-    const errors = [];
-    // Update only provided fields with validation
-    if (name !== undefined) profile.name = name.trim();
-    if (age !== undefined) {
-      if (!validateAgeGroup(age)) {
-        return res.status(400).json({
-          success: false,
-          responseCode: 1524, // Same as original update profile invalid age
-          message: "Please select a valid age group.",
-        });
-      }
-      profile.age = age;
-    }
-    if (gender !== undefined) profile.gender = gender;
-    if (exams !== undefined) profile.exams = exams;
-    if (native_language !== undefined) profile.nativeLanguage = native_language;
-    if(city !== undefined)profile.city = city;
-    // Optional: basic pincode validation if provided
-    if (pincode !== undefined) {
-      const pinStr = String(pincode).trim();
-      if (!/^\d{6}$/.test(pinStr)) {
-        errors.push("Please enter a valid 6-digit pincode.");
-      }
-    }
-    if (errors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        responseCode: 1524,
-        message: "Validation failed.",
-        errors,
-      });
-    }
-    if (pincode !== undefined) profile.pincode = pincode;
+    // Update only provided fields — no required-field validation
+    if (name !== undefined)
+      profile.name = name != null ? String(name).trim() : "";
+    if (age !== undefined)
+      profile.age = age != null ? String(age) : "";
+    if (gender !== undefined)
+      profile.gender = gender != null ? String(gender) : "";
+    if (exams !== undefined)
+      profile.exams = Array.isArray(exams) ? exams : [];
+    if (native_language !== undefined)
+      profile.nativeLanguage =
+        native_language != null ? String(native_language) : "";
+    if (city !== undefined) profile.city = city != null ? String(city) : "";
+    if (pincode !== undefined) profile.pincode = normalizeProfilePincode(pincode);
     profile.updatedAt = new Date();
     await profile.save();
 
