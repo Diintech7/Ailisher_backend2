@@ -10,25 +10,24 @@ const UserProfileSchema = new mongoose.Schema({
   },
   name: {
     type: String,
-    required: true,
+    default: '',
     trim: true,
     maxlength: [100, 'Name cannot be more than 100 characters']
   },
   age: {
     type: String,
-    enum: ['<15', '15-18', '19-25', '26-31', '32-40', '40+']
+    default: ''
   },
   gender: {
     type: String,
-    enum: ['Male', 'Female', 'Other']
+    default: ''
   },
   exams: [{
-    type: String,
-    enum: ['UPSC','JPSC','MPPCS','RAS', 'CA', 'CMA', 'CS', 'ACCA', 'CFA', 'FRM', 'NEET', 'JEE', 'GATE', 'CAT', 'GMAT', 'GRE', 'IELTS', 'TOEFL', 'NET/JRF', 'BPSC', 'UPPCS', 'NDA','SSC', 'Teacher', 'CLAT','Judiciary', 'Other']
+    type: String
   }],
   nativeLanguage: {
     type: String,
-    enum: ['Hindi', 'English', 'Bengali', 'Telugu', 'Marathi', 'Tamil', 'Gujarati', 'Urdu', 'Kannada', 'Odia', 'Malayalam', 'Punjabi', 'Assamese', 'Other']
+    default: ''
   },
   city:{
     type:String,
@@ -36,13 +35,11 @@ const UserProfileSchema = new mongoose.Schema({
   },
   pincode:{
     type:String,
-    match: [/^\d{6}$/, 'Pincode must be a 6-digit number'],
     default: ''
   },
   clientId: { // Changed from 'client' to 'clientId'
     type: String,
-    required: true
-    // No enum restriction - will validate against actual client IDs
+    default: ''
   },
   isComplete: {
     type: Boolean,
