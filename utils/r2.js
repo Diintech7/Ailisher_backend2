@@ -15,11 +15,14 @@ if (missingEnvVars.length > 0) {
 const s3Client = new S3Client({
     endpoint: process.env.R2_ENDPOINT,
     credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
     },
     region: "auto",
-    signatureVersion: 'v4',
+    // when_required prevents SDK v3 from adding X-Amz-Checksum-Algorithm to presigned URLs
+    // which Cloudflare R2 cannot fulfill from browser PUT requests
+    requestChecksumCalculation: 'when_required',
+    responseChecksumValidation: 'when_required',
 });
 
 // Generate presigned URL for uploading
@@ -34,21 +37,20 @@ const generatePresignedUrl = async (key, contentType) => {
     const command = new PutObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME,
       Key: formattedKey,
-      ContentType: contentType
     });
 
     console.log('Created PutObjectCommand with params:', {
       Bucket: process.env.R2_BUCKET_NAME,
       Key: formattedKey,
-      ContentType: contentType
     });
 
     // Generate presigned URL with 1 hour expiration
     const url = await getSignedUrl(s3Client, command, { 
-      expiresIn: 604800 
+      expiresIn: 604800,
     });
 
     console.log('Successfully generated presigned URL');
+    console.log('FULL PRESIGNED URL (for diagnosis):', url);
     return url;
   } catch (error) {
     console.error('Error generating presigned URL:', {
