@@ -448,7 +448,11 @@ const extractTextFromImagesOpenAI = async (imageUrls, serviceConfig) => {
     for (let i = 0; i < imageUrls.length; i++) {
       try {
         let url = imageUrls[i];
-        if (!url.includes("cloudinary.com")) {
+        if (!url.startsWith('http') && !url.startsWith('data:')) {
+          const { generateGetPresignedUrl } = require('../utils/r2');
+          url = await generateGetPresignedUrl(url);
+        }
+        if (!url.includes("cloudinary.com") && !url.includes("r2.cloudflarestorage.com") && !url.includes("r2.dev")) {
           const imageResponse = await axios.get(url, {
             responseType: "arraybuffer",
             timeout: 30000,
@@ -541,7 +545,12 @@ const extractTextFromImagesGemini = async (imageUrls, serviceConfig) => {
     const meta = [];
     for (let i = 0; i < imageUrls.length; i++) {
       try {
-        const imageResponse = await axios.get(imageUrls[i], { responseType: "arraybuffer", timeout: 30000 });
+        let url = imageUrls[i];
+        if (!url.startsWith('http') && !url.startsWith('data:')) {
+          const { generateGetPresignedUrl } = require('../utils/r2');
+          url = await generateGetPresignedUrl(url);
+        }
+        const imageResponse = await axios.get(url, { responseType: "arraybuffer", timeout: 30000 });
         const base64Image = Buffer.from(imageResponse.data).toString("base64");
         const contentType = imageResponse.headers["content-type"] || "image/jpeg";
         parts.push({ inline_data: { mime_type: contentType, data: base64Image } });

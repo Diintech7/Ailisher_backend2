@@ -21,10 +21,14 @@ const extractTextFromImages = async (imageUrls) => {
   for (let i = 0; i < imageUrls.length; i++) {
     const imageUrl = imageUrls[i];
     try {
+      if (!imageUrl.startsWith('http') && !imageUrl.startsWith('data:')) {
+        const { generateGetPresignedUrl } = require('../utils/r2');
+        imageUrl = await generateGetPresignedUrl(imageUrl);
+      }
       let processedImageUrl = imageUrl;
       
-      // If not a Cloudinary URL, convert to base64
-      if (!imageUrl.includes('cloudinary.com')) {        
+      // If not a Cloudinary or R2 URL, convert to base64
+      if (!imageUrl.includes('cloudinary.com') && !imageUrl.includes('r2.cloudflarestorage.com') && !imageUrl.includes('r2.dev')) {        
         const imageResponse = await axios.get(imageUrl, {
           responseType: 'arraybuffer',
           timeout: 30000,

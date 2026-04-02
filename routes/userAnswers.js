@@ -1,8 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const cloudinary = require("cloudinary").v2;
+const R2Storage = require("../utils/r2multer");
 const UserAnswer = require("../models/UserAnswer");
 const AiswbQuestion = require("../models/AiswbQuestion");
 const AISWBSet = require("../models/AISWBSet");
@@ -14,6 +13,7 @@ const {
   refreshAnnotatedImageUrls,
   generateAnnotatedImageUrl,
   uploadFileToS3,
+  deleteObject,
 } = require("../utils/r2");
 const { overlayTextOnImage } = require("../controllers/TextOverlayController");
 const axios = require("axios");
@@ -50,22 +50,8 @@ const { verifyToken } = require("../middleware/auth");
 
 router.use("/crud", crud);
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "user-answers",
-    allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
-    transformation: [
-      { width: 1200, height: 1600, crop: "limit", quality: "auto" },
-      { flags: "progressive" },
-    ],
-  },
+const storage = new R2Storage({
+  folder: "user-answers"
 });
 
 const upload = multer({
@@ -926,7 +912,7 @@ router.post(
         if (req.files && req.files.length > 0) {
           for (const file of req.files) {
             try {
-              await cloudinary.uploader.destroy(file.filename);
+              await deleteObject(file.filename);
             } catch (cleanupError) {
               console.error("Error cleaning up file:", cleanupError);
             }
@@ -977,7 +963,7 @@ router.post(
         if (req.files && req.files.length > 0) {
           for (const file of req.files) {
             try {
-              await cloudinary.uploader.destroy(file.filename);
+              await deleteObject(file.filename);
             } catch (cleanupError) {
               console.error("Error cleaning up file:", cleanupError);
             }
@@ -999,7 +985,7 @@ router.post(
         if (req.files && req.files.length > 0) {
           for (const file of req.files) {
             try {
-              await cloudinary.uploader.destroy(file.filename);
+              await deleteObject(file.filename);
             } catch (cleanupError) {
               console.error("Error cleaning up file:", cleanupError);
             }
@@ -1072,7 +1058,7 @@ router.post(
             if (req.files && req.files.length > 0) {
               for (const file of req.files) {
                 try {
-                  await cloudinary.uploader.destroy(file.filename);
+                  await deleteObject(file.filename);
                 } catch (cleanupError) {
                   console.error(
                     "Error cleaning up invalid image:",
@@ -1742,7 +1728,7 @@ router.post(
             if (req.files && req.files.length > 0) {
               for (const file of req.files) {
                 try {
-                  await cloudinary.uploader.destroy(file.filename);
+                  await deleteObject(file.filename);
                 } catch (cleanupError) {
                   console.error(
                     "Error cleaning up unreadable image:",
@@ -1767,7 +1753,7 @@ router.post(
           if (req.files && req.files.length > 0) {
             for (const file of req.files) {
               try {
-                await cloudinary.uploader.destroy(file.filename);
+                await deleteObject(file.filename);
               } catch (cleanupError) {
                 console.error(
                   "Error cleaning up image after extraction error:",
@@ -2131,7 +2117,7 @@ router.post(
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           try {
-            await cloudinary.uploader.destroy(file.filename);
+            await deleteObject(file.filename);
           } catch (cleanupError) {
             console.error("Error cleaning up file:", cleanupError);
           }
@@ -2232,7 +2218,7 @@ router.post(
         if (req.files && req.files.length > 0) {
           for (const file of req.files) {
             try {
-              await cloudinary.uploader.destroy(file.filename);
+              await deleteObject(file.filename);
             } catch (cleanupError) {
               console.error("Error cleaning up file:", cleanupError);
             }
@@ -2278,7 +2264,7 @@ router.post(
         if (req.files && req.files.length > 0) {
           for (const file of req.files) {
             try {
-              await cloudinary.uploader.destroy(file.filename);
+              await deleteObject(file.filename);
             } catch (cleanupError) {
               console.error("Error cleaning up file:", cleanupError);
             }
@@ -2301,7 +2287,7 @@ router.post(
         if (req.files && req.files.length > 0) {
           for (const file of req.files) {
             try {
-              await cloudinary.uploader.destroy(file.filename);
+              await deleteObject(file.filename);
             } catch (cleanupError) {
               console.error("Error cleaning up file:", cleanupError);
             }
@@ -2373,7 +2359,7 @@ router.post(
             if (req.files && req.files.length > 0) {
               for (const file of req.files) {
                 try {
-                  await cloudinary.uploader.destroy(file.filename);
+                  await deleteObject(file.filename);
                 } catch (cleanupError) {
                   console.error(
                     "Error cleaning up invalid image:",
@@ -2875,7 +2861,7 @@ router.post(
             if (req.files && req.files.length > 0) {
               for (const file of req.files) {
                 try {
-                  await cloudinary.uploader.destroy(file.filename);
+                  await deleteObject(file.filename);
                 } catch (cleanupError) {
                   console.error(
                     "Error cleaning up unreadable image:",
@@ -2900,7 +2886,7 @@ router.post(
           if (req.files && req.files.length > 0) {
             for (const file of req.files) {
               try {
-                await cloudinary.uploader.destroy(file.filename);
+                await deleteObject(file.filename);
               } catch (cleanupError) {
                 console.error(
                   "Error cleaning up image after extraction error:",
@@ -3212,7 +3198,7 @@ router.post(
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           try {
-            await cloudinary.uploader.destroy(file.filename);
+            await deleteObject(file.filename);
           } catch (cleanupError) {
             console.error("Error cleaning up file:", cleanupError);
           }

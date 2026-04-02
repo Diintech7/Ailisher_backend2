@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const cloudinary = require('cloudinary').v2;
+const R2Storage = require("../utils/r2multer");
 const UserAnswer = require('../models/UserAnswer');
 const AiswbQuestion = require('../models/AiswbQuestion');
 const AISWBSet = require('../models/AISWBSet');
@@ -16,21 +15,8 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-});
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'user-answers',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
-    transformation: [
-      { width: 1200, height: 1600, crop: 'limit', quality: 'auto' },
-      { flags: 'progressive' }
-    ]
-  }
+const storage = new R2Storage({
+  folder: "user-answers"
 });
 const upload = multer({
   storage: storage,
@@ -78,11 +64,15 @@ const extractTextFromImages = async (imageUrls) => {
   }
   for (let i = 0; i < imageUrls.length; i++) {
     const imageUrl = imageUrls[i];
-    try {
-      let processedImageUrl = imageUrl;
-      if (imageUrl.includes('cloudinary.com')) {
-        processedImageUrl = imageUrl;
-      } else {        
+      try {
+        if (!imageUrl.startsWith('http') && !imageUrl.startsWith('data:')) {
+          const { generateGetPresignedUrl } = require('../utils/r2');
+          imageUrl = await generateGetPresignedUrl(imageUrl);
+        }
+        let processedImageUrl = imageUrl;
+        if (imageUrl.includes('cloudinary.com') || imageUrl.includes('r2.cloudflarestorage.com') || imageUrl.includes('r2.dev')) {
+          processedImageUrl = imageUrl;
+        } else {        
         const imageResponse = await axios.get(imageUrl, {
           responseType: 'arraybuffer',
           timeout: 30000,

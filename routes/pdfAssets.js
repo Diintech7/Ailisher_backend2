@@ -1,16 +1,9 @@
 const express = require("express")
 const router = express.Router()
 const multer = require("multer")
-const cloudinary = require("cloudinary").v2
+const { uploadFileToS3, deleteObject } = require("../utils/r2")
 const PDF = require("../models/PDF")
 const { verifyToken } = require("../middleware/auth")
-
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-})
 
 // Configure multer for file upload
 const storage = multer.memoryStorage()
@@ -119,29 +112,19 @@ router.post("/:itemType/:itemId/pdfs", verifyToken, upload.single("file"), async
     // Validate item exists
     await validateItemExists(itemType, itemId, isWorkbook === "true")
 
-    // Upload to Cloudinary
-    const uploadResult = await new Promise((resolve, reject) => {
-      cloudinary.uploader
-        .upload_stream(
-          {
-            resource_type: "raw",
-            folder: `pdfs/${itemType}/${itemId}`,
-            public_id: `${Date.now()}_${req.file.originalname.replace(/\.[^/.]+$/, "")}`,
-          },
-          (error, result) => {
-            if (error) reject(error)
-            else resolve(result)
-          },
-        )
-        .end(req.file.buffer)
-    })
+    // Upload to R2
+    const keyPrefix = `pdfs/${itemType}/${itemId}`;
+    const uniqueFilename = `${Date.now()}_${req.file.originalname.replace(/\.[^/.]+$/, "")}.pdf`;
+    const r2Key = `${keyPrefix}/${uniqueFilename}`;
+    
+    await uploadFileToS3(req.file.buffer, r2Key, req.file.mimetype);
 
     // Create new PDF record
     const newPDF = new PDF({
       title: title.trim(),
       description: description?.trim() || "",
-      url: uploadResult.secure_url,
-      publicId: uploadResult.public_id,
+      url: r2Key,
+      publicId: r2Key,
       fileName: req.file.originalname,
       fileSize: req.file.size,
       itemType,
@@ -189,12 +172,11 @@ router.delete("/pdfs/:pdfId", verifyToken, async (req, res) => {
       })
     }
 
-    // Delete from Cloudinary
+    // Delete from R2
     try {
-      await cloudinary.uploader.destroy(pdf.publicId, { resource_type: "raw" })
-    } catch (cloudinaryError) {
-      console.error("Error deleting from Cloudinary:", cloudinaryError)
-      // Continue with database deletion even if Cloudinary deletion fails
+      await deleteObject(pdf.publicId)
+    } catch (r2Error) {
+      console.error("Error deleting from R2:", r2Error)
     }
 
     // Delete from database

@@ -5,11 +5,10 @@ const myQuestionValidation = require('../middleware/myQuestionValidation');
 const { authenticateMobileUser } = require('../middleware/mobileAuth');
 const { verifyToken } = require('../middleware/auth');
 const multer = require("multer");
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const R2Storage = require("../utils/r2multer");
 const { validationResult } = require('express-validator');
 const MyQuestion = require('../models/MyQuestion');
 const UserAnswer = require('../models/UserAnswer');
-const cloudinary = require("cloudinary").v2;
 
 // User routes (mobile authentication)
 router.post('/questions',
@@ -18,23 +17,8 @@ router.post('/questions',
   myQuestionController.createQuestion
 );
 
-// Configure cloudinary (reuse existing env)
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "user-answers",
-    allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
-    transformation: [
-      { width: 1200, height: 1600, crop: "limit", quality: "auto" },
-      { flags: "progressive" },
-    ],
-  },
+const storage = new R2Storage({
+  folder: "user-answers"
 });
 
 const upload = multer({

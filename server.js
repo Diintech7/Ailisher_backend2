@@ -25,6 +25,7 @@ const mobileBooksRoutes = require('./routes/mobileBooks');
 const aiswbRoutes = require('./routes/aiswb');
 const myQuestionRoutes = require('./routes/myquestion');
 const userAnswersRoutes = require('./routes/userAnswers');
+const r2AssetsRoutes = require('./routes/r2Assets');
 const evaluationRoutes = require('./routes/evaluations'); // Updated evaluation routes
 const { checkClientAccess } = require('./middleware/mobileAuth');
 const adminAnswers = require('./routes/adminAnswers');
@@ -113,6 +114,7 @@ app.use('/api/qrcode', qrCodeRoutes);
 app.use('/api/books', pdfSplitsRoutes);
 app.use('/api/aiswb', aiswbRoutes);
 app.use('/api/myquestion', myQuestionRoutes);
+app.use('/api/r2', r2AssetsRoutes);
 app.use('/api/userAnswers', userAnswersRoutes);
 app.use('/api/mybooks', myBooksRoutes);
 app.use('/api/evaluators', evaluatorsRoutes);
