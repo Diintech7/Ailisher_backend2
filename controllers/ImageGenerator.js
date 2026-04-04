@@ -1,12 +1,13 @@
 const axios = require('axios');
 const FormData = require('form-data');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { PutObjectCommand } = require('@aws-sdk/client-s3');
 const { s3Client, generateGetPresignedUrl } = require('../utils/r2');
 const ImageGenerated = require('../models/ImageGenerated');
 const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
 exports.generateImage = async (req, res) => {
-    const { prompt, style = 'realistic', aspect_ratio = '9:16', seed = '5' } = req.body;
+    const { prompt, style = 'realistic', aspect_ratio = '1:1', seed = '5', variation = '1', provider = 'imagineart' } = req.body;
     
     if (!prompt) {
         return res.status(400).json({ 
@@ -14,45 +15,94 @@ exports.generateImage = async (req, res) => {
         });
     }
 
+    console.log(`[AI Image] Priority Request: Provider = ${provider}, Prompt = ${prompt.substring(0, 50)}...`);
+
     try {
-        // Create form data for the API request
-        const formData = new FormData();
-        formData.append('prompt', prompt);
-        formData.append('style', style);
-        formData.append('aspect_ratio', aspect_ratio);
-        formData.append('seed', seed);
+        if (provider === 'openai') {
+            // OpenAI DALL-E 3 Implementation
+            const openAiResponse = await fetch('https://api.openai.com/v1/images/generations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: "dall-e-3",
+                    prompt: prompt,
+                    n: 1,
+                    size: "1024x1024",
+                    quality: "hd",
+                    response_format: "url"
+                })
+            });
 
-        const response = await axios.post('https://api.vyro.ai/v2/image/generations', formData, {
-            headers: {
-                'Authorization': `Bearer ${process.env.IMAGINEART_API_KEY}`,
-                ...formData.getHeaders()
-            },
-            responseType: 'arraybuffer',
-            timeout: 900000 // 15 minutes timeout
-        });
+            if (!openAiResponse.ok) {
+                const errorData = await openAiResponse.json().catch(() => ({}));
+                console.error('OpenAI API Error:', errorData);
+                throw new Error(errorData.error?.message || `OpenAI API Error: ${openAiResponse.status}`);
+            }
 
-        // Convert the image buffer to base64
-        const base64Image = Buffer.from(response.data).toString('base64');
- 
-        res.json({
-            success: true,
-            image: base64Image,
-            prompt: prompt,
-            style: style,
-            aspect_ratio: aspect_ratio,
-            seed: seed
-        });
+            const result = await openAiResponse.json();
+            const imageUrl = result.data[0].url;
+
+            // Fetch image and convert to base64 for frontend format consistency
+            const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+            const buffer = Buffer.from(imageResponse.data, 'binary');
+            const base64Image = buffer.toString('base64');
+
+            return res.json({
+                success: true,
+                image: base64Image,
+                prompt: prompt,
+                provider: 'openai',
+                metadata: {
+                    model: 'dall-e-3',
+                    url: imageUrl
+                }
+            });
+        } else {
+            // Existing ImagineArt (Vyro AI) Implementation
+            const formData = new FormData();
+            formData.append('prompt', prompt);
+            formData.append('model_id', '1');
+            formData.append('style', 'realistic');
+            formData.append('variation', variation);
+            formData.append('is_variation', 'false');
+            formData.append('aspect_ratio', aspect_ratio);
+            
+            const response = await fetch('https://api.vyro.ai/v2/image/generations', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.IMAGINEART_API_KEY}`,
+                    ...formData.getHeaders()
+                },
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('ImagineArt API Error Details:', errorData);
+                throw new Error(errorData.message || `API Error: ${response.status}`);
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const base64Image = buffer.toString('base64');
+
+            return res.json({
+                success: true,
+                image: base64Image,
+                prompt: prompt,
+                style: style,
+                aspect_ratio: aspect_ratio,
+                seed: seed,
+                variation: variation,
+                provider: 'imagineart'
+            });
+        }
 
     } catch (error) {
         console.error('Generate image error:', error);
-        
-        if (error.response) {
-            console.error('ImagineArt API Error:', error.response.data);
-            return res.status(error.response.status).json({ 
-                error: `Failed to generate image: ${error.response.status} ${error.response.statusText}`
-            });
-        }
-        
         res.status(500).json({ 
             error: error.message || 'Failed to generate image' 
         });

@@ -65,6 +65,8 @@ const organizationRoutes = require('./routes/organizations')
 const superadminRoutes = require('./routes/superadminroutes')
 const liveClassesRoutes = require('./routes/liveClasses')
 const userProfileRoutes = require('./routes/userProfile')
+const adminBannersRoutes = require('./routes/adminBanners');
+const mobileBannersRoutes = require('./routes/mobileBanners');
 
 app.use(cors())
 app.use(express.json({ limit: "50mb" }))
@@ -143,6 +145,7 @@ app.use('/api/notifications', notificationsRoutes)
 app.use('/api/organizations', organizationRoutes)
 app.use('/api/superadmin', superadminRoutes)
 app.use('/api/live-classes', liveClassesRoutes)
+app.use('/api/admin/banners', adminBannersRoutes);
 app.use('/api/app-analytics', require("./routes/userAnalytics"))
 app.use(
   "/api/clients/:clientId/mobile/user-profile",
@@ -428,6 +431,16 @@ app.use(
     next()
   },
   telegramRoutes,
+)
+
+app.use(
+  "/api/clients/:clientId/mobile/banners",
+  checkClientAccess(),
+  (req, res, next) => {
+    req.clientId = req.params.clientId
+    next()
+  },
+  mobileBannersRoutes,
 )
 
 // Mount subtopics routes
