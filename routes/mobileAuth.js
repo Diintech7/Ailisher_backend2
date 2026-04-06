@@ -24,9 +24,11 @@ const {
   sendPasswordResetEmail,
 } = require("../services/emailService");
 const EmailOtp = require("../models/EmailOtp");
+const PasswordResetOtp = require("../models/PasswordResetOtp");
 const {
   brevoEnabled,
   sendEmailOtp: sendEmailOtpViaBrevo,
+  sendPasswordResetOtp: sendPasswordResetOtpViaBrevo,
 } = require("../services/brevoService");
 
 // Validation helpers
@@ -1869,6 +1871,169 @@ async function handleResetPasswordEmail(req, res) {
 router.post("/forgot-password-email", validateClient, handleForgotOrResendPasswordEmail);
 router.post("/resend-password-reset-email", validateClient, handleForgotOrResendPasswordEmail);
 router.post("/reset-password-email", validateClient, handleResetPasswordEmail);
+
+// ---------- Password reset via Brevo OTP (preferred) ----------
+async function handleForgotOrResendPasswordEmailOtp(req, res) {
+  try {
+    const { email } = req.body;
+    const clientId = req.params.clientId;
+    const client = req.client;
+    const emailNorm = String(email || "").toLowerCase().trim();
+
+    if (!emailNorm || !validateEmail(emailNorm)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "A valid email is required.",
+      });
+    }
+    if (!brevoEnabled()) {
+      return res.status(500).json({
+        success: false,
+        responseCode: 1512,
+        message: "Email OTP requires Brevo: set USE_BREVO=true and BREVO_API_KEY in .env",
+      });
+    }
+
+    const user = await MobileUser.findOne({
+      email: emailNorm,
+      clientId,
+      isActive: true,
+    });
+
+    // Generic response for privacy (same as link flow)
+    const generic = {
+      success: true,
+      responseCode: 1593,
+      message:
+        "If an account with this email exists, a password reset OTP has been sent.",
+    };
+
+    if (!user || !user.passwordHash) {
+      return res.status(200).json(generic);
+    }
+
+    await PasswordResetOtp.updateMany(
+      { email: emailNorm, clientId, isUsed: false },
+      { isUsed: true }
+    );
+
+    const otp = crypto.randomInt(0, 1000000).toString().padStart(6, "0");
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await PasswordResetOtp.create({
+      email: emailNorm,
+      clientId,
+      otp,
+      expiresAt,
+      isUsed: false,
+    });
+
+    const result = await sendPasswordResetOtpViaBrevo({
+      to: emailNorm,
+      otp,
+      clientName: client.businessName,
+    });
+    if (!result.sent) {
+      throw new Error(
+        result.reason === "missing_api_key"
+          ? "BREVO_API_KEY is not set"
+          : "Failed to send reset OTP email"
+      );
+    }
+
+    return res.status(200).json(generic);
+  } catch (error) {
+    console.error("Forgot-password-email-otp error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: error.message || "Internal server error. Please try again later.",
+    });
+  }
+}
+
+async function handleResetPasswordEmailOtp(req, res) {
+  try {
+    const { email, otp, newPassword } = req.body;
+    const clientId = req.params.clientId;
+    const emailNorm = String(email || "").toLowerCase().trim();
+
+    if (!emailNorm || !validateEmail(emailNorm) || !otp || !validateOtp(otp)) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "Valid email and 6-digit OTP are required.",
+      });
+    }
+    if (!newPassword || String(newPassword).length < 6) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "New password must be at least 6 characters.",
+      });
+    }
+
+    const record = await PasswordResetOtp.findOne({
+      email: emailNorm,
+      clientId,
+      otp: String(otp).trim(),
+      isUsed: false,
+    });
+    if (!record || new Date(record.expiresAt).getTime() < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "Invalid or expired reset OTP.",
+      });
+    }
+
+    const user = await MobileUser.findOne({
+      email: emailNorm,
+      clientId,
+      isActive: true,
+    });
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        responseCode: 1592,
+        message: "User not found.",
+      });
+    }
+
+    user.passwordHash = await bcrypt.hash(String(newPassword), 10);
+    user.loginProvider = "email";
+    await user.save();
+
+    record.isUsed = true;
+    await record.save();
+
+    res.status(200).json({
+      success: true,
+      responseCode: 1594,
+      message: "Password updated successfully.",
+    });
+  } catch (error) {
+    console.error("Reset-password-email-otp error:", error);
+    res.status(500).json({
+      success: false,
+      responseCode: 1512,
+      message: "Internal server error. Please try again later.",
+    });
+  }
+}
+
+router.post(
+  "/forgot-password-email-otp",
+  validateClient,
+  handleForgotOrResendPasswordEmailOtp
+);
+router.post(
+  "/resend-password-reset-email-otp",
+  validateClient,
+  handleForgotOrResendPasswordEmailOtp
+);
+router.post("/reset-password-email-otp", validateClient, handleResetPasswordEmailOtp);
+
 // Same handlers under /onboarding/ for frontend grouping
 router.post(
   "/onboarding/forgot-password-email",
@@ -1884,6 +2049,22 @@ router.post(
   "/onboarding/reset-password-email",
   validateClient,
   handleResetPasswordEmail
+);
+
+router.post(
+  "/onboarding/forgot-password-email-otp",
+  validateClient,
+  handleForgotOrResendPasswordEmailOtp
+);
+router.post(
+  "/onboarding/resend-password-reset-email-otp",
+  validateClient,
+  handleForgotOrResendPasswordEmailOtp
+);
+router.post(
+  "/onboarding/reset-password-email-otp",
+  validateClient,
+  handleResetPasswordEmailOtp
 );
 
 router.post("/resend-welcome-email", validateClient, async (req, res) => {

@@ -52,8 +52,16 @@ async function sendEmailOtp({ to, otp, clientName }) {
   return sendBrevoEmail({ to, subject, htmlContent, textContent });
 }
 
+async function sendPasswordResetOtp({ to, otp, clientName }) {
+  const subject = `${otp} is your password reset code${clientName ? ` — ${clientName}` : ""}`;
+  const textContent = `Your password reset code is: ${otp}\n\nIt expires in 10 minutes. Do not share this code.`;
+  const htmlContent = `<p>Your password reset code is:</p><p style="font-size:24px;font-weight:bold;">${otp}</p><p>It expires in 10 minutes. Do not share this code.</p>`;
+  return sendBrevoEmail({ to, subject, htmlContent, textContent });
+}
+
 module.exports = {
   brevoEnabled,
   sendBrevoEmail,
   sendEmailOtp,
+  sendPasswordResetOtp,
 };
