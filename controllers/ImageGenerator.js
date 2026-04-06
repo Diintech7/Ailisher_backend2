@@ -61,32 +61,32 @@ exports.generateImage = async (req, res) => {
                 }
             });
         } else {
-            // Existing ImagineArt (Vyro AI) Implementation
+            // ImagineArt (Vyro AI) Implementation — using axios for reliable FormData handling
             const formData = new FormData();
             formData.append('prompt', prompt);
-            formData.append('model_id', '1');
-            formData.append('style', 'realistic');
-            formData.append('variation', variation);
-            formData.append('is_variation', 'false');
+            formData.append('style', style);
             formData.append('aspect_ratio', aspect_ratio);
-            
-            const response = await fetch('https://api.vyro.ai/v2/image/generations', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${process.env.IMAGINEART_API_KEY}`,
-                    ...formData.getHeaders()
-                },
-                body: formData
-            });
+            formData.append('seed', seed);
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error('ImagineArt API Error Details:', errorData);
-                throw new Error(errorData.message || `API Error: ${response.status}`);
+            let buffer;
+            try {
+                const response = await axios.post('https://api.vyro.ai/v2/image/generations', formData, {
+                    headers: {
+                        'Authorization': `Bearer ${process.env.IMAGINEART_API_KEY}`,
+                        ...formData.getHeaders()
+                    },
+                    responseType: 'arraybuffer',
+                    timeout: 60000
+                });
+                buffer = Buffer.from(response.data);
+            } catch (axiosError) {
+                const errData = axiosError.response?.data
+                    ? JSON.parse(Buffer.from(axiosError.response.data).toString())
+                    : {};
+                console.error('ImagineArt API Error Details:', errData);
+                throw new Error(errData.message || errData.error || `API Error: ${axiosError.response?.status}`);
             }
 
-            const arrayBuffer = await response.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
             const base64Image = buffer.toString('base64');
 
             return res.json({

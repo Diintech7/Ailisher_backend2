@@ -3,26 +3,26 @@ const FormData = require('form-data');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-async function testVyro() {
-    const prompt = "A professional book cover for ENGLISH - NCERT BOOK";
+async function testVyroFinalFixed() {
+    const prompt = "A professional book cover";
     const apiKey = process.env.IMAGINEART_API_KEY;
     
-    console.log('Final Validation: IMAGINE_V1 style...');
+    console.log('Testing Vyro API V2 with Imagine V1 style...');
     
     try {
         const formData = new FormData();
         formData.append('prompt', prompt);
         formData.append('model_id', '1');
-        formData.append('style', 'IMAGINE_V1');
+        formData.append('style', 'Imagine V1');
         formData.append('variation', '1');
-        formData.append('aspect_ratio', '9:16');
+        formData.append('aspect_ratio', '1:1');
 
         const response = await axios.post('https://api.vyro.ai/v2/image/generations', formData, {
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 ...formData.getHeaders()
             },
-            responseType: 'arraybuffer'
+            timeout: 20000
         });
 
         console.log('SUCCESS! Status:', response.status);
@@ -39,4 +39,4 @@ async function testVyro() {
     }
 }
 
-testVyro();
+testVyroFinalFixed();
