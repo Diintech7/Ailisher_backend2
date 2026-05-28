@@ -9,7 +9,8 @@ const {
   registeradmin,
   registerclient,
   generateOrgLoginToken,
-  validateSuperadminToken
+  validateSuperadminToken,
+  generateAdminLoginToken
 } = require('../controllers/superadmincontroller');
 const { verifySuperadminToken } = require('../middleware/auth');
 const organizationController = require("../controllers/organizationController");
@@ -42,5 +43,6 @@ router.patch('/organizations/:id',verifySuperadminToken, organizationController.
 router.post('/organizations/:id/suspend',verifySuperadminToken, organizationController.suspendOrganization);
 router.post('/organizations/:id/restore',verifySuperadminToken, organizationController.restoreOrganization);
 router.post('/organization/:id/login-token',verifySuperadminToken, generateOrgLoginToken);
+router.post('/admin/:id/login-token', verifySuperadminToken, generateAdminLoginToken);
 
 module.exports = router;

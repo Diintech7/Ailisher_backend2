@@ -24,14 +24,34 @@ const loginSuperadmin = async (req,res) => {
         });
     }
 
-    const superadmin = await Superadmin.findOne({email})
+    let superadmin = await Superadmin.findOne({email})
     console.log('Found superadmin:', superadmin ? 'Yes' : 'No');
+
+    // Check if the credentials match the .env configuration
+    const isEnvCredentials = (
+        process.env.SUPERADMIN_EMAIL && 
+        email === process.env.SUPERADMIN_EMAIL && 
+        process.env.SUPERADMIN_PASSWORD && 
+        password === process.env.SUPERADMIN_PASSWORD
+    );
+
+    // If superadmin not in database but credentials match .env, dynamically create them
+    if (!superadmin && isEnvCredentials) {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        superadmin = await Superadmin.create({
+            name: "Vijay",
+            email: email,
+            password: hashedPassword
+        });
+        console.log('Dynamically created superadmin from .env credentials');
+    }
 
     if(!superadmin) {
         return res.status(400).json({message:"Superadmin not found"});
     }
 
-    const isPasswordValid = await bcrypt.compare(password, superadmin.password);
+    const isDbPasswordValid = await bcrypt.compare(password, superadmin.password);
+    const isPasswordValid = isDbPasswordValid || isEnvCredentials;
     console.log('Password valid:', isPasswordValid);
 
     if(!isPasswordValid) {
@@ -359,4 +379,33 @@ const generateOrgLoginToken = async (req, res) => {
 	}
   };
 
-module.exports={loginSuperadmin,registerSuperadmin,getclients,getadmins,deleteclient,deleteadmin,registeradmin,registerclient,generateOrgLoginToken,validateSuperadminToken}
+const generateAdminLoginToken = async (req, res) => {
+  try {
+    const adminId = req.params.id;
+    const admin = await Admin.findById(adminId);
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'Admin not found' });
+    }
+
+    const token = jwt.sign({ 
+      id: admin._id,
+    }, process.env.JWT_SECRET, {
+      expiresIn: '5h'
+    });
+    
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: admin._id,
+        name: admin.name,
+        email: admin.email
+      }
+    });
+  } catch (error) {
+    console.error('Generate admin login token error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports={loginSuperadmin,registerSuperadmin,getclients,getadmins,deleteclient,deleteadmin,registeradmin,registerclient,generateOrgLoginToken,validateSuperadminToken,generateAdminLoginToken}
