@@ -292,7 +292,7 @@ router.post("/callback", async (req, res) => {
                 if (req.clientId === "CLI147189HIGB") {
                   try {
                     // await axios.post(
-                    //   `https://test.ailisher.com/api/clients/${req.clientId}/telegram/send-text`,
+                    //   `http://localhost:4000/api/clients/${req.clientId}/telegram/send-text`,
                     //   {
                     //     text: `✅ <b>Paid to Mobishaala</b>\n\n💰<b>Total Amount:</b> ₹${creditsToAdd}\n🏦 <b>Net Amount:</b> ₹${creditsToAdd}\n👤 <b>${paymentDoc.customerPhone}</b> (${paymentDoc.customerName})\n🆔 <b>Order No:</b> ${orderId}\n📦 <b>Plan:</b> ${plan.name}`,
                     //   }

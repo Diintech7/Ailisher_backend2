@@ -1,13 +1,13 @@
 {
   "info": {
     "name": "Ailishar Platform - Complete API Collection",
-    "description": "Full API collection for Ailishar backend. Base URL: https://test.ailisher.com\n\nVariables:\n- base_url: https://test.ailisher.com\n- token: <your JWT token>\n- client_id: <your client ID>\n- user_id: <user ObjectId>",
+    "description": "Full API collection for Ailishar backend. Base URL: http://localhost:4000\n\nVariables:\n- base_url: http://localhost:4000\n- token: <your JWT token>\n- client_id: <your client ID>\n- user_id: <user ObjectId>",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "base_url",
-      "value": "https://test.ailisher.com",
+      "value": "http://localhost:4000",
       "type": "string"
     },
     {

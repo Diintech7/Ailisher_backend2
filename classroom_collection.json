@@ -1,0 +1,466 @@
+{
+  "info": {
+    "_postman_id": "8bfa26bd-90a8-4235-961a-f11228218bac",
+    "name": "Classroom Collection",
+    "description": "API collection for Ailisher Classroom Exams mobile-client integration including Auth.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "POST /api/clients/:clientId/mobile/auth/login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mobile\": \"9876543210\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/auth/login",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "auth",
+            "login"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}",
+              "description": "The client identifier"
+            }
+          ]
+        },
+        "description": "Send a login OTP via WhatsApp to the user's mobile number."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"9876543210\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "clients",
+                ":clientId",
+                "mobile",
+                "auth",
+                "login"
+              ],
+              "variable": [
+                {
+                  "key": "clientId",
+                  "value": "your_client_id_here"
+                }
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"success\": true,\n  \"responseCode\": 1562,\n  \"otp_required\": true,\n  \"message\": \"OTP sent to WhatsApp. Please verify to login.\",\n  \"client_id\": \"your_client_id_here\",\n  \"mobile\": \"9876543210\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "POST /api/clients/:clientId/mobile/auth/verify-login-otp",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mobile\": \"9876543210\",\n  \"otp\": \"123456\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/auth/verify-login-otp",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "auth",
+            "verify-login-otp"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}",
+              "description": "The client identifier"
+            }
+          ]
+        },
+        "description": "Verify the WhatsApp OTP received and complete user login. Returns the Bearer token."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"9876543210\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/auth/verify-login-otp",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "clients",
+                ":clientId",
+                "mobile",
+                "auth",
+                "verify-login-otp"
+              ],
+              "variable": [
+                {
+                  "key": "clientId",
+                  "value": "your_client_id_here"
+                }
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"success\": true,\n  \"responseCode\": 1590,\n  \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n  \"auth_type\": \"mobile\",\n  \"is_profile_complete\": true,\n  \"is_new_user\": false,\n  \"user_id\": \"60f85c18a9ef383bc128218b\",\n  \"email\": null,\n  \"mobile\": \"9876543210\",\n  \"client_id\": \"your_client_id_here\",\n  \"client_name\": \"Your Client Business\",\n  \"login_count\": 5,\n  \"status\": \"LOGIN_SUCCESS\",\n  \"message\": \"Login successful.\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "GET /api/clients/:clientId/mobile/classroom-exams",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "classroom-exams"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}",
+              "description": "The client identifier"
+            }
+          ]
+        },
+        "description": "Fetch all classroom exams for a specific client from the database/partner API."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "clients",
+                ":clientId",
+                "mobile",
+                "classroom-exams"
+              ],
+              "variable": [
+                {
+                  "key": "clientId",
+                  "value": "your_client_id_here"
+                }
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"success\": true,\n  \"exams\": [\n    {\n      \"exam_id\": \"exam-123\",\n      \"name\": \"JEE Mains 2026 Test\",\n      \"category\": \"Engineering\",\n      \"image_url\": \"https://test.3rdai.co/uploads/jee.jpg\",\n      \"description\": \"Comprehensive test series for JEE Mains preparation.\",\n      \"isSynced\": true,\n      \"syncedAt\": \"2026-06-01T11:30:00.000Z\"\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "GET /api/clients/:clientId/mobile/classroom-exams/:examId",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "classroom-exams",
+            ":examId"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}",
+              "description": "The client identifier"
+            },
+            {
+              "key": "examId",
+              "value": "exam-123",
+              "description": "The ID of the classroom exam to fetch"
+            }
+          ]
+        },
+        "description": "Retrieve the detailed paper, subject, chapter, topic, and subtopic tree for a specific classroom exam under a client."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "clients",
+                ":clientId",
+                "mobile",
+                "classroom-exams",
+                ":examId"
+              ],
+              "variable": [
+                {
+                  "key": "clientId",
+                  "value": "your_client_id_here"
+                },
+                {
+                  "key": "examId",
+                  "value": "exam-123"
+                }
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"success\": true,\n  \"exam\": {\n    \"exam_id\": \"exam-123\",\n    \"name\": \"JEE Mains 2026 Test\",\n    \"category\": \"Engineering\",\n    \"image_url\": \"https://test.3rdai.co/uploads/jee.jpg\",\n    \"description\": \"Comprehensive test series for JEE Mains preparation.\",\n    \"synced_at\": \"2026-06-01T11:30:00.000Z\"\n  },\n  \"tree\": [\n    {\n      \"paper_id\": \"paper-456\",\n      \"exam_id\": \"exam-123\",\n      \"name\": \"Paper 1\",\n      \"subjects\": [\n        {\n          \"subject_id\": \"sub-789\",\n          \"exam_id\": \"exam-123\",\n          \"paper_id\": \"paper-456\",\n          \"name\": \"Physics\",\n          \"color\": \"#3b82f6\",\n          \"chapter_count\": 1,\n          \"topic_count\": 1,\n          \"subtopic_count\": 1,\n          \"chapters\": [\n            {\n              \"chapter_id\": \"chap-101\",\n              \"subject_id\": \"sub-789\",\n              \"name\": \"Kinematics\",\n              \"topics\": [\n                {\n                  \"topic_id\": \"topic-202\",\n                  \"chapter_id\": \"chap-101\",\n                  \"name\": \"Projectile Motion\",\n                  \"subtopics\": [\n                    {\n                      \"subtopic_id\": \"subtop-303\",\n                      \"topic_id\": \"topic-202\",\n                      \"name\": \"Notes on Range & Height\",\n                      \"description\": \"Details and formulas for range and height calculations.\",\n                      \"notes\": \"Notes text content...\",\n                      \"created_at\": \"2026-06-01T11:30:00.000Z\"\n                    }\n                  ],\n                  \"created_at\": \"2026-06-01T11:30:00.000Z\"\n                }\n              ],\n              \"created_at\": \"2026-06-01T11:30:00.000Z\"\n            }\n          ],\n          \"created_at\": \"2026-06-01T11:30:00.000Z\"\n        }\n      ],\n      \"created_at\": \"2026-06-01T11:30:00.000Z\"\n    }\n  ],\n  \"isCached\": true\n}"
+        }
+      ]
+    },
+    {
+      "name": "POST /api/clients/:clientId/mobile/classroom-exams/:examId/sync",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/sync",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "classroom-exams",
+            ":examId",
+            "sync"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}",
+              "description": "The client identifier"
+            },
+            {
+              "key": "examId",
+              "value": "exam-123",
+              "description": "The ID of the classroom exam to sync"
+            }
+          ]
+        },
+        "description": "Force manual sync of exam details and structures from Vectorize API."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/sync",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "clients",
+                ":clientId",
+                "mobile",
+                "classroom-exams",
+                ":examId",
+                "sync"
+              ],
+              "variable": [
+                {
+                  "key": "clientId",
+                  "value": "your_client_id_here"
+                },
+                {
+                  "key": "examId",
+                  "value": "exam-123"
+                }
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"success\": true,\n  \"message\": \"Classroom data synced successfully\",\n  \"exam\": {\n    \"exam_id\": \"exam-123\",\n    \"name\": \"JEE Mains 2026 Test\",\n    \"category\": \"Engineering\",\n    \"image_url\": \"https://test.3rdai.co/uploads/jee.jpg\",\n    \"description\": \"Comprehensive test series for JEE Mains preparation.\",\n    \"synced_at\": \"2026-06-01T11:35:00.000Z\"\n  }\n}"
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:4000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "your_bearer_token_here",
+      "type": "string"
+    },
+    {
+      "key": "client_id",
+      "value": "your_client_id_here",
+      "type": "string"
+    }
+  ]
+}

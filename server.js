@@ -145,6 +145,16 @@ app.use('/api/notifications', notificationsRoutes)
 app.use('/api/organizations', organizationRoutes)
 app.use('/api/superadmin', superadminRoutes)
 app.use('/api/live-classes', liveClassesRoutes)
+app.use('/api/classroom-exams', require('./routes/classroomExam'));
+app.use(
+  '/api/clients/:clientId/mobile/classroom-exams',
+  checkClientAccess(),
+  (req, res, next) => {
+    req.clientId = req.params.clientId;
+    next();
+  },
+  require('./routes/classroomExam')
+);
 app.use('/api/admin/banners', adminBannersRoutes);
 app.use('/api/app-analytics', require("./routes/userAnalytics"))
 app.use(

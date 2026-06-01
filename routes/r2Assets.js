@@ -5,7 +5,7 @@ const { generatePresignedUrl } = require('../utils/r2');
 router.post('/presigned-upload', async (req, res) => {
   try {
     const { folder = 'uploads', filename, contentType = 'application/octet-stream' } = req.body;
-    
+
     if (!filename) {
       return res.status(400).json({ success: false, message: 'Filename is required' });
     }
@@ -13,15 +13,15 @@ router.post('/presigned-upload', async (req, res) => {
     const safeFilename = typeof filename === 'string' ? filename.replace(/[^a-zA-Z0-9.-]/g, '_') : 'file';
     const uniqueFilename = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${safeFilename}`;
     const key = `${folder}/${uniqueFilename}`;
-    
+
     const uploadUrl = await generatePresignedUrl(key, contentType);
-    
+
     res.json({
       success: true,
       data: {
         uploadUrl,
         key,
-        publicUrl: `https://test.ailisher.com/api/r2/view?key=${encodeURIComponent(key)}`
+        publicUrl: `http://localhost:4000/api/r2/view?key=${encodeURIComponent(key)}`
       }
     });
   } catch (error) {

@@ -434,8 +434,7 @@ const validateClient = async (req, res, next) => {
       status: "active",
     });
 
-    if(!client)
-    {
+    if (!client) {
       client = await OrgClient.findOne({
         userId: clientId,
         role: "client",
@@ -705,9 +704,8 @@ router.post("/login", validateClient, async (req, res) => {
     const clientId = req.params.clientId;
     const client = req.client;
     let org = null;
-    if(client.organization && client.organization !== null)
-    {
-    org = client.organization.toString()
+    if (client.organization && client.organization !== null) {
+      org = client.organization.toString()
     }
     if (!mobile || !validateMobile(mobile)) {
       return res.status(400).json({
@@ -841,7 +839,7 @@ router.post("/verify-login-otp", validateClient, async (req, res) => {
           // Send Telegram alert for new user
           try {
             await axios.post(
-              `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
+              `http://localhost:4000/api/clients/${clientId}/telegram/send-text`,
               {
                 text: `🆕 <b>New User Registered!</b>\n\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>User No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`,
               }
@@ -2081,7 +2079,7 @@ router.post("/resend-welcome-email", validateClient, async (req, res) => {
         message: "A valid email is required.",
       });
     }
-    
+
 
     const user = await MobileUser.findOne({
       email: emailNorm,
@@ -2267,9 +2265,8 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     const userId = req.user.id;
     const client = await User.findOne({ userId: clientId });
     let org = null;
-    if(client.organization && client.organization !== null)
-    {
-    org = client.organization.toString()
+    if (client.organization && client.organization !== null) {
+      org = client.organization.toString()
     }
     console.log(req.body)
     const account = await MobileUser.findOne({ _id: userId, clientId });
@@ -2316,12 +2313,11 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
     }
 
     await profile.save();
-    if(clientId === "CLI147189HIGB")
-    {
+    if (clientId === "CLI147189HIGB") {
       // Send Telegram alert for new user
       try {
         await axios.post(
-          `https://test.ailisher.com/api/clients/${clientId}/telegram/send-text`,
+          `http://localhost:4000/api/clients/${clientId}/telegram/send-text`,
           {
             text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${profile.name || "-"}\n📱 Contact: ${contactLabel}\n🎂 Age: ${profile.age || "-"}\n📝 Exams: ${profile.exams || []}\n🗣️ Native Language: ${profile.nativeLanguage || "-"}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
           }
@@ -2331,24 +2327,23 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
         // Don't fail the registration if Telegram fails
       }
     }
-    if(org === "68eceaefbc63e372b4906b67")
-      {
-        try {
-          const botToken = process.env.TELEGRAM_ORG_ALERT_BOT_TOKEN;
-          const chatId = process.env.TELEGRAM_ORG_ALERT_CHAT_ID;
-          if (!botToken || !chatId) {
-            console.warn(
-              "Org Telegram alert skipped: set TELEGRAM_ORG_ALERT_BOT_TOKEN and TELEGRAM_ORG_ALERT_CHAT_ID in .env"
-            );
-          } else {
-            const bot = new Telegraf(botToken);
-            const text = `📄 <b>New Profile Created in ${client.businessName}</b>\n\n👤 Name: ${profile.name || "-"}\n📱 Contact: ${contactLabel}\n🎂 Age: ${profile.age || "-"}\n📝 Exams: ${profile.exams || []}\n🗣️ Native Language: ${profile.nativeLanguage || "-"}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
-            await bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' });
-          }
-        } catch (error) {
-          console.error('Error sending text to Telegram:', error);
+    if (org === "68eceaefbc63e372b4906b67") {
+      try {
+        const botToken = process.env.TELEGRAM_ORG_ALERT_BOT_TOKEN;
+        const chatId = process.env.TELEGRAM_ORG_ALERT_CHAT_ID;
+        if (!botToken || !chatId) {
+          console.warn(
+            "Org Telegram alert skipped: set TELEGRAM_ORG_ALERT_BOT_TOKEN and TELEGRAM_ORG_ALERT_CHAT_ID in .env"
+          );
+        } else {
+          const bot = new Telegraf(botToken);
+          const text = `📄 <b>New Profile Created in ${client.businessName}</b>\n\n👤 Name: ${profile.name || "-"}\n📱 Contact: ${contactLabel}\n🎂 Age: ${profile.age || "-"}\n📝 Exams: ${profile.exams || []}\n🗣️ Native Language: ${profile.nativeLanguage || "-"}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+          await bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' });
         }
+      } catch (error) {
+        console.error('Error sending text to Telegram:', error);
       }
+    }
 
     // Token should be returned only after step 3 (profile saved).
     // For mobile flow, keep the same token used for this request.
@@ -2413,18 +2408,18 @@ router.get("/profile", authenticateMobileUser, async (req, res) => {
     }
 
     const profileOut = {
-        name: profile.name,
-        age: profile.age,
-        gender: profile.gender,
-        exams: profile.exams,
-        native_language: profile.nativeLanguage,
-        city:profile.city,
-        pincode:profile.pincode,
-        isEvaluator: profile.isEvaluator,
-        institute_name: client?.businessName,
-        institute_logo: client?.businessLogo,
-        created_at: profile.createdAt,
-        updated_at: profile.updatedAt,
+      name: profile.name,
+      age: profile.age,
+      gender: profile.gender,
+      exams: profile.exams,
+      native_language: profile.nativeLanguage,
+      city: profile.city,
+      pincode: profile.pincode,
+      isEvaluator: profile.isEvaluator,
+      institute_name: client?.businessName,
+      institute_logo: client?.businessLogo,
+      created_at: profile.createdAt,
+      updated_at: profile.updatedAt,
     };
     profileOut.email = account.email || null;
     profileOut.mobile = account.mobile || null;
@@ -2499,8 +2494,8 @@ router.put("/profile", authenticateMobileUser, async (req, res) => {
         gender: profile.gender,
         exams: profile.exams,
         native_language: profile.nativeLanguage,
-        city:profile.city,
-        pincode:profile.pincode
+        city: profile.city,
+        pincode: profile.pincode
       },
     });
   } catch (error) {
