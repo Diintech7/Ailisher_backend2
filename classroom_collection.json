@@ -481,7 +481,7 @@
             }
           ]
         },
-        "description": "Fetch all synced papers for the classroom."
+        "description": "Fetch all synced papers for the classroom. Excludes child arrays (subjects) for clean payloads."
       },
       "response": [
         {
@@ -501,7 +501,7 @@
           "status": "OK",
           "code": 200,
           "_postman_previewlanguage": "json",
-          "body": "{\n  \"success\": true,\n  \"papers\": [\n    {\n      \"paper_id\": \"paper-456\",\n      \"exam_id\": \"exam-123\",\n      \"name\": \"Paper 1\",\n      \"subjects\": []\n    }\n  ]\n}"
+          "body": "{\n  \"success\": true,\n  \"papers\": [\n    {\n      \"paper_id\": \"paper-456\",\n      \"exam_id\": \"exam-123\",\n      \"name\": \"Paper 1\",\n      \"created_at\": \"2026-06-01T11:30:00.000Z\"\n    }\n  ]\n}"
         }
       ]
     },
@@ -547,7 +547,7 @@
             }
           ]
         },
-        "description": "Get subjects under a specific paper."
+        "description": "Get subjects under a specific paper. Excludes nested chapters list."
       },
       "response": [
         {
@@ -567,7 +567,7 @@
           "status": "OK",
           "code": 200,
           "_postman_previewlanguage": "json",
-          "body": "{\n  \"success\": true,\n  \"subjects\": [\n    {\n      \"subject_id\": \"sub-789\",\n      \"exam_id\": \"exam-123\",\n      \"paper_id\": \"paper-456\",\n      \"name\": \"Physics\",\n      \"color\": \"#3b82f6\",\n      \"chapter_count\": 5,\n      \"topic_count\": 12,\n      \"subtopic_count\": 35\n    }\n  ]\n}"
+          "body": "{\n  \"success\": true,\n  \"subjects\": [\n    {\n      \"subject_id\": \"sub-789\",\n      \"exam_id\": \"exam-123\",\n      \"paper_id\": \"paper-456\",\n      \"name\": \"Physics\",\n      \"color\": \"#3b82f6\",\n      \"chapter_count\": 5,\n      \"topic_count\": 12,\n      \"subtopic_count\": 35,\n      \"created_at\": \"2026-06-01T11:30:00.000Z\"\n    }\n  ]\n}"
         }
       ]
     },
@@ -613,7 +613,7 @@
             }
           ]
         },
-        "description": "Get chapters of a subject."
+        "description": "Get chapters of a subject. Includes shallow topics array to preserve counting."
       },
       "response": [
         {
@@ -633,7 +633,7 @@
           "status": "OK",
           "code": 200,
           "_postman_previewlanguage": "json",
-          "body": "{\n  \"success\": true,\n  \"chapters\": [\n    {\n      \"chapter_id\": \"chap-101\",\n      \"subject_id\": \"sub-789\",\n      \"name\": \"Kinematics\",\n      \"topics\": []\n    }\n  ]\n}"
+          "body": "{\n  \"success\": true,\n  \"chapters\": [\n    {\n      \"chapter_id\": \"chap-101\",\n      \"subject_id\": \"sub-789\",\n      \"name\": \"Kinematics\",\n      \"created_at\": \"2026-06-01T11:30:00.000Z\",\n      \"topics\": [\n        {\n          \"topic_id\": \"topic-202\",\n          \"chapter_id\": \"chap-101\",\n          \"name\": \"Projectile Motion\"\n        }\n      ]\n    }\n  ]\n}"
         }
       ]
     },
@@ -679,7 +679,7 @@
             }
           ]
         },
-        "description": "Get topics inside a chapter."
+        "description": "Get topics inside a chapter. Includes shallow subtopics (IDs and Names) to preserve list counts."
       },
       "response": [
         {
@@ -699,7 +699,7 @@
           "status": "OK",
           "code": 200,
           "_postman_previewlanguage": "json",
-          "body": "{\n  \"success\": true,\n  \"topics\": [\n    {\n      \"topic_id\": \"topic-202\",\n      \"chapter_id\": \"chap-101\",\n      \"name\": \"Projectile Motion\",\n      \"subtopics\": []\n    }\n  ]\n}"
+          "body": "{\n  \"success\": true,\n  \"topics\": [\n    {\n      \"topic_id\": \"topic-202\",\n      \"chapter_id\": \"chap-101\",\n      \"name\": \"Projectile Motion\",\n      \"created_at\": \"2026-06-01T11:30:00.000Z\",\n      \"subtopics\": [\n        {\n          \"subtopic_id\": \"subtop-303\",\n          \"topic_id\": \"topic-202\",\n          \"name\": \"Notes on Range & Height\",\n          \"created_at\": \"2026-06-01T11:30:00.000Z\"\n        }\n      ]\n    }\n  ]\n}"
         }
       ]
     },
@@ -745,7 +745,7 @@
             }
           ]
         },
-        "description": "Get subtopics checklist under a topic."
+        "description": "Get subtopics checklist under a topic. Excludes heavy notes / description details."
       },
       "response": [
         {
@@ -765,7 +765,7 @@
           "status": "OK",
           "code": 200,
           "_postman_previewlanguage": "json",
-          "body": "{\n  \"success\": true,\n  \"subtopics\": [\n    {\n      \"subtopic_id\": \"subtop-303\",\n      \"topic_id\": \"topic-202\",\n      \"name\": \"Notes on Range & Height\",\n      \"description\": \"Details and formulas for range and height calculations.\",\n      \"notes\": \"Notes text content...\",\n      \"created_at\": \"2026-06-01T11:30:00.000Z\"\n    }\n  ]\n}"
+          "body": "{\n  \"success\": true,\n  \"subtopics\": [\n    {\n      \"subtopic_id\": \"subtop-303\",\n      \"topic_id\": \"topic-202\",\n      \"name\": \"Notes on Range & Height\",\n      \"created_at\": \"2026-06-01T11:30:00.000Z\"\n    }\n  ]\n}"
         }
       ]
     },
@@ -913,7 +913,7 @@
           "status": "OK",
           "code": 200,
           "_postman_previewlanguage": "json",
-          "body": "{\n  \"success\": true,\n  \"notes\": \"# प्रोजेक्टाइल मोशन नोट्स (Range & Height)\\n\\nप्रक्षेप्य गति (Projectile Motion) में मुख्य फ़ार्मुलों की व्याख्या:\\n\\n* **रेंज (R):** वह अधिकतम क्षैतिज दूरी जो प्रक्षेप्य तय करता है। सूत्र: (u^2 * sin(2*theta)) / g\\n* **ऊंचाई (H):** प्रक्षेप्य द्वारा प्राप्त अधिकतम ऊर्ध्वाधर ऊंचाई। सूत्र: (u^2 * sin^2(theta)) / 2g\"\n}"
+          "body": "{\n  \"success\": true,\n  \"notes\": \"# प्रोजेक्टाइल मोशन नोट्स (Range & Height)\\n\\nप्रक्षेप्य गति (Projectile Motion) में मुख्य फ़ार्मुलों की व्याख्या:\\n\\n* **रेंज (R):** वह अधिकतम क्षैतिज दूरी जो प्रक्षेप्य तय करता है। सूत्र: (u^2 * sin(2*theta)) / g\\n* **ऊंचाई (H):** प्रक्षेप्य द्वारा प्राप्त अधिकतम ऊर्ध्वाधर ऊंचाई। सूत्र: (u^2 * sin^2(theta)) / 2g\"\n        }"
         }
       ]
     }

@@ -263,7 +263,15 @@ exports.getPapers = async (req, res) => {
     const clientId = getClientId(req);
     const doc = await ClassroomExam.findOne({ exam_id: examId, clientId });
     if (!doc) return res.status(404).json({ success: false, message: 'Classroom not found' });
-    return res.status(200).json({ success: true, papers: doc.tree || [] });
+    
+    const rawPapers = doc.tree || [];
+    const papers = rawPapers.map(p => ({
+      paper_id: p.paper_id,
+      exam_id: p.exam_id,
+      name: p.name,
+      created_at: p.created_at
+    }));
+    return res.status(200).json({ success: true, papers });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -278,7 +286,20 @@ exports.getSubjects = async (req, res) => {
     if (!doc) return res.status(404).json({ success: false, message: 'Classroom not found' });
     const paper = doc.tree.find(p => p.paper_id === paperId);
     if (!paper) return res.status(404).json({ success: false, message: 'Paper not found' });
-    return res.status(200).json({ success: true, subjects: paper.subjects || [] });
+    
+    const rawSubjects = paper.subjects || [];
+    const subjects = rawSubjects.map(s => ({
+      subject_id: s.subject_id,
+      exam_id: s.exam_id,
+      paper_id: s.paper_id,
+      name: s.name,
+      color: s.color,
+      chapter_count: s.chapter_count || 0,
+      topic_count: s.topic_count || 0,
+      subtopic_count: s.subtopic_count || 0,
+      created_at: s.created_at
+    }));
+    return res.status(200).json({ success: true, subjects });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -301,7 +322,20 @@ exports.getChapters = async (req, res) => {
       }
     }
     if (!foundSubject) return res.status(404).json({ success: false, message: 'Subject not found' });
-    return res.status(200).json({ success: true, chapters: foundSubject.chapters || [] });
+    
+    const rawChapters = foundSubject.chapters || [];
+    const chapters = rawChapters.map(c => ({
+      chapter_id: c.chapter_id,
+      subject_id: c.subject_id,
+      name: c.name,
+      created_at: c.created_at,
+      topics: (c.topics || []).map(t => ({
+        topic_id: t.topic_id,
+        chapter_id: t.chapter_id,
+        name: t.name
+      }))
+    }));
+    return res.status(200).json({ success: true, chapters });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -327,7 +361,21 @@ exports.getTopics = async (req, res) => {
       if (foundChapter) break;
     }
     if (!foundChapter) return res.status(404).json({ success: false, message: 'Chapter not found' });
-    return res.status(200).json({ success: true, topics: foundChapter.topics || [] });
+    
+    const rawTopics = foundChapter.topics || [];
+    const topics = rawTopics.map(t => ({
+      topic_id: t.topic_id,
+      chapter_id: t.chapter_id,
+      name: t.name,
+      created_at: t.created_at,
+      subtopics: (t.subtopics || []).map(s => ({
+        subtopic_id: s.subtopic_id,
+        topic_id: s.topic_id,
+        name: s.name,
+        created_at: s.created_at
+      }))
+    }));
+    return res.status(200).json({ success: true, topics });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -356,7 +404,15 @@ exports.getSubtopics = async (req, res) => {
       if (foundTopic) break;
     }
     if (!foundTopic) return res.status(404).json({ success: false, message: 'Topic not found' });
-    return res.status(200).json({ success: true, subtopics: foundTopic.subtopics || [] });
+    
+    const rawSubtopics = foundTopic.subtopics || [];
+    const subtopics = rawSubtopics.map(s => ({
+      subtopic_id: s.subtopic_id,
+      topic_id: s.topic_id,
+      name: s.name,
+      created_at: s.created_at
+    }));
+    return res.status(200).json({ success: true, subtopics });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
