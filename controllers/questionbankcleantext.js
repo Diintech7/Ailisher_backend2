@@ -48,7 +48,7 @@ const cleanExtractedText = async (req, res) => {
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
             console.log(`Processing page ${i + 1}/${chunks.length} (${chunk.length} characters)`);
-            
+
             try {
                 const chunkResult = await processChunk(chunk, model, i + 1, chunks.length);
                 if (chunkResult.questions && chunkResult.questions.length > 0) {
@@ -129,7 +129,7 @@ const cleanExtractedTextStream = async (req, res) => {
         // Split text into chunks if it's too large
         const chunks = splitTextIntoChunks(preprocessed);
         console.log(`Split text into ${chunks.length} pages for streaming processing`);
-        
+
         // Debug: Log chunk details
         chunks.forEach((chunk, idx) => {
             console.log(`\n--- Chunk ${idx + 1} Details ---`);
@@ -153,7 +153,7 @@ const cleanExtractedTextStream = async (req, res) => {
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
             console.log(`Processing chunk ${i + 1}/${chunks.length} (${chunk.length} characters)`);
-            
+
             // Send chunk start status
             res.write(`data: ${JSON.stringify({
                 type: 'chunk_start',
@@ -161,14 +161,14 @@ const cleanExtractedTextStream = async (req, res) => {
                 totalChunks: chunks.length,
                 message: `Processing page ${i + 1}/${chunks.length}...`
             })}\n\n`);
-            
+
             try {
                 // Add delay between chunks to respect rate limits (except for first chunk)
                 if (i > 0) {
                     await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay between chunks
                 }
                 const chunkResult = await processChunk(chunk, model, i + 1, chunks.length);
-                
+
                 if (chunkResult.questions && chunkResult.questions.length > 0) {
                     // Adjust question numbers for subsequent chunks
                     const adjustedQuestions = chunkResult.questions.map((q, idx) => ({
@@ -195,28 +195,28 @@ const cleanExtractedTextStream = async (req, res) => {
 
             } catch (error) {
                 console.error(`Error processing chunk ${i + 1}:`, error);
-                
+
                 // Check if it's a rate limit error
                 const isRateLimit = error.message.includes('429') || error.message.includes('rate limit');
-                
+
                 // Send chunk error with specific message for rate limits
                 res.write(`data: ${JSON.stringify({
                     type: 'chunk_error',
                     chunkNumber: i + 1,
                     totalChunks: chunks.length,
                     error: error.message,
-                    message: isRateLimit 
-                        ? `Rate limit reached for page ${i + 1}. Please wait and try again.` 
+                    message: isRateLimit
+                        ? `Rate limit reached for page ${i + 1}. Please wait and try again.`
                         : `Error processing page ${i + 1}`,
                     isRateLimit: isRateLimit
                 })}\n\n`);
-                
+
                 // If it's a rate limit error, we might want to stop processing
                 if (isRateLimit) {
                     console.log('Rate limit reached, stopping chunk processing');
                     break;
                 }
-                
+
                 // Continue with other chunks even if one fails (for non-rate-limit errors)
             }
         }
@@ -239,14 +239,14 @@ const cleanExtractedTextStream = async (req, res) => {
 
     } catch (error) {
         console.error('Error in streaming text cleaning:', error);
-        
+
         // Send error event
         res.write(`data: ${JSON.stringify({
             type: 'error',
             error: error.message,
             message: 'Failed to process text'
         })}\n\n`);
-        
+
         res.end();
     }
 };
@@ -255,13 +255,13 @@ const cleanExtractedTextStream = async (req, res) => {
 const splitTextIntoChunks = (text, maxChunkSize = 2000) => {
     // First, try to split by page boundaries
     const pageChunks = splitTextByPages(text);
-    
+
     // If we have page-based chunks, use them
     if (pageChunks.length > 1) {
         console.log(`Split text into ${pageChunks.length} page-based chunks`);
         return pageChunks;
     }
-    
+
     // Fallback to the original chunking logic
     const chunks = [];
     const lines = text.split('\n');
@@ -270,7 +270,7 @@ const splitTextIntoChunks = (text, maxChunkSize = 2000) => {
 
     for (const line of lines) {
         const lineSize = line.length;
-        
+
         // If adding this line would exceed the chunk size, start a new chunk
         if (currentChunkSize + lineSize > maxChunkSize && currentChunk.trim()) {
             chunks.push(currentChunk.trim());
@@ -300,17 +300,17 @@ const splitTextByPages = (text) => {
     // Look for page boundary patterns like "--- Page 1 ---", "--- Page 2 ---", etc.
     const pagePattern = /---\s*Page\s*(\d+)\s*---/gi;
     const matches = [...text.matchAll(pagePattern)];
-    
+
     console.log(`Found ${matches.length} page boundaries in text`);
-    
+
     if (matches.length <= 1) {
         // If no page boundaries found or only one page, return the whole text as one chunk
         console.log('No page boundaries detected, using single chunk');
         return [text.trim()];
     }
-    
+
     const chunks = [];
-    
+
     // Handle the first page (from start to first page boundary)
     const firstPageEnd = matches[0].index;
     const firstChunk = text.substring(0, firstPageEnd).trim();
@@ -318,7 +318,7 @@ const splitTextByPages = (text) => {
         chunks.push(firstChunk);
         console.log(`Added first chunk with ${firstChunk.length} characters`);
     }
-    
+
     // Handle middle pages (between page boundaries)
     for (let i = 0; i < matches.length - 1; i++) {
         const currentMatch = matches[i];
@@ -331,7 +331,7 @@ const splitTextByPages = (text) => {
             console.log(`Skipping empty chunk between pages ${i + 1} and ${i + 2}`);
         }
     }
-    
+
     // Handle the last page (from last page boundary to end)
     const lastMatch = matches[matches.length - 1];
     const lastChunk = text.substring(lastMatch.index).trim();
@@ -341,20 +341,20 @@ const splitTextByPages = (text) => {
     } else {
         console.log(`Skipping empty final chunk`);
     }
-    
+
     // If we still have only one chunk, it means the page boundaries weren't properly detected
     if (chunks.length <= 1) {
         console.log('Page boundaries not properly detected, using single chunk');
         return [text.trim()];
     }
-    
+
     console.log(`Successfully split text into ${chunks.length} page-based chunks`);
-    
+
     // Debug: Log the first few characters of each chunk
     chunks.forEach((chunk, idx) => {
         console.log(`Chunk ${idx + 1} preview: "${chunk.substring(0, 100)}..."`);
     });
-    
+
     return chunks;
 };
 
@@ -476,20 +476,20 @@ const processChunk = async (chunkText, model, chunkNumber, totalChunks) => {
     console.log(`Chunk length: ${chunkText.length} characters`);
     console.log(`Chunk preview: "${chunkText.substring(0, 200)}..."`);
     console.log(`Chunk ends with: "...${chunkText.substring(chunkText.length - 100)}"`);
-    
+
     // Check if chunk has meaningful content
     if (!chunkText || chunkText.trim().length < 20) {
         console.log(`Chunk ${chunkNumber} has insufficient content, skipping`);
         return { questions: [], cleanedText: '' };
     }
-    
+
     // Check if chunk contains only page boundaries or whitespace
     const meaningfulContent = chunkText.replace(/---\s*Page\s*\d+\s*---/gi, '').trim();
     if (meaningfulContent.length < 10) {
         console.log(`Chunk ${chunkNumber} contains only page boundaries, skipping`);
         return { questions: [], cleanedText: '' };
     }
-    
+
     // use top-level allowedSubjects
 
     const systemPrompt = `You are an expert MCQ extractor and classifier.
@@ -624,7 +624,7 @@ Operational rules:
             let questions = [];
             const jsonParsed = tryParseQuestionsJson(cleaned);
             console.log(`Chunk ${chunkNumber} JSON parsing result:`, jsonParsed ? `${jsonParsed.length} questions` : 'null');
-            
+
             if (jsonParsed && Array.isArray(jsonParsed) && jsonParsed.length > 0) {
                 questions = jsonParsed;
             } else {
@@ -633,7 +633,7 @@ Operational rules:
                 questions = parseQuestionsFromText(cleaned);
                 console.log(`Chunk ${chunkNumber} fallback text parsing result:`, questions.length, 'questions');
             }
-            
+
             console.log(`Chunk ${chunkNumber} parsed ${questions.length} questions`);
 
             return {
@@ -645,14 +645,14 @@ Operational rules:
         } catch (error) {
             lastError = error;
             console.error(`Chunk ${chunkNumber} attempt ${attempt} failed:`, error.response?.data || error.message);
-            
+
             // If it's a rate limit error (429), wait longer
             if (error.response?.status === 429) {
                 const rateLimitDelay = Math.min(5000 * Math.pow(2, attempt - 1), 30000); // Max 30 seconds for rate limits
                 console.log(`Chunk ${chunkNumber}: Rate limit hit, waiting ${rateLimitDelay}ms before retry...`);
                 await new Promise(resolve => setTimeout(resolve, rateLimitDelay));
             }
-            
+
             // If this is the last attempt, throw the error
             if (attempt === maxRetries) {
                 throw new Error(`Chunk ${chunkNumber} failed after ${maxRetries} attempts: ${error.response?.data?.error?.message || error.message}`);
@@ -672,7 +672,7 @@ const parseQuestionsFromText = (text) => {
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
-        
+
         // Skip empty lines
         if (!line) continue;
 
@@ -688,7 +688,7 @@ const parseQuestionsFromText = (text) => {
                     explanation: currentExplanation
                 });
             }
-            
+
             // Start new question
             currentQuestion = questionMatch[2];
             currentOptions = [];
@@ -702,15 +702,15 @@ const parseQuestionsFromText = (text) => {
         if (optionMatch && currentQuestion) {
             const optionLetter = optionMatch[1];
             const optionText = optionMatch[2];
-            
+
             // Ensure we have exactly 4 options (A, B, C, D)
             const optionIndex = optionLetter.charCodeAt(0) - 65; // A=0, B=1, C=2, D=3
-            
+
             // Fill any missing options with empty strings
             while (currentOptions.length <= optionIndex) {
                 currentOptions.push('');
             }
-            
+
             currentOptions[optionIndex] = optionText;
             continue;
         }
@@ -742,11 +742,11 @@ const parseQuestionsFromText = (text) => {
     }
 
     // Filter out questions with insufficient options and validate structure
-    return questions.filter(q => 
-        q.questionText && 
-        q.questionText.trim() && 
-        q.options && 
-        Array.isArray(q.options) && 
+    return questions.filter(q =>
+        q.questionText &&
+        q.questionText.trim() &&
+        q.options &&
+        Array.isArray(q.options) &&
         q.options.length >= 2 &&
         q.options.some(opt => opt && opt.trim())
     );

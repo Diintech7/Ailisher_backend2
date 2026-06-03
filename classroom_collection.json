@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "8bfa26bd-90a8-4235-961a-f11228218bac",
     "name": "Classroom Collection",
-    "description": "API collection for Ailisher Classroom Exams mobile-client integration including Auth.",
+    "description": "API collection for Ailisher Classroom Exams mobile-client integration including Auth and AI Notes Generation.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -264,96 +264,6 @@
       ]
     },
     {
-      "name": "GET /api/clients/:clientId/mobile/classroom-exams/:examId",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{token}}",
-            "type": "text"
-          }
-        ],
-        "url": {
-          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId",
-          "host": [
-            "{{base_url}}"
-          ],
-          "path": [
-            "api",
-            "clients",
-            ":clientId",
-            "mobile",
-            "classroom-exams",
-            ":examId"
-          ],
-          "variable": [
-            {
-              "key": "clientId",
-              "value": "{{client_id}}",
-              "description": "The client identifier"
-            },
-            {
-              "key": "examId",
-              "value": "exam-123",
-              "description": "The ID of the classroom exam to fetch"
-            }
-          ]
-        },
-        "description": "Retrieve the detailed paper, subject, chapter, topic, and subtopic tree for a specific classroom exam under a client."
-      },
-      "response": [
-        {
-          "name": "Success Response",
-          "originalRequest": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "clients",
-                ":clientId",
-                "mobile",
-                "classroom-exams",
-                ":examId"
-              ],
-              "variable": [
-                {
-                  "key": "clientId",
-                  "value": "your_client_id_here"
-                },
-                {
-                  "key": "examId",
-                  "value": "exam-123"
-                }
-              ]
-            }
-          },
-          "status": "OK",
-          "code": 200,
-          "_postman_previewlanguage": "json",
-          "header": [
-            {
-              "key": "Content-Type",
-              "value": "application/json"
-            }
-          ],
-          "cookie": [],
-          "body": "{\n  \"success\": true,\n  \"exam\": {\n    \"exam_id\": \"exam-123\",\n    \"name\": \"JEE Mains 2026 Test\",\n    \"category\": \"Engineering\",\n    \"image_url\": \"https://test.3rdai.co/uploads/jee.jpg\",\n    \"description\": \"Comprehensive test series for JEE Mains preparation.\",\n    \"synced_at\": \"2026-06-01T11:30:00.000Z\"\n  },\n  \"tree\": [\n    {\n      \"paper_id\": \"paper-456\",\n      \"exam_id\": \"exam-123\",\n      \"name\": \"Paper 1\",\n      \"subjects\": [\n        {\n          \"subject_id\": \"sub-789\",\n          \"exam_id\": \"exam-123\",\n          \"paper_id\": \"paper-456\",\n          \"name\": \"Physics\",\n          \"color\": \"#3b82f6\",\n          \"chapter_count\": 1,\n          \"topic_count\": 1,\n          \"subtopic_count\": 1,\n          \"chapters\": [\n            {\n              \"chapter_id\": \"chap-101\",\n              \"subject_id\": \"sub-789\",\n              \"name\": \"Kinematics\",\n              \"topics\": [\n                {\n                  \"topic_id\": \"topic-202\",\n                  \"chapter_id\": \"chap-101\",\n                  \"name\": \"Projectile Motion\",\n                  \"subtopics\": [\n                    {\n                      \"subtopic_id\": \"subtop-303\",\n                      \"topic_id\": \"topic-202\",\n                      \"name\": \"Notes on Range & Height\",\n                      \"description\": \"Details and formulas for range and height calculations.\",\n                      \"notes\": \"Notes text content...\",\n                      \"created_at\": \"2026-06-01T11:30:00.000Z\"\n                    }\n                  ],\n                  \"created_at\": \"2026-06-01T11:30:00.000Z\"\n                }\n              ],\n              \"created_at\": \"2026-06-01T11:30:00.000Z\"\n            }\n          ],\n          \"created_at\": \"2026-06-01T11:30:00.000Z\"\n        }\n      ],\n      \"created_at\": \"2026-06-01T11:30:00.000Z\"\n    }\n  ],\n  \"isCached\": true\n}"
-        }
-      ]
-    },
-    {
       "name": "POST /api/clients/:clientId/mobile/classroom-exams/:examId/sync",
       "request": {
         "method": "POST",
@@ -442,6 +352,568 @@
           ],
           "cookie": [],
           "body": "{\n  \"success\": true,\n  \"message\": \"Classroom data synced successfully\",\n  \"exam\": {\n    \"exam_id\": \"exam-123\",\n    \"name\": \"JEE Mains 2026 Test\",\n    \"category\": \"Engineering\",\n    \"image_url\": \"https://test.3rdai.co/uploads/jee.jpg\",\n    \"description\": \"Comprehensive test series for JEE Mains preparation.\",\n    \"synced_at\": \"2026-06-01T11:35:00.000Z\"\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "GET /api/clients/:clientId/mobile/classroom-exams/:examId",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "classroom-exams",
+            ":examId"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}",
+              "description": "The client identifier"
+            },
+            {
+              "key": "examId",
+              "value": "exam-123",
+              "description": "The ID of the classroom exam to fetch"
+            }
+          ]
+        },
+        "description": "Retrieve the detailed paper, subject, chapter, topic, and subtopic tree for a specific classroom exam."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "clients",
+                ":clientId",
+                "mobile",
+                "classroom-exams",
+                ":examId"
+              ],
+              "variable": [
+                {
+                  "key": "clientId",
+                  "value": "your_client_id_here"
+                },
+                {
+                  "key": "examId",
+                  "value": "exam-123"
+                }
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"success\": true,\n  \"exam\": {\n    \"exam_id\": \"exam-123\",\n    \"name\": \"JEE Mains 2026 Test\",\n    \"category\": \"Engineering\",\n    \"image_url\": \"https://test.3rdai.co/uploads/jee.jpg\",\n    \"description\": \"Comprehensive test series for JEE Mains preparation.\",\n    \"synced_at\": \"2026-06-01T11:30:00.000Z\"\n  },\n  \"tree\": [\n    {\n      \"paper_id\": \"paper-456\",\n      \"exam_id\": \"exam-123\",\n      \"name\": \"Paper 1\",\n      \"subjects\": [\n        {\n          \"subject_id\": \"sub-789\",\n          \"exam_id\": \"exam-123\",\n          \"paper_id\": \"paper-456\",\n          \"name\": \"Physics\",\n          \"color\": \"#3b82f6\",\n          \"chapter_count\": 1,\n          \"topic_count\": 1,\n          \"subtopic_count\": 1,\n          \"chapters\": [\n            {\n              \"chapter_id\": \"chap-101\",\n              \"subject_id\": \"sub-789\",\n              \"name\": \"Kinematics\",\n              \"topics\": [\n                {\n                  \"topic_id\": \"topic-202\",\n                  \"chapter_id\": \"chap-101\",\n                  \"name\": \"Projectile Motion\",\n                  \"subtopics\": [\n                    {\n                      \"subtopic_id\": \"subtop-303\",\n                      \"topic_id\": \"topic-202\",\n                      \"name\": \"Notes on Range & Height\",\n                      \"description\": \"Details and formulas for range and height calculations.\",\n                      \"notes\": \"Notes text content...\",\n                      \"created_at\": \"2026-06-01T11:30:00.000Z\"\n                    }\n                  ],\n                  \"created_at\": \"2026-06-01T11:30:00.000Z\"\n                }\n              ],\n              \"created_at\": \"2026-06-01T11:30:00.000Z\"\n            }\n          ],\n          \"created_at\": \"2026-06-01T11:30:00.000Z\"\n        }\n      ],\n      \"created_at\": \"2026-06-01T11:30:00.000Z\"\n    }\n  ],\n  \"isCached\": true\n}"
+        }
+      ]
+    },
+    {
+      "name": "GET /api/clients/:clientId/mobile/classroom-exams/:examId/papers",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/papers",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "classroom-exams",
+            ":examId",
+            "papers"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}"
+            },
+            {
+              "key": "examId",
+              "value": "exam-123"
+            }
+          ]
+        },
+        "description": "Fetch all synced papers for the classroom."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/papers"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"papers\": [\n    {\n      \"paper_id\": \"paper-456\",\n      \"exam_id\": \"exam-123\",\n      \"name\": \"Paper 1\",\n      \"subjects\": []\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "GET /api/clients/:clientId/mobile/classroom-exams/:examId/papers/:paperId/subjects",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/papers/:paperId/subjects",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "classroom-exams",
+            ":examId",
+            "papers",
+            ":paperId",
+            "subjects"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}"
+            },
+            {
+              "key": "examId",
+              "value": "exam-123"
+            },
+            {
+              "key": "paperId",
+              "value": "paper-456"
+            }
+          ]
+        },
+        "description": "Get subjects under a specific paper."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/papers/:paperId/subjects"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"subjects\": [\n    {\n      \"subject_id\": \"sub-789\",\n      \"exam_id\": \"exam-123\",\n      \"paper_id\": \"paper-456\",\n      \"name\": \"Physics\",\n      \"color\": \"#3b82f6\",\n      \"chapter_count\": 5,\n      \"topic_count\": 12,\n      \"subtopic_count\": 35\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "GET /api/clients/:clientId/mobile/classroom-exams/:examId/subjects/:subjectId/chapters",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/subjects/:subjectId/chapters",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "classroom-exams",
+            ":examId",
+            "subjects",
+            ":subjectId",
+            "chapters"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}"
+            },
+            {
+              "key": "examId",
+              "value": "exam-123"
+            },
+            {
+              "key": "subjectId",
+              "value": "sub-789"
+            }
+          ]
+        },
+        "description": "Get chapters of a subject."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/subjects/:subjectId/chapters"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"chapters\": [\n    {\n      \"chapter_id\": \"chap-101\",\n      \"subject_id\": \"sub-789\",\n      \"name\": \"Kinematics\",\n      \"topics\": []\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "GET /api/clients/:clientId/mobile/classroom-exams/:examId/chapters/:chapterId/topics",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/chapters/:chapterId/topics",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "classroom-exams",
+            ":examId",
+            "chapters",
+            ":chapterId",
+            "topics"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}"
+            },
+            {
+              "key": "examId",
+              "value": "exam-123"
+            },
+            {
+              "key": "chapterId",
+              "value": "chap-101"
+            }
+          ]
+        },
+        "description": "Get topics inside a chapter."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/chapters/:chapterId/topics"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"topics\": [\n    {\n      \"topic_id\": \"topic-202\",\n      \"chapter_id\": \"chap-101\",\n      \"name\": \"Projectile Motion\",\n      \"subtopics\": []\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "GET /api/clients/:clientId/mobile/classroom-exams/:examId/topics/:topicId/subtopics",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/topics/:topicId/subtopics",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "classroom-exams",
+            ":examId",
+            "topics",
+            ":topicId",
+            "subtopics"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}"
+            },
+            {
+              "key": "examId",
+              "value": "exam-123"
+            },
+            {
+              "key": "topicId",
+              "value": "topic-202"
+            }
+          ]
+        },
+        "description": "Get subtopics checklist under a topic."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/topics/:topicId/subtopics"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"subtopics\": [\n    {\n      \"subtopic_id\": \"subtop-303\",\n      \"topic_id\": \"topic-202\",\n      \"name\": \"Notes on Range & Height\",\n      \"description\": \"Details and formulas for range and height calculations.\",\n      \"notes\": \"Notes text content...\",\n      \"created_at\": \"2026-06-01T11:30:00.000Z\"\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "GET /api/clients/:clientId/mobile/classroom-exams/:examId/subtopics/:subtopicId",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/subtopics/:subtopicId",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "classroom-exams",
+            ":examId",
+            "subtopics",
+            ":subtopicId"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}"
+            },
+            {
+              "key": "examId",
+              "value": "exam-123"
+            },
+            {
+              "key": "subtopicId",
+              "value": "subtop-303"
+            }
+          ]
+        },
+        "description": "Fetch detailed subtopic content with AI notes."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/subtopics/:subtopicId"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"subtopic\": {\n    \"subtopic_id\": \"subtop-303\",\n    \"topic_id\": \"topic-202\",\n    \"name\": \"Notes on Range & Height\",\n    \"description\": \"Details and formulas for range and height calculations.\",\n    \"notes\": \"# Range and Height Formulas\\n\\nHere are the formulas generated for projectile motion range and height:\\n\\n* **Range (R):** (u^2 * sin(2*theta)) / g\\n* **Maximum Height (H):** (u^2 * sin^2(theta)) / 2g\",\n    \"created_at\": \"2026-06-01T11:30:00.000Z\"\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "POST /api/clients/:clientId/mobile/classroom-exams/:examId/subtopics/:subtopicId/generate-notes",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"language\": \"Hindi\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/subtopics/:subtopicId/generate-notes",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clients",
+            ":clientId",
+            "mobile",
+            "classroom-exams",
+            ":examId",
+            "subtopics",
+            ":subtopicId",
+            "generate-notes"
+          ],
+          "variable": [
+            {
+              "key": "clientId",
+              "value": "{{client_id}}"
+            },
+            {
+              "key": "examId",
+              "value": "exam-123"
+            },
+            {
+              "key": "subtopicId",
+              "value": "subtop-303"
+            }
+          ]
+        },
+        "description": "Trigger AI generation of notes in a specific language (English, Hindi, Hinglish)."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"language\": \"Hindi\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/clients/:clientId/mobile/classroom-exams/:examId/subtopics/:subtopicId/generate-notes"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n  \"success\": true,\n  \"notes\": \"# प्रोजेक्टाइल मोशन नोट्स (Range & Height)\\n\\nप्रक्षेप्य गति (Projectile Motion) में मुख्य फ़ार्मुलों की व्याख्या:\\n\\n* **रेंज (R):** वह अधिकतम क्षैतिज दूरी जो प्रक्षेप्य तय करता है। सूत्र: (u^2 * sin(2*theta)) / g\\n* **ऊंचाई (H):** प्रक्षेप्य द्वारा प्राप्त अधिकतम ऊर्ध्वाधर ऊंचाई। सूत्र: (u^2 * sin^2(theta)) / 2g\"\n}"
         }
       ]
     }

@@ -17,6 +17,9 @@ router.get('/users', clientController.getAllUsers);
 // POST /api/clients/:clientId/mobile/auth/profile
 router.get('/userprofile', clientController.getuserprofile);
 
+//get all orders for client users
+router.get('/orders', clientController.getClientOrders);
+
 //get all credit recharge plans
 router.get('/credit-recharge-plans', clientController.getCreditRechargePlans);
 

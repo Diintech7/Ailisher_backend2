@@ -12,6 +12,8 @@ const ObjectiveTest = require('../models/ObjectiveTest');
 const { generateGetPresignedUrl } = require('../utils/r2');
 const { default: mongoose } = require('mongoose');
 const AppAnalytics = require('../models/AppAnalytics');
+const MobileUser = require('../models/MobileUser');
+const Payment = require('../models/Payment');
 
 // Get client dashboard data
 exports.getDashboard = async (req, res) => {
@@ -282,6 +284,40 @@ exports.getuserprofile = async (req, res) => {
     });
   }
 }
+
+exports.getClientOrders = async (req, res) => {
+  try {
+    const clientId = req.user.userId;
+    if (!clientId) {
+      return res.status(400).json({ success: false, message: 'Missing client context' });
+    }
+
+    // 1. Find all users under this client
+    const clientUsers = await MobileUser.find({ clientId }).select('_id');
+    const userIds = clientUsers.map(u => u._id);
+
+    // 2. Find all payments for these users
+    const payments = await Payment.find({ userId: { $in: userIds } })
+      .populate('userId', 'mobile clientId')
+      .populate('planId', 'name')
+      .populate('workbookIds', 'name')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      count: payments.length,
+      data: payments
+    });
+  } catch (error) {
+    console.error('Error fetching client orders:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching client orders',
+      error: error.message
+    });
+  }
+};
 
 // Get client by ID
 exports.getClientById = async (req, res) => {
