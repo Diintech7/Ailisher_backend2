@@ -25,6 +25,16 @@ const UserPlanSchema = new mongoose.Schema({
     // required: true,
     // index: true
   },
+  examId: {
+    type: String,
+    default: null,
+    index: true
+  },
+  subjectId: {
+    type: String,
+    default: null,
+    index: true
+  },
   clientId: {
     type: String,
     default: null,

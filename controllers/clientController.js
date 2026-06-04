@@ -9,6 +9,7 @@ const Asset = require('../models/Asset');
 const DatastoreItem = require('../models/DatastoreItem');
 const SubjectiveTest = require('../models/SubjectiveTest');
 const ObjectiveTest = require('../models/ObjectiveTest');
+const ClassroomExam = require('../models/ClassroomExam');
 const { generateGetPresignedUrl } = require('../utils/r2');
 const { default: mongoose } = require('mongoose');
 const AppAnalytics = require('../models/AppAnalytics');
@@ -497,21 +498,55 @@ exports.getCreditRechargePlans = async (req,res) => {
           if(item.referenceId && item.itemType) {
             try {
               let referencedItem = null;
-              item.referenceId = new mongoose.Types.ObjectId(item.referenceId)
-              switch(item.itemType.toLowerCase()) {
+              const lowerItemType = item.itemType.toLowerCase();
+              const isObjectId = mongoose.Types.ObjectId.isValid(item.referenceId);
+              
+              if (isObjectId && !['classroom', 'classroom-exam', 'classroom-subject'].includes(lowerItemType)) {
+                item.referenceId = new mongoose.Types.ObjectId(item.referenceId);
+              }
+              
+              switch(lowerItemType) {
                 case 'book':
-                  referencedItem = await Book.findById(item.referenceId);
+                  if (isObjectId) referencedItem = await Book.findById(item.referenceId);
                   break;
                 case 'workbook':
-                  referencedItem = await Workbook.findById(item.referenceId);
+                  if (isObjectId) referencedItem = await Workbook.findById(item.referenceId);
                   break;
                 case 'objective test':
                 case 'objective-test':
-                  referencedItem = await ObjectiveTest.findById(item.referenceId);
+                  if (isObjectId) referencedItem = await ObjectiveTest.findById(item.referenceId);
                   break;
                 case 'subjective test':
                 case 'subjective-test':
-                  referencedItem = await SubjectiveTest.findById(item.referenceId);
+                  if (isObjectId) referencedItem = await SubjectiveTest.findById(item.referenceId);
+                  break;
+                case 'classroom':
+                case 'classroom-exam':
+                  referencedItem = await ClassroomExam.findOne({ exam_id: item.referenceId });
+                  break;
+                case 'classroom-subject':
+                  const examDoc = await ClassroomExam.findOne({ "tree.subjects.subject_id": item.referenceId });
+                  if (examDoc) {
+                    let foundSubject = null;
+                    for (const paper of examDoc.tree || []) {
+                      for (const sub of paper.subjects || []) {
+                        if (sub.subject_id === item.referenceId) {
+                          foundSubject = sub;
+                          break;
+                        }
+                      }
+                      if (foundSubject) break;
+                    }
+                    if (foundSubject) {
+                      referencedItem = {
+                        _id: foundSubject.subject_id,
+                        name: foundSubject.name,
+                        title: foundSubject.name,
+                        description: `Subject in ${examDoc.name}`,
+                        image_url: examDoc.image_url
+                      };
+                    }
+                  }
                   break;
                 default:
                   console.log(`Unknown item type: ${item.itemType}`);
@@ -522,7 +557,7 @@ exports.getCreditRechargePlans = async (req,res) => {
                     name: referencedItem.name || referencedItem.title,
                     hasImageKey: !!referencedItem.imageKey,
                     hasCoverImageKey: !!referencedItem.coverImageKey,
-                    hasImageUrl: !!referencedItem.imageUrl
+                    hasImageUrl: !!referencedItem.imageUrl || !!referencedItem.image_url
                   });
                   
                   // Generate image URL for referenced item
@@ -542,6 +577,9 @@ exports.getCreditRechargePlans = async (req,res) => {
                     }
                   } else if(referencedItem.imageUrl) {
                     console.log('Using existing image URL:', referencedItem.imageUrl);
+                  } else if(referencedItem.image_url) {
+                    referencedItem.imageUrl = referencedItem.image_url;
+                    console.log('Using classroom image URL:', referencedItem.imageUrl);
                   } else {
                     console.log('No image key or URL found for item');
                   }
@@ -552,7 +590,7 @@ exports.getCreditRechargePlans = async (req,res) => {
                     title: referencedItem.title || referencedItem.name,
                     description: referencedItem.description || referencedItem.summary,
                     coverImageUrl: referencedItem.coverImageUrl,
-                    imageUrl: referencedItem.imageUrl
+                    imageUrl: referencedItem.imageUrl || referencedItem.image_url
                   };
                 }
             } catch(refError) {
@@ -608,31 +646,62 @@ exports.getCreditRechargePlanById = async (req, res) => {
         if(item.referenceId && item.itemType) {
           try {
             let referencedItem = null;
+            const lowerItemType = item.itemType.toLowerCase();
+            const isObjectId = mongoose.Types.ObjectId.isValid(item.referenceId);
             
-            // Convert referenceId to ObjectId
-            item.referenceId = new mongoose.Types.ObjectId(item.referenceId);
+            if (isObjectId && !['classroom', 'classroom-exam', 'classroom-subject'].includes(lowerItemType)) {
+              item.referenceId = new mongoose.Types.ObjectId(item.referenceId);
+            }
             
-            switch(item.itemType.toLowerCase()) {
+            switch(lowerItemType) {
               case 'book':
-                referencedItem = await Book.findById(item.referenceId);
+                if (isObjectId) referencedItem = await Book.findById(item.referenceId);
                 break;
               case 'workbook':
-                referencedItem = await Workbook.findById(item.referenceId);
+                if (isObjectId) referencedItem = await Workbook.findById(item.referenceId);
                 break;
               case 'objective test':
               case 'objective-test':
-                referencedItem = await ObjectiveTest.findById(item.referenceId);
+                if (isObjectId) referencedItem = await ObjectiveTest.findById(item.referenceId);
                 break;
               case 'subjective test':
               case 'subjective-test':
-                referencedItem = await SubjectiveTest.findById(item.referenceId);
+                if (isObjectId) referencedItem = await SubjectiveTest.findById(item.referenceId);
                 break;
               case 'asset':
-                referencedItem = await Asset.findById(item.referenceId);
+                if (isObjectId) referencedItem = await Asset.findById(item.referenceId);
                 break;
               case 'datastore':
               case 'datastoreitem':
-                referencedItem = await DatastoreItem.findById(item.referenceId);
+                if (isObjectId) referencedItem = await DatastoreItem.findById(item.referenceId);
+                break;
+              case 'classroom':
+              case 'classroom-exam':
+                referencedItem = await ClassroomExam.findOne({ exam_id: item.referenceId });
+                break;
+              case 'classroom-subject':
+                const examDoc = await ClassroomExam.findOne({ "tree.subjects.subject_id": item.referenceId });
+                if (examDoc) {
+                  let foundSubject = null;
+                  for (const paper of examDoc.tree || []) {
+                    for (const sub of paper.subjects || []) {
+                      if (sub.subject_id === item.referenceId) {
+                        foundSubject = sub;
+                        break;
+                      }
+                    }
+                    if (foundSubject) break;
+                  }
+                  if (foundSubject) {
+                    referencedItem = {
+                      _id: foundSubject.subject_id,
+                      name: foundSubject.name,
+                      title: foundSubject.name,
+                      description: `Subject in ${examDoc.name}`,
+                      image_url: examDoc.image_url
+                    };
+                  }
+                }
                 break;
               default:
                 console.log(`Unknown item type: ${item.itemType}`);
@@ -643,7 +712,7 @@ exports.getCreditRechargePlanById = async (req, res) => {
                 name: referencedItem.name || referencedItem.title,
                 hasImageKey: !!referencedItem.imageKey,
                 hasCoverImageKey: !!referencedItem.coverImageKey,
-                hasImageUrl: !!referencedItem.imageUrl
+                hasImageUrl: !!referencedItem.imageUrl || !!referencedItem.image_url
               });
               
               // Generate image URL for referenced item
@@ -663,6 +732,9 @@ exports.getCreditRechargePlanById = async (req, res) => {
                 }
               } else if(referencedItem.imageUrl) {
                 console.log('Using existing image URL:', referencedItem.imageUrl);
+              } else if(referencedItem.image_url) {
+                referencedItem.imageUrl = referencedItem.image_url;
+                console.log('Using classroom image URL:', referencedItem.imageUrl);
               } else {
                 console.log('No image key or URL found for item');
               }
@@ -673,7 +745,7 @@ exports.getCreditRechargePlanById = async (req, res) => {
                 title: referencedItem.title || referencedItem.name,
                 description: referencedItem.description || referencedItem.summary,
                 coverImageUrl: referencedItem.coverImageUrl,
-                imageUrl: referencedItem.imageUrl
+                imageUrl: referencedItem.imageUrl || referencedItem.image_url
               };
             }
           } catch(refError) {

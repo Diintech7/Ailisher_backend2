@@ -277,6 +277,27 @@ router.post("/callback", async (req, res) => {
                     startDate.getTime() + plan.duration * 24 * 60 * 60 * 1000
                   );
                 }
+
+                let examIdVal = null;
+                let subjectIdVal = null;
+
+                if (hasBundledItems) {
+                  try {
+                    const PlanItem = require("../models/PlanItem");
+                    const planItems = await PlanItem.find({ _id: { $in: plan.items } });
+                    for (const item of planItems) {
+                      const type = item.itemType ? item.itemType.toLowerCase() : "";
+                      if (type === "classroom" || type === "classroom-exam") {
+                        examIdVal = item.referenceId;
+                      } else if (type === "classroom-subject") {
+                        subjectIdVal = item.referenceId;
+                      }
+                    }
+                  } catch (itemErr) {
+                    console.error("Error fetching plan items for UserPlan details:", itemErr);
+                  }
+                }
+
                 const userPlan = new UserPlan({
                   userId: creditAccount.userId,
                   planId: plan._id,
@@ -286,6 +307,8 @@ router.post("/callback", async (req, res) => {
                   startDate,
                   endDate,
                   status: "active",
+                  examId: examIdVal,
+                  subjectId: subjectIdVal,
                 });
                 await userPlan.save();
                 // Send Telegram alert for payment successfull

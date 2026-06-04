@@ -59,6 +59,14 @@ const ClassroomExamSchema = new mongoose.Schema({
                       name: String,
                       description: String,
                       notes: String,
+                      reels: [
+                        {
+                          video_url: String,
+                          content_id: String,
+                          script: String,
+                          created_at: String
+                        }
+                      ],
                       created_at: String
                     }
                   ],
