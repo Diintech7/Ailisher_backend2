@@ -189,7 +189,7 @@ const deleteclient = async(req, res) => {
             });
         }
 
-        const client = await Client.findByIdAndDelete(id);
+        const client = await User.findOneAndDelete({ _id: id, role: 'client' });
         if (!client) {
             return res.status(404).json({
                 success: false,
@@ -298,7 +298,7 @@ const registerclient = async (req, res) => {
     } = req.body;
 
     // Check if client already exists
-    const existingClient = await Client.findOne({ email });
+    const existingClient = await User.findOne({ email: email.toLowerCase().trim() });
     if (existingClient) {
       return res.status(400).json({
         success: false,
@@ -309,19 +309,29 @@ const registerclient = async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create new client
-    const client = await Client.create({
-      name,
-      email,
+    // Create new client in User collection
+    const client = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
       password: hashedPassword,
-      businessName,
-      websiteUrl,
-      city,
-      pincode,
-      gstNo,
-      panNo,
-      aadharNo
+      role: 'client',
+      status: 'active',
+      businessName: businessName.trim(),
+      businessOwnerName: name.trim(),
+      businessGSTNumber: gstNo ? gstNo.trim() : '',
+      businessPANNumber: panNo ? panNo.trim() : '',
+      city: city ? city.trim() : '',
+      pinCode: pincode ? pincode.trim() : '',
+      businessWebsite: websiteUrl ? websiteUrl.trim() : null,
+      aadharNo: aadharNo ? aadharNo.trim() : '',
+      createdBy: req.superadmin ? req.superadmin._id : null,
+      assignedAdmins: [] // Super Admin created clients are private by default
     });
+
+    // Ensure user ID is generated
+    if (!client.userId) {
+      await client.generateUserId();
+    }
 
     // Remove password from response
     const clientResponse = client.toObject();
@@ -408,4 +418,121 @@ const generateAdminLoginToken = async (req, res) => {
   }
 };
 
-module.exports={loginSuperadmin,registerSuperadmin,getclients,getadmins,deleteclient,deleteadmin,registeradmin,registerclient,generateOrgLoginToken,validateSuperadminToken,generateAdminLoginToken}
+const updateAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, password, assignedClients } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Admin ID is required' });
+    }
+
+    const updateFields = { name, email };
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      updateFields.password = hashedPassword;
+    }
+
+    const admin = await Admin.findByIdAndUpdate(
+      id,
+      updateFields,
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'Admin not found' });
+    }
+
+    // Sync client access if assignedClients array is provided
+    if (assignedClients !== undefined) {
+      // 1. Remove this admin's ID from assignedAdmins of all clients
+      await User.updateMany(
+        { role: 'client' },
+        { $pull: { assignedAdmins: id } }
+      );
+
+      // 2. Add this admin's ID to assignedAdmins of selected clients
+      if (assignedClients && assignedClients.length > 0) {
+        await User.updateMany(
+          { _id: { $in: assignedClients }, role: 'client' },
+          { $addToSet: { assignedAdmins: id } }
+        );
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Admin updated successfully',
+      data: admin
+    });
+  } catch (error) {
+    console.error('Error updating admin:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to update admin' });
+  }
+};
+
+const updateClient = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      email,
+      password,
+      businessName,
+      websiteUrl,
+      city,
+      pincode,
+      gstNo,
+      panNo,
+      aadharNo,
+      assignedAdmins
+    } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Client ID is required' });
+    }
+
+    const updateFields = {
+      name,
+      email,
+      businessName,
+      businessWebsite: websiteUrl,
+      city,
+      pinCode: pincode,
+      businessGSTNumber: gstNo,
+      businessPANNumber: panNo,
+      aadharNo,
+    };
+
+    if (assignedAdmins !== undefined) {
+      updateFields.assignedAdmins = assignedAdmins;
+    }
+
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      updateFields.password = hashedPassword;
+    }
+
+    // Clients are stored in User model with role: "client"
+    const client = await User.findOneAndUpdate(
+      { _id: id, role: 'client' },
+      updateFields,
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!client) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Client updated successfully',
+      data: client
+    });
+  } catch (error) {
+    console.error('Error updating client:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to update client' });
+  }
+};
+
+module.exports={loginSuperadmin,registerSuperadmin,getclients,getadmins,deleteclient,deleteadmin,registeradmin,registerclient,generateOrgLoginToken,validateSuperadminToken,generateAdminLoginToken,updateAdmin,updateClient}

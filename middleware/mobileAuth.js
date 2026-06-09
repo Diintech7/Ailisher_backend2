@@ -263,6 +263,37 @@ const checkClientAccess = (allowedClients = []) => {
         status: client.status
       };
 
+      // Check feature access based on requested URL path (to support mobile app feature gating)
+      if (client.allowedFeatures) {
+        const url = req.originalUrl.toLowerCase();
+        
+        // Map URLs to their respective feature keys
+        const featureMapping = [
+          { path: '/classroom-exams', key: 'aiClassroom', defaultResponse: { success: true, exams: [] } },
+          { path: '/books', key: 'aiBooks', defaultResponse: { success: true, books: [] } },
+          { path: '/workbooks', key: 'aiWorkbook', defaultResponse: { success: true, workbooks: [] } },
+          { path: '/objectivetests', key: 'aiTests', defaultResponse: { success: true, tests: [] } },
+          { path: '/subjectivetests', key: 'aiTests', defaultResponse: { success: true, tests: [] } },
+          { path: '/aicourses', key: 'aiCourses', defaultResponse: { success: true, data: [] } },
+          { path: '/questionbank', key: 'questionBank', defaultResponse: { success: true, data: [] } },
+          { path: '/myquestion', key: 'myQuestion', defaultResponse: { success: true, data: [] } },
+          { path: '/datastore', key: 'datastore', defaultResponse: { success: true, data: [] } },
+          { path: '/reels', key: 'toolReels', defaultResponse: { success: true, count: 0, data: [] } },
+          { path: '/image-generator', key: 'toolImageGenerator', defaultResponse: { success: true, data: [] } }
+        ];
+
+        for (const mapping of featureMapping) {
+          const isAllowed = typeof client.allowedFeatures.get === 'function'
+            ? client.allowedFeatures.get(mapping.key)
+            : client.allowedFeatures[mapping.key];
+
+          if (url.includes(mapping.path) && isAllowed === false) {
+            console.log(`Access denied to disabled feature: ${mapping.key} for client: ${clientId}`);
+            return res.json(mapping.defaultResponse);
+          }
+        }
+      }
+
       console.log('Client access granted for:', client.businessName);
       next();
     } catch (error) {

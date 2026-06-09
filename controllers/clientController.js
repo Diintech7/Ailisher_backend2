@@ -223,13 +223,28 @@ function generateTempPassword() {
 // Get all clients
 exports.getAllClients = async (req, res) => {
   try {
-    const clients = await User.find({
+    const filter = {
       role: 'client',
       $or: [
         { organization: null },
         { organization: { $exists: false } }
       ]
-    })
+    };
+
+    // If req.admin exists, only fetch clients that are assigned to this admin or have no assigned admins (unmigrated)
+    if (req.admin) {
+      filter.$and = [
+        {
+          $or: [
+            { assignedAdmins: req.admin._id },
+            { assignedAdmins: { $exists: false } },
+            { assignedAdmins: { $size: 0 } }
+          ]
+        }
+      ];
+    }
+
+    const clients = await User.find(filter)
       .select('-password')
       .sort({ createdAt: -1 });
     

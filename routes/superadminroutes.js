@@ -10,7 +10,9 @@ const {
   registerclient,
   generateOrgLoginToken,
   validateSuperadminToken,
-  generateAdminLoginToken
+  generateAdminLoginToken,
+  updateAdmin,
+  updateClient
 } = require('../controllers/superadmincontroller');
 const { verifySuperadminToken } = require('../middleware/auth');
 const organizationController = require("../controllers/organizationController");
@@ -21,19 +23,23 @@ router.post('/login', loginSuperadmin);
 
 router.post('/register', registerSuperadmin);
 
-router.get('/validate', validateSuperadminToken);
+router.get('/validate', verifySuperadminToken, validateSuperadminToken);
 
-router.get('/getadmins', getadmins);
+router.get('/getadmins', verifySuperadminToken, getadmins);
 
-router.get('/getclients', getclients);
+router.get('/getclients', verifySuperadminToken, getclients);
 
-router.delete('/deleteadmin/:id', deleteadmin);
+router.delete('/deleteadmin/:id', verifySuperadminToken, deleteadmin);
 
-router.delete('/deleteclient/:id', deleteclient);
+router.delete('/deleteclient/:id', verifySuperadminToken, deleteclient);
 
-router.post('/registeradmin', registeradmin);
+router.post('/registeradmin', verifySuperadminToken, registeradmin);
 
-router.post('/registerclient', registerclient);
+router.post('/registerclient', verifySuperadminToken, registerclient);
+
+router.put('/admin/:id', verifySuperadminToken, updateAdmin);
+
+router.put('/client/:id', verifySuperadminToken, updateClient);
 
 // Organization management (superadmin)
 router.post('/organizations',verifySuperadminToken, organizationController.createOrganization);

@@ -94,6 +94,10 @@ const UserSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  aadharNo: {
+    type: String,
+    default: null
+  },
 
   // Auto-generated user ID for clients
   userId: {
@@ -102,12 +106,48 @@ const UserSchema = new mongoose.Schema({
     sparse: true // Only unique if not null
   },
 
+  allowedFeatures: {
+    type: Map,
+    of: Boolean,
+    default: {
+      aiBooks: true,
+      aiWorkbook: true,
+      aiTests: true,
+      aiCourses: true,
+      aiClassroom: true,
+      questionBank: true,
+      myQuestion: true,
+      datastore: true,
+      toolMarketing: true,
+      toolReels: true,
+      toolChats: true,
+      toolAiAgents: true,
+      toolWhatsapp: true,
+      toolTelegram: true,
+      toolImageGenerator: true,
+      toolCategoryManagement: true,
+      toolNotification: true,
+      toolAppBanners: true
+    }
+  },
+
   // Organization reference (each doc belongs to one org or none)
   organization: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
     default: null
   },
+
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin',
+    default: null
+  },
+
+  assignedAdmins: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin'
+  }],
 
   createdAt: {
     type: Date,

@@ -33,18 +33,19 @@ router.post("/login", adminController.login);
 // router.use(verifyAdminToken);
 
 // Client management routes
-router.get("/clients", clientsController.getAllClients);
-router.get("/users", clientsController.getAllUsers);
-router.get("/userprofile", adminController.getuserprofile);
-router.post("/clients", adminController.createClient); // Add new client
-router.get("/clients/:id", clientsController.getClientById);
-router.put("/clients/:id", clientsController.updateClient); // Update client
-router.put("/clients/:id/status", clientsController.updateClientStatus);
-router.delete("/clients/:id", clientsController.deleteClient);
+router.get("/clients", verifyAdminToken, clientsController.getAllClients);
+router.get("/users", verifyAdminToken, clientsController.getAllUsers);
+router.get("/userprofile", verifyAdminToken, adminController.getuserprofile);
+router.post("/clients", verifyAdminToken, adminController.createClient); // Add new client
+router.get("/clients/:id", verifyAdminToken, clientsController.getClientById);
+router.put("/clients/:id", verifyAdminToken, clientsController.updateClient); // Update client
+router.put("/clients/:id/status", verifyAdminToken, clientsController.updateClientStatus);
+router.delete("/clients/:id", verifyAdminToken, clientsController.deleteClient);
 
 // Generate login token for a client (for admin impersonation)
 router.post(
   "/clients/:id/login-token",
+  verifyAdminToken,
   adminController.generateClientLoginToken
 );
 

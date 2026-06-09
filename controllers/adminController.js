@@ -172,7 +172,9 @@ exports.createClient = async (req, res) => {
       businessLogo: businessLogo || null,
       businessWebsite: businessWebsite ? businessWebsite.trim() : null,
       businessYoutubeChannel: businessYoutubeChannel ? businessYoutubeChannel.trim() : null,
-      turnOverRange: turnOverRange || null
+      turnOverRange: turnOverRange || null,
+      createdBy: req.admin ? req.admin._id : null,
+      assignedAdmins: req.admin ? [req.admin._id] : []
     });
 
     // Ensure user ID is generated (fallback if pre-save hook fails)
@@ -256,6 +258,18 @@ exports.generateClientLoginToken = async (req, res) => {
     const client = await User.findById(clientId);
     if (!client || client.role !== 'client') {
       return res.status(404).json({ success: false, message: 'Client not found' });
+    }
+
+    // Check if the admin has access to this client (fallback: if assignedAdmins is not set/empty, default to true)
+    if (req.admin) {
+      const hasAccess = 
+        !client.assignedAdmins || 
+        client.assignedAdmins.length === 0 || 
+        client.assignedAdmins.some(adminId => String(adminId) === String(req.admin._id));
+      
+      if (!hasAccess) {
+        return res.status(403).json({ success: false, message: 'Access denied: You do not have access to this client.' });
+      }
     }
     console.log(client)
     // Generate a short-lived token for this client (e.g., 1 hour)

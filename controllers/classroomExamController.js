@@ -5,6 +5,7 @@ const PlanItem = require('../models/PlanItem');
 const CreditRechargePlan = require('../models/CreditRechargePlan');
 const UserPlan = require('../models/UserPlan');
 const { uploadFileToS3, generateGetPresignedUrl } = require('../utils/r2');
+const FormData = require('form-data');
 
 // Helper to resolve client ID
 const getClientId = (req) => {
@@ -369,6 +370,89 @@ exports.getExams = async (req, res) => {
         message: 'Server Error fetching classroom data'
       });
     }
+  }
+};
+
+// POST /api/classroom-exams - Create a new exam on partner server and sync locally
+exports.createExam = async (req, res) => {
+  try {
+    const { name, category, description, image_url } = req.body;
+    const clientId = getClientId(req);
+    
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Exam name is required'
+      });
+    }
+
+    const apiURL = process.env.VECTORIZE_API_URL || 'https://test.3rdai.co';
+    const appToken = process.env.VECTORIZE_APP_TOKEN || 'clt-2db63e7fbb785339128218bac891c01c35f09e23d28a018e';
+
+    console.log('Creating new exam on Vectorize API:', `${apiURL}/api/classroom/exams`);
+    
+    const response = await axios.post(`${apiURL}/api/classroom/exams`, {
+      name,
+      category: category || '',
+      description: description || '',
+      image_url: image_url || ''
+    }, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    if (response.data && response.data.success) {
+      const newExam = response.data.exam || response.data.data;
+      
+      const formatImageUrl = (url) => {
+        if (!url) return '';
+        if (url.startsWith('http://') || url.startsWith('https://')) return url;
+        return `${apiURL}${url.startsWith('/') ? '' : '/'}${url}`;
+      };
+
+      const newDoc = await ClassroomExam.findOneAndUpdate(
+        { exam_id: newExam.exam_id, clientId },
+        {
+          exam_id: newExam.exam_id,
+          name: newExam.name,
+          category: newExam.category,
+          image_url: formatImageUrl(newExam.image_url),
+          description: newExam.description,
+          clientId,
+          tree: [],
+          synced_at: new Date()
+        },
+        { upsert: true, new: true }
+      );
+
+      return res.status(201).json({
+        success: true,
+        message: 'Exam created successfully',
+        exam: {
+          exam_id: newDoc.exam_id,
+          name: newDoc.name,
+          category: newDoc.category,
+          image_url: newDoc.image_url,
+          description: newDoc.description,
+          isSynced: true,
+          syncedAt: newDoc.synced_at
+        }
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: response.data.message || 'Failed to create exam on partner server'
+      });
+    }
+  } catch (error) {
+    console.error('Error creating exam:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.response?.data?.message || error.message || 'Server Error creating classroom exam'
+    });
   }
 };
 
@@ -1272,5 +1356,296 @@ exports.getSubtopicReels = async (req, res) => {
     }
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get API configuration details
+const getApiConfig = () => {
+  const apiURL = process.env.VECTORIZE_API_URL || 'https://test.3rdai.co';
+  const appToken = process.env.VECTORIZE_APP_TOKEN || 'clt-2db63e7fbb785339128218bac891c01c35f09e23d28a018e';
+  return { apiURL, appToken };
+};
+
+// ======================================================
+// 📊 AI PYQs PROXY CONTROLLERS
+// ======================================================
+
+// GET /api/classroom-exams/pyq-sets
+exports.getPyqSets = async (req, res) => {
+  try {
+    const { apiURL, appToken } = getApiConfig();
+    const response = await axios.get(`${apiURL}/api/classroom/pyq-sets`, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error fetching PYQ sets:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// POST /api/classroom-exams/pyq-sets
+exports.createPyqSet = async (req, res) => {
+  try {
+    const { apiURL, appToken } = getApiConfig();
+    const response = await axios.post(`${apiURL}/api/classroom/pyq-sets`, req.body, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error creating PYQ set:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// POST /api/classroom-exams/pyq-sets/:pyqSetId/upload-pdf
+exports.uploadPyqPdf = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+    const { pyqSetId } = req.params;
+    const { apiURL, appToken } = getApiConfig();
+
+    const form = new FormData();
+    form.append('file', req.file.buffer, {
+      filename: req.file.originalname,
+      contentType: req.file.mimetype
+    });
+
+    const response = await axios.post(`${apiURL}/api/classroom/pyq-sets/${pyqSetId}/upload-pdf`, form, {
+      headers: {
+        'X-App-Token': appToken,
+        ...form.getHeaders()
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error uploading PYQ PDF:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// GET /api/classroom-exams/pyq-sets/:pyqSetId/questions
+exports.getPyqQuestions = async (req, res) => {
+  try {
+    const { pyqSetId } = req.params;
+    const { apiURL, appToken } = getApiConfig();
+    const response = await axios.get(`${apiURL}/api/classroom/pyq-sets/${pyqSetId}/questions`, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error fetching PYQ questions:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// POST /api/classroom-exams/pyqs/:pyqSetId/generate-transcript
+exports.generatePyqTranscript = async (req, res) => {
+  try {
+    const { pyqSetId } = req.params;
+    const { apiURL, appToken } = getApiConfig();
+    const response = await axios.post(`${apiURL}/api/classroom/pyqs/${pyqSetId}/generate-transcript`, req.body, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error generating PYQ transcript:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// GET /api/classroom-exams/pyq-sets/:pyqSetId/reels
+exports.getPyqReels = async (req, res) => {
+  try {
+    const { pyqSetId } = req.params;
+    const { apiURL, appToken } = getApiConfig();
+    const response = await axios.get(`${apiURL}/api/classroom/pyq-sets/${pyqSetId}/reels`, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error fetching PYQ reels:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// DELETE /api/classroom-exams/pyq-sets/reels/:reelId
+exports.deletePyqReel = async (req, res) => {
+  try {
+    const { reelId } = req.params;
+    const { apiURL, appToken } = getApiConfig();
+    const response = await axios.delete(`${apiURL}/api/classroom/pyq-sets/reels/${reelId}`, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error deleting PYQ reel:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// ======================================================
+// 📰 AI CURRENT AFFAIRS PROXY CONTROLLERS
+// ======================================================
+
+// GET /api/classroom-exams/current-affairs
+exports.getCurrentAffairs = async (req, res) => {
+  try {
+    const { apiURL, appToken } = getApiConfig();
+    const response = await axios.get(`${apiURL}/api/classroom/current-affairs`, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error fetching current affairs:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// POST /api/classroom-exams/current-affairs
+exports.createCurrentAffair = async (req, res) => {
+  try {
+    const { apiURL, appToken } = getApiConfig();
+    const response = await axios.post(`${apiURL}/api/classroom/current-affairs`, req.body, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error creating current affair:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// PUT /api/classroom-exams/current-affairs/:caTopicId
+exports.updateCurrentAffair = async (req, res) => {
+  try {
+    const { caTopicId } = req.params;
+    const { apiURL, appToken } = getApiConfig();
+    const response = await axios.put(`${apiURL}/api/classroom/current-affairs/${caTopicId}`, req.body, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error updating current affair:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// POST /api/classroom-exams/current-affairs/:caTopicId/upload-pdf
+exports.uploadCurrentAffairPdf = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+    const { caTopicId } = req.params;
+    const { apiURL, appToken } = getApiConfig();
+
+    const form = new FormData();
+    form.append('file', req.file.buffer, {
+      filename: req.file.originalname,
+      contentType: req.file.mimetype
+    });
+
+    const response = await axios.post(`${apiURL}/api/classroom/current-affairs/${caTopicId}/upload-pdf`, form, {
+      headers: {
+        'X-App-Token': appToken,
+        ...form.getHeaders()
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error uploading current affairs PDF:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// POST /api/classroom-exams/current-affairs/:caTopicId/generate-transcript
+exports.generateCurrentAffairTranscript = async (req, res) => {
+  try {
+    const { caTopicId } = req.params;
+    const { apiURL, appToken } = getApiConfig();
+    const response = await axios.post(`${apiURL}/api/classroom/current-affairs/${caTopicId}/generate-transcript`, req.body, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error generating current affairs transcript:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
+  }
+};
+
+// GET /api/classroom-exams/current-affairs/:caTopicId/reels
+exports.getCurrentAffairReels = async (req, res) => {
+  try {
+    const { caTopicId } = req.params;
+    const { apiURL, appToken } = getApiConfig();
+    const response = await axios.get(`${apiURL}/api/classroom/current-affairs/${caTopicId}/reels`, {
+      headers: {
+        'X-App-Token': appToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Error fetching current affairs reels:', error.message);
+    const status = error.response ? error.response.status : 500;
+    const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
+    return res.status(status).json(message);
   }
 };
