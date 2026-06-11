@@ -5,6 +5,8 @@ const MobileUser = require("../models/MobileUser");
 const UserProfile = require("../models/UserProfile");
 const UserAnswer = require("../models/UserAnswer");
 const Payment = require("../models/Payment");
+const Workbook = require("../models/Workbook");
+const CreditRechargePlan = require("../models/CreditRechargePlan");
 const MyBook = require("../models/MyBook");
 const MyWorkbook = require("../models/MyWorkbook");
 const TestResult = require("../models/TestResult");
@@ -151,7 +153,7 @@ router.get("/:userId", async (req, res) => {
     }
 
     // Verify target user belongs to same client
-    const user = await MobileUser.findOne({ _id: userId, clientId }).select("mobile clientId lastLoginAt loginCount createdAt isVerified");
+    const user = await MobileUser.findOne({ _id: userId, clientId }).select("email mobile clientId lastLoginAt loginCount createdAt isVerified");
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found for this client" });
     }
@@ -248,7 +250,9 @@ router.get("/:userId", async (req, res) => {
         { $group: { _id: null, totalPurchases: { $sum: 1 }, totalAmount: { $sum: "$amount" }, lastPurchaseAt: { $max: "$createdAt" } } }
       ]).then(r => r[0]),
       Payment.findOne({ userId: user._id, status: "SUCCESS" })
-        .select("orderId amount currency createdAt workbookIds planId gatewayName paymentMode")
+        .select("orderId amount currency createdAt workbookIds planId gatewayName paymentMode customerEmail customerPhone customerName")
+        .populate("workbookIds", "title subject offerPrice GST")
+        .populate("planId", "name")
         .sort({ createdAt: -1 })
         .lean(),
       aggregateAnswerProgress({ testType: "aiswb" }),
