@@ -315,7 +315,7 @@ router.post("/callback", async (req, res) => {
                 if (req.clientId === "CLI147189HIGB") {
                   try {
                     // await axios.post(
-                    //   `http://localhost:4000/api/clients/${req.clientId}/telegram/send-text`,
+                    //   `https://ailisher.diintech.com/api/clients/${req.clientId}/telegram/send-text`,
                     //   {
                     //     text: `✅ <b>Paid to Mobishaala</b>\n\n💰<b>Total Amount:</b> ₹${creditsToAdd}\n🏦 <b>Net Amount:</b> ₹${creditsToAdd}\n👤 <b>${paymentDoc.customerPhone}</b> (${paymentDoc.customerName})\n🆔 <b>Order No:</b> ${orderId}\n📦 <b>Plan:</b> ${plan.name}`,
                     //   }
@@ -357,6 +357,59 @@ router.post("/callback", async (req, res) => {
               phone: paymentDoc.customerPhone,
             }
           );
+        }
+
+        // Send email receipt dynamically
+        try {
+          const MobileUser = require("../models/MobileUser");
+          const User = require("../models/User");
+          const OrgClient = require("../models/OrgClient");
+          const { sendPurchaseReceiptEmail } = require("../services/brevoService");
+          const CreditRechargePlan = require("../models/CreditRechargePlan");
+
+          let clientId = null;
+          if (paymentDoc.userId) {
+            const user = await MobileUser.findById(paymentDoc.userId);
+            if (user) {
+              clientId = user.clientId;
+            }
+          }
+
+          let clientName = "mAIns";
+          if (clientId) {
+            let client = await User.findOne({ userId: clientId, role: "client" });
+            if (!client) {
+              client = await OrgClient.findOne({ userId: clientId, role: "client" });
+            }
+            if (client && client.businessName) {
+              clientName = client.businessName;
+            }
+          }
+
+          let itemName = "Credit Recharge";
+          if (paymentDoc.planId) {
+            const plan = await CreditRechargePlan.findById(paymentDoc.planId);
+            if (plan && plan.name) {
+              itemName = plan.name;
+            }
+          } else if (paymentDoc.creditsPurchased) {
+            itemName = `${paymentDoc.creditsPurchased} Credits Recharge`;
+          }
+
+          await sendPurchaseReceiptEmail({
+            to: paymentDoc.customerEmail,
+            customerName: paymentDoc.customerName,
+            customerPhone: paymentDoc.customerPhone,
+            clientName,
+            orderId: paymentDoc.orderId,
+            createdAt: paymentDoc.createdAt,
+            paymentMode: paymentDoc.paymentMode,
+            amount: paymentDoc.amount,
+            itemName,
+          });
+          console.log(`Purchase receipt email sent successfully to ${paymentDoc.customerEmail} for order ${orderId}`);
+        } catch (emailErr) {
+          console.error("Failed to send purchase receipt email in paytm callback:", emailErr.message);
         }
       }
     } catch (creditErr) {

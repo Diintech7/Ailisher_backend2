@@ -258,7 +258,7 @@ exports.checkoutCart = async (req, res) => {
       ORDER_ID: orderId,
       CUST_ID: customerEmail,
       TXN_AMOUNT: parseFloat(totalAmount).toFixed(2),
-      CALLBACK_URL: `http://localhost:4000/api/clients/${clientId}/mobile/cart/callback`,
+      CALLBACK_URL: `https://ailisher.diintech.com/api/clients/${clientId}/mobile/cart/callback`,
       EMAIL: customerEmail,
       MOBILE_NO: customerPhone,
     };
@@ -279,7 +279,7 @@ exports.checkoutCart = async (req, res) => {
       try {
         const itemTitles = detailedItems.map((i) => i.title).join(", ");
         await axios.post(
-          `http://localhost:4000/api/clients/${clientId}/telegram/send-text`,
+          `https://ailisher.diintech.com/api/clients/${clientId}/telegram/send-text`,
           {
             text: `🆕 <b>INITIATED PAYMENT</b>\n\n👤 ${customerPhone} (${customerName}) has initiated purchase:\n📦 <b>${itemTitles}</b>\n💰 Subtotal: ₹${subtotal}\n🧾 GST: ₹${totalGst}\n💵 Total: ₹${totalAmount}\n⏰ Time: ${new Date().toLocaleString(
               "en-IN",
@@ -427,7 +427,7 @@ exports.paytmCallback = async (req, res) => {
           // Telegram notification
           try {
             await axios.post(
-              `http://localhost:4000/api/clients/${req.clientId}/telegram/send-text`,
+              `https://ailisher.diintech.com/api/clients/${req.clientId}/telegram/send-text`,
               {
                 text: `✅ <b>Payment Successful</b>\n\n💰 ₹${payment.amount}\n👤 ${payment.customerPhone} (${payment.customerName})\n🆔 Order: ${orderId}\n📦 Workbooks: ${payment.workbookIds.length}`,
               }
@@ -436,6 +436,57 @@ exports.paytmCallback = async (req, res) => {
             console.error("Telegram error:", err.message);
           }
         }
+      }
+
+      // Send email receipt dynamically
+      try {
+        const MobileUser = require("../models/MobileUser");
+        const User = require("../models/User");
+        const OrgClient = require("../models/OrgClient");
+        const { sendPurchaseReceiptEmail } = require("../services/brevoService");
+        const Workbook = require("../models/Workbook");
+
+        let clientId = null;
+        if (payment.userId) {
+          const user = await MobileUser.findById(payment.userId);
+          if (user) {
+            clientId = user.clientId;
+          }
+        }
+
+        let clientName = "mAIns";
+        if (clientId) {
+          let client = await User.findOne({ userId: clientId, role: "client" });
+          if (!client) {
+            client = await OrgClient.findOne({ userId: clientId, role: "client" });
+          }
+          if (client && client.businessName) {
+            clientName = client.businessName;
+          }
+        }
+
+        let itemName = "Workbook Purchase";
+        if (payment.workbookIds && payment.workbookIds.length > 0) {
+          const workbooks = await Workbook.find({ _id: { $in: payment.workbookIds } });
+          if (workbooks && workbooks.length > 0) {
+            itemName = workbooks.map(w => w.title).join(", ");
+          }
+        }
+
+        await sendPurchaseReceiptEmail({
+          to: payment.customerEmail,
+          customerName: payment.customerName,
+          customerPhone: payment.customerPhone,
+          clientName,
+          orderId: payment.orderId,
+          createdAt: payment.createdAt,
+          paymentMode: payment.paymentMode,
+          amount: payment.amount,
+          itemName,
+        });
+        console.log(`Purchase receipt email sent successfully to ${payment.customerEmail} for order ${orderId}`);
+      } catch (emailErr) {
+        console.error("Failed to send purchase receipt email in cart paytmCallback:", emailErr.message);
       }
     }
 

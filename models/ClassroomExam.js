@@ -39,6 +39,7 @@ const ClassroomExamSchema = new mongoose.Schema({
           paper_id: String,
           name: String,
           color: String,
+          image_url: { type: String, default: '' },
           chapter_count: Number,
           topic_count: Number,
           subtopic_count: Number,
@@ -47,11 +48,13 @@ const ClassroomExamSchema = new mongoose.Schema({
               chapter_id: String,
               subject_id: String,
               name: String,
+              image_url: { type: String, default: '' },
               topics: [
                 {
                   topic_id: String,
                   chapter_id: String,
                   name: String,
+                  image_url: { type: String, default: '' },
                   subtopics: [
                     {
                       subtopic_id: String,
@@ -59,6 +62,8 @@ const ClassroomExamSchema = new mongoose.Schema({
                       name: String,
                       description: String,
                       notes: String,
+                      image_url: { type: String, default: '' },
+                      banner_url: { type: String, default: '' },
                       reels: [
                         {
                           video_url: String,

@@ -467,38 +467,28 @@ exports.addCredit = async (req,res) => {
       });
     }
     
-    if(Payment.status === "SUCCESS")
-    {
-      const transaction = new CreditTransaction({
-        userId,
-        type: 'credit',
-        amount: credits,
-        balanceBefore: creditAccount.balance,
-        balanceAfter: creditAccount.balance + credits,
-        category: 'admin_adjustment',
-        description: 'Admin added credits',
-        addedBy: req.admin._id,
-        adminMessage: adminMessage || null,
-      });
-  
-      await transaction.save();
-  
-      creditAccount.balance += credits;
-      await creditAccount.save();
-  
-      res.json({
-        success: true,
-        message: 'Credit added successfully',
-        data: creditAccount
-      });
-    }
-    else
-    {
-      res.status(400).json({
-        success: false,
-        message: 'Payment failed'
-      });
-    }
+    const transaction = new CreditTransaction({
+      userId,
+      type: 'credit',
+      amount: credits,
+      balanceBefore: creditAccount.balance,
+      balanceAfter: creditAccount.balance + credits,
+      category: 'admin_adjustment',
+      description: 'Admin added credits',
+      addedBy: req.admin._id,
+      adminMessage: adminMessage || null,
+    });
+
+    await transaction.save();
+
+    creditAccount.balance += credits;
+    await creditAccount.save();
+
+    res.json({
+      success: true,
+      message: 'Credit added successfully',
+      data: creditAccount
+    });
     
   } 
   catch (error) {
@@ -543,9 +533,10 @@ exports.getCreditAccountById = async (req, res) => {
       clientInfo = await User.findOne({userId:creditAccount.clientId}).select('businessName name email');
     }
 
-   const transactions = await CreditTransaction.find({userId: creditAccount.userId.userId})
-   .sort({ createdAt: -1 })
-   .populate('addedBy', 'name email');
+    const rawUserId = creditAccount.populated('userId') || creditAccount.userId;
+    const transactions = await CreditTransaction.find({ userId: rawUserId })
+    .sort({ createdAt: -1 })
+    .populate('addedBy', 'name email');
 
     res.json({
       success: true,
