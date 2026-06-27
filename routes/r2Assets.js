@@ -21,7 +21,7 @@ router.post('/presigned-upload', async (req, res) => {
       data: {
         uploadUrl,
         key,
-        publicUrl: `https://ailisher.diintech.com/api/r2/view?key=${encodeURIComponent(key)}`
+        publicUrl: `http://localhost:4000/api/r2/view?key=${encodeURIComponent(key)}`
       }
     });
   } catch (error) {

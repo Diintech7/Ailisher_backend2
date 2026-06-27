@@ -267,11 +267,11 @@ for (const mapping of routeMappings) {
 const collection = {
   info: {
     name: 'Ailishar Platform - Complete API Collection',
-    description: 'Full API collection for Ailishar backend. Base URL: https://ailisher.diintech.com\n\nVariables:\n- base_url: https://ailisher.diintech.com\n- token: <your JWT token>\n- client_id: <your client ID>\n- user_id: <user ObjectId>',
+    description: 'Full API collection for Ailishar backend. Base URL: http://localhost:4000\n\nVariables:\n- base_url: http://localhost:4000\n- token: <your JWT token>\n- client_id: <your client ID>\n- user_id: <user ObjectId>',
     schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
   },
   variable: [
-    { key: 'base_url', value: 'https://ailisher.diintech.com', type: 'string' },
+    { key: 'base_url', value: 'http://localhost:4000', type: 'string' },
     { key: 'token', value: '', type: 'string' },
     { key: 'client_id', value: '', type: 'string' },
     { key: 'user_id', value: '', type: 'string' },
@@ -306,4 +306,4 @@ console.log('📌 How to import:');
 console.log('   1. Open Postman');
 console.log('   2. Click Import button');
 console.log('   3. Select ailisher_collection.json file');
-console.log('   4. Set base_url variable to: https://ailisher.diintech.com');
+console.log('   4. Set base_url variable to: http://localhost:4000');

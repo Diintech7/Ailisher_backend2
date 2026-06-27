@@ -19,6 +19,111 @@ const getClientId = (req) => {
   return user.role === 'client' && user.userId ? user.userId : user._id.toString();
 };
 
+const formatCustomImageUrl = async (keyOrUrl) => {
+  if (!keyOrUrl) return '';
+  if (keyOrUrl.startsWith('http://') || keyOrUrl.startsWith('https://')) return keyOrUrl;
+  try {
+    return await generateGetPresignedUrl(keyOrUrl);
+  } catch (err) {
+    console.error('Error generating presigned URL for key:', keyOrUrl, err);
+    return '';
+  }
+};
+
+const mergeTrees = (existingTree, incomingTree) => {
+  if (!existingTree || !existingTree.length) return incomingTree || [];
+  if (!incomingTree || !incomingTree.length) return existingTree;
+
+  return incomingTree.map(incomingPaper => {
+    const existingPaper = existingTree.find(p => p.paper_id === incomingPaper.paper_id);
+    if (!existingPaper) return incomingPaper;
+
+    // Merge paper level fields
+    const mergedPaper = {
+      ...incomingPaper,
+      isEnabled: existingPaper.isEnabled !== undefined ? existingPaper.isEnabled : incomingPaper.isEnabled,
+      image_url: existingPaper.image_url || incomingPaper.image_url || '',
+      image_url_1_1: existingPaper.image_url_1_1 || incomingPaper.image_url_1_1 || '',
+      image_url_9_16: existingPaper.image_url_9_16 || incomingPaper.image_url_9_16 || '',
+      image_url_16_9: existingPaper.image_url_16_9 || incomingPaper.image_url_16_9 || ''
+    };
+
+    // Merge subjects
+    if (incomingPaper.subjects && incomingPaper.subjects.length) {
+      mergedPaper.subjects = incomingPaper.subjects.map(incomingSubject => {
+        const existingSubject = (existingPaper.subjects || []).find(s => s.subject_id === incomingSubject.subject_id);
+        if (!existingSubject) return incomingSubject;
+
+        const mergedSubject = {
+          ...incomingSubject,
+          isEnabled: existingSubject.isEnabled !== undefined ? existingSubject.isEnabled : incomingSubject.isEnabled,
+          image_url: existingSubject.image_url || incomingSubject.image_url || '',
+          image_url_1_1: existingSubject.image_url_1_1 || incomingSubject.image_url_1_1 || '',
+          image_url_9_16: existingSubject.image_url_9_16 || incomingSubject.image_url_9_16 || '',
+          image_url_16_9: existingSubject.image_url_16_9 || incomingSubject.image_url_16_9 || ''
+        };
+
+        // Merge chapters
+        if (incomingSubject.chapters && incomingSubject.chapters.length) {
+          mergedSubject.chapters = incomingSubject.chapters.map(incomingChapter => {
+            const existingChapter = (existingSubject.chapters || []).find(c => c.chapter_id === incomingChapter.chapter_id);
+            if (!existingChapter) return incomingChapter;
+
+            const mergedChapter = {
+              ...incomingChapter,
+              image_url: existingChapter.image_url || incomingChapter.image_url || '',
+              image_url_1_1: existingChapter.image_url_1_1 || incomingChapter.image_url_1_1 || '',
+              image_url_9_16: existingChapter.image_url_9_16 || incomingChapter.image_url_9_16 || '',
+              image_url_16_9: existingChapter.image_url_16_9 || incomingChapter.image_url_16_9 || ''
+            };
+
+            // Merge topics
+            if (incomingChapter.topics && incomingChapter.topics.length) {
+              mergedChapter.topics = incomingChapter.topics.map(incomingTopic => {
+                const existingTopic = (existingChapter.topics || []).find(t => t.topic_id === incomingTopic.topic_id);
+                if (!existingTopic) return incomingTopic;
+
+                const mergedTopic = {
+                  ...incomingTopic,
+                  image_url: existingTopic.image_url || incomingTopic.image_url || '',
+                  image_url_1_1: existingTopic.image_url_1_1 || incomingTopic.image_url_1_1 || '',
+                  image_url_9_16: existingTopic.image_url_9_16 || incomingTopic.image_url_9_16 || '',
+                  image_url_16_9: existingTopic.image_url_16_9 || incomingTopic.image_url_16_9 || '',
+                  description: existingTopic.description || incomingTopic.description || '',
+                  video_length: existingTopic.video_length !== undefined && existingTopic.video_length !== null ? existingTopic.video_length : (incomingTopic.video_length !== undefined ? incomingTopic.video_length : null),
+                  script: existingTopic.script || incomingTopic.script || '',
+                  notes: existingTopic.notes || incomingTopic.notes || ''
+                };
+
+                // Merge subtopics
+                if (incomingTopic.subtopics && incomingTopic.subtopics.length) {
+                  mergedTopic.subtopics = incomingTopic.subtopics.map(incomingSubtopic => {
+                    const existingSubtopic = (existingTopic.subtopics || []).find(s => s.subtopic_id === incomingSubtopic.subtopic_id);
+                    if (!existingSubtopic) return incomingSubtopic;
+
+                    return {
+                      ...incomingSubtopic,
+                      notes: existingSubtopic.notes || incomingSubtopic.notes || '',
+                      description: existingSubtopic.description || incomingSubtopic.description || '',
+                      image_url: existingSubtopic.image_url || incomingSubtopic.image_url || '',
+                      banner_url: existingSubtopic.banner_url || incomingSubtopic.banner_url || '',
+                      reels: existingSubtopic.reels || incomingSubtopic.reels || []
+                    };
+                  });
+                }
+                return mergedTopic;
+              });
+            }
+            return mergedChapter;
+          });
+        }
+        return mergedSubject;
+      });
+    }
+    return mergedPaper;
+  });
+};
+
 // Helper to resolve examId dynamically if missing in req.params
 const resolveExamId = async (req, params) => {
   const { examId, paperId, subjectId, chapterId, topicId, subtopicId } = params;
@@ -298,14 +403,21 @@ const findSubjectIdFromChapter = (doc, chapterId) => {
 exports.getExams = async (req, res) => {
   try {
     const clientId = getClientId(req);
+    const isMobile = req.params.clientId || req.clientId || req.originalUrl.includes('/mobile/');
     
-    // Fetch exams that belong to this client or system default exams
-    const localExams = await ClassroomExam.find({
+    const query = {
       $or: [
         { clientId: clientId },
         { clientId: 'system' }
       ]
-    });
+    };
+    
+    if (isMobile) {
+      query.isEnabled = { $ne: false };
+    }
+    
+    // Fetch exams that belong to this client or system default exams
+    const localExams = await ClassroomExam.find(query);
 
     const apiURL = process.env.VECTORIZE_API_URL || 'https://test.3rdai.co';
     const formatImageUrl = (url) => {
@@ -323,12 +435,16 @@ exports.getExams = async (req, res) => {
         category: exam.category,
         description: exam.description || '',
         image_url: formatImageUrl(exam.image_url),
+        image_url_1_1: await formatCustomImageUrl(exam.image_url_1_1),
+        image_url_9_16: await formatCustomImageUrl(exam.image_url_9_16),
+        image_url_16_9: await formatCustomImageUrl(exam.image_url_16_9),
         isSynced: true, // Since it is in local DB, it is synced
         syncedAt: exam.synced_at || exam.created_at || null,
         isPaid: planStatus.isPaid,
         isLocked: planStatus.isLocked,
         isEnrolled: planStatus.isEnrolled,
-        planDetails: planStatus.plans
+        planDetails: planStatus.plans,
+        isEnabled: exam.isEnabled !== false
       };
     }));
 
@@ -432,11 +548,46 @@ exports.createExam = async (req, res) => {
 exports.getExamTree = async (req, res) => {
   try {
     const { examId } = req.params;
+    const isMobile = req.params.clientId || req.clientId || req.originalUrl.includes('/mobile/');
+    const apiURL = process.env.VECTORIZE_API_URL || 'https://test.3rdai.co';
+    const formatSubjectImage = async (url) => {
+      if (!url) return '';
+      if (url.startsWith('http://') || url.startsWith('https://')) return url;
+      if (url.startsWith('/') || url.startsWith('uploads/')) {
+        return `${apiURL}${url.startsWith('/') ? '' : '/'}${url}`;
+      }
+      return await formatCustomImageUrl(url);
+    };
+
     // 1. Check local cache
     const clientId = getClientId(req);
     let localDoc = await ClassroomExam.findOne({ exam_id: examId, clientId });
 
     if (localDoc) {
+      const treeData = isMobile ? (localDoc.tree || []).filter(p => p.isEnabled !== false) : (localDoc.tree || []);
+
+      const enrichedTree = await Promise.all(treeData.map(async p => {
+        const pObj = p.toObject ? p.toObject() : p;
+        const subjectsData = isMobile ? (pObj.subjects || []).filter(s => s.isEnabled !== false) : (pObj.subjects || []);
+        const enrichedSubjects = await Promise.all(subjectsData.map(async s => {
+          return {
+            ...s,
+            image_url: await formatSubjectImage(s.image_url),
+            image_url_1_1: await formatSubjectImage(s.image_url_1_1 || s.image_url),
+            image_url_9_16: await formatSubjectImage(s.image_url_9_16),
+            image_url_16_9: await formatSubjectImage(s.image_url_16_9)
+          };
+        }));
+        return {
+          ...pObj,
+          image_url: await formatCustomImageUrl(p.image_url),
+          image_url_1_1: await formatCustomImageUrl(p.image_url_1_1),
+          image_url_9_16: await formatCustomImageUrl(p.image_url_9_16),
+          image_url_16_9: await formatCustomImageUrl(p.image_url_16_9),
+          subjects: enrichedSubjects
+        };
+      }));
+
       return res.status(200).json({
         success: true,
         exam: {
@@ -444,17 +595,19 @@ exports.getExamTree = async (req, res) => {
           name: localDoc.name,
           category: localDoc.category,
           image_url: localDoc.image_url,
+          image_url_1_1: await formatCustomImageUrl(localDoc.image_url_1_1),
+          image_url_9_16: await formatCustomImageUrl(localDoc.image_url_9_16),
+          image_url_16_9: await formatCustomImageUrl(localDoc.image_url_16_9),
           description: localDoc.description,
           synced_at: localDoc.synced_at
         },
-        tree: localDoc.tree,
+        tree: enrichedTree,
         isCached: true
       });
     }
 
     // 2. If not cached, trigger sync logic dynamically
     console.log(`Exam ${examId} not cached locally. Triggering auto-sync for client ${clientId}`);
-    const apiURL = process.env.VECTORIZE_API_URL || 'https://test.3rdai.co';
     const appToken = process.env.VECTORIZE_APP_TOKEN || 'clt-2db63e7fbb785339128218bac891c01c35f09e23d28a018e';
 
     const response = await axios.get(`${apiURL}/api/classroom/exams/${examId}`, {
@@ -474,6 +627,9 @@ exports.getExamTree = async (req, res) => {
         return `${apiURL}${url.startsWith('/') ? '' : '/'}${url}`;
       };
 
+      const existingDoc = await ClassroomExam.findOne({ exam_id: examId, clientId });
+      const mergedTree = mergeTrees(existingDoc?.tree, tree);
+
       const newDoc = await ClassroomExam.findOneAndUpdate(
         { exam_id: examId, clientId },
         {
@@ -483,11 +639,34 @@ exports.getExamTree = async (req, res) => {
           image_url: formatImageUrl(exam.image_url),
           description: exam.description,
           clientId,
-          tree: tree || [],
+          tree: mergedTree,
           synced_at: new Date()
         },
         { upsert: true, new: true }
       );
+
+      const treeData = isMobile ? (newDoc.tree || []).filter(p => p.isEnabled !== false) : (newDoc.tree || []);
+      const enrichedTree = await Promise.all(treeData.map(async p => {
+        const pObj = p.toObject ? p.toObject() : p;
+        const subjectsData = isMobile ? (pObj.subjects || []).filter(s => s.isEnabled !== false) : (pObj.subjects || []);
+        const enrichedSubjects = await Promise.all(subjectsData.map(async s => {
+          return {
+            ...s,
+            image_url: await formatSubjectImage(s.image_url),
+            image_url_1_1: await formatSubjectImage(s.image_url_1_1 || s.image_url),
+            image_url_9_16: await formatSubjectImage(s.image_url_9_16),
+            image_url_16_9: await formatSubjectImage(s.image_url_16_9)
+          };
+        }));
+        return {
+          ...pObj,
+          image_url: await formatCustomImageUrl(p.image_url),
+          image_url_1_1: await formatCustomImageUrl(p.image_url_1_1),
+          image_url_9_16: await formatCustomImageUrl(p.image_url_9_16),
+          image_url_16_9: await formatCustomImageUrl(p.image_url_16_9),
+          subjects: enrichedSubjects
+        };
+      }));
 
       return res.status(200).json({
         success: true,
@@ -496,10 +675,13 @@ exports.getExamTree = async (req, res) => {
           name: newDoc.name,
           category: newDoc.category,
           image_url: newDoc.image_url,
+          image_url_1_1: await formatCustomImageUrl(newDoc.image_url_1_1),
+          image_url_9_16: await formatCustomImageUrl(newDoc.image_url_9_16),
+          image_url_16_9: await formatCustomImageUrl(newDoc.image_url_16_9),
           description: newDoc.description,
           synced_at: newDoc.synced_at
         },
-        tree: newDoc.tree,
+        tree: enrichedTree,
         isCached: false
       });
     } else {
@@ -545,6 +727,9 @@ exports.syncExamTree = async (req, res) => {
         return `${apiURL}${url.startsWith('/') ? '' : '/'}${url}`;
       };
 
+      const existingDoc = await ClassroomExam.findOne({ exam_id: examId, clientId });
+      const mergedTree = mergeTrees(existingDoc?.tree, tree);
+
       const newDoc = await ClassroomExam.findOneAndUpdate(
         { exam_id: examId, clientId },
         {
@@ -554,7 +739,7 @@ exports.syncExamTree = async (req, res) => {
           image_url: formatImageUrl(exam.image_url),
           description: exam.description,
           clientId,
-          tree: tree || [],
+          tree: mergedTree,
           synced_at: new Date()
         },
         { upsert: true, new: true }
@@ -568,6 +753,9 @@ exports.syncExamTree = async (req, res) => {
           name: newDoc.name,
           category: newDoc.category,
           image_url: newDoc.image_url,
+          image_url_1_1: await formatCustomImageUrl(newDoc.image_url_1_1),
+          image_url_9_16: await formatCustomImageUrl(newDoc.image_url_9_16),
+          image_url_16_9: await formatCustomImageUrl(newDoc.image_url_16_9),
           description: newDoc.description,
           synced_at: newDoc.synced_at
         }
@@ -595,13 +783,21 @@ exports.getPapers = async (req, res) => {
     const doc = await ClassroomExam.findOne({ exam_id: examId, clientId });
     if (!doc) return res.status(404).json({ success: false, message: 'Classroom not found' });
     
+    const isMobile = req.params.clientId || req.clientId || req.originalUrl.includes('/mobile/');
     const rawPapers = doc.tree || [];
-    const papers = rawPapers.map(p => ({
+    const filteredPapers = isMobile ? rawPapers.filter(p => p.isEnabled !== false) : rawPapers;
+    
+    const papers = await Promise.all(filteredPapers.map(async p => ({
       paper_id: p.paper_id,
       exam_id: p.exam_id,
       name: p.name,
+      isEnabled: p.isEnabled !== false,
+      image_url: await formatCustomImageUrl(p.image_url),
+      image_url_1_1: await formatCustomImageUrl(p.image_url_1_1),
+      image_url_9_16: await formatCustomImageUrl(p.image_url_9_16),
+      image_url_16_9: await formatCustomImageUrl(p.image_url_16_9),
       created_at: p.created_at
-    }));
+    })));
     return res.status(200).json({ success: true, papers });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -620,15 +816,20 @@ exports.getSubjects = async (req, res) => {
     const paper = doc.tree.find(p => p.paper_id === paperId);
     if (!paper) return res.status(404).json({ success: false, message: 'Paper not found' });
     
+    const isMobile = req.params.clientId || req.clientId || req.originalUrl.includes('/mobile/');
     const rawSubjects = paper.subjects || [];
+    const subjectsData = isMobile ? rawSubjects.filter(s => s.isEnabled !== false) : rawSubjects;
     const apiURL = process.env.VECTORIZE_API_URL || 'https://test.3rdai.co';
-    const formatImageUrl = (url) => {
+    const formatSubjectImage = async (url) => {
       if (!url) return '';
       if (url.startsWith('http://') || url.startsWith('https://')) return url;
-      return `${apiURL}${url.startsWith('/') ? '' : '/'}${url}`;
+      if (url.startsWith('/') || url.startsWith('uploads/')) {
+        return `${apiURL}${url.startsWith('/') ? '' : '/'}${url}`;
+      }
+      return await formatCustomImageUrl(url);
     };
 
-    const subjects = await Promise.all(rawSubjects.map(async s => {
+    const subjects = await Promise.all(subjectsData.map(async s => {
       const userId = req.user?.id || req.user?.userId;
       const planStatus = await checkSubjectPlanStatus(examId, s.subject_id, clientId, userId);
       return {
@@ -637,7 +838,11 @@ exports.getSubjects = async (req, res) => {
         paper_id: s.paper_id,
         name: s.name,
         color: s.color,
-        image_url: formatImageUrl(s.image_url),
+        isEnabled: s.isEnabled !== false,
+        image_url: await formatSubjectImage(s.image_url),
+        image_url_1_1: await formatSubjectImage(s.image_url_1_1 || s.image_url),
+        image_url_9_16: await formatSubjectImage(s.image_url_9_16),
+        image_url_16_9: await formatSubjectImage(s.image_url_16_9),
         chapter_count: s.chapter_count || 0,
         topic_count: s.topic_count || 0,
         subtopic_count: s.subtopic_count || 0,
@@ -678,24 +883,38 @@ exports.getChapters = async (req, res) => {
     
     const rawChapters = foundSubject.chapters || [];
     const apiURL = process.env.VECTORIZE_API_URL || 'https://test.3rdai.co';
-    const formatImageUrl = (url) => {
+    const formatChapterImage = async (url) => {
       if (!url) return '';
       if (url.startsWith('http://') || url.startsWith('https://')) return url;
-      return `${apiURL}${url.startsWith('/') ? '' : '/'}${url}`;
+      if (url.startsWith('/') || url.startsWith('uploads/')) {
+        return `${apiURL}${url.startsWith('/') ? '' : '/'}${url}`;
+      }
+      return await formatCustomImageUrl(url);
     };
 
-    const chapters = rawChapters.map(c => ({
+    const chapters = await Promise.all(rawChapters.map(async c => ({
       chapter_id: c.chapter_id,
       subject_id: c.subject_id,
       name: c.name,
-      image_url: formatImageUrl(c.image_url),
+      image_url: await formatChapterImage(c.image_url),
+      image_url_1_1: await formatChapterImage(c.image_url_1_1),
+      image_url_9_16: await formatChapterImage(c.image_url_9_16),
+      image_url_16_9: await formatChapterImage(c.image_url_16_9),
       created_at: c.created_at,
-      topics: (c.topics || []).map(t => ({
+      topics: await Promise.all((c.topics || []).map(async t => ({
         topic_id: t.topic_id,
         chapter_id: t.chapter_id,
-        name: t.name
-      }))
-    }));
+        name: t.name,
+        image_url: await formatChapterImage(t.image_url),
+        image_url_1_1: await formatChapterImage(t.image_url_1_1),
+        image_url_9_16: await formatChapterImage(t.image_url_9_16),
+        image_url_16_9: await formatChapterImage(t.image_url_16_9),
+        description: t.description || '',
+        video_length: t.video_length !== undefined && t.video_length !== null ? t.video_length : null,
+        script: t.script || '',
+        notes: t.notes || ''
+      })))
+    })));
     return res.status(200).json({ success: true, chapters });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -730,10 +949,28 @@ exports.getTopics = async (req, res) => {
     if (!foundChapter) return res.status(404).json({ success: false, message: 'Chapter not found' });
     
     const rawTopics = foundChapter.topics || [];
-    const topics = rawTopics.map(t => ({
+    const apiURL = process.env.VECTORIZE_API_URL || 'https://test.3rdai.co';
+    const formatTopicImage = async (url) => {
+      if (!url) return '';
+      if (url.startsWith('http://') || url.startsWith('https://')) return url;
+      if (url.startsWith('/') || url.startsWith('uploads/')) {
+        return `${apiURL}${url.startsWith('/') ? '' : '/'}${url}`;
+      }
+      return await formatCustomImageUrl(url);
+    };
+
+    const topics = await Promise.all(rawTopics.map(async t => ({
       topic_id: t.topic_id,
       chapter_id: t.chapter_id,
       name: t.name,
+      image_url: await formatTopicImage(t.image_url),
+      image_url_1_1: await formatTopicImage(t.image_url_1_1),
+      image_url_9_16: await formatTopicImage(t.image_url_9_16),
+      image_url_16_9: await formatTopicImage(t.image_url_16_9),
+      description: t.description || '',
+      video_length: t.video_length !== undefined && t.video_length !== null ? t.video_length : null,
+      script: t.script || '',
+      notes: t.notes || '',
       created_at: t.created_at,
       subtopics: (t.subtopics || []).map(s => ({
         subtopic_id: s.subtopic_id,
@@ -741,7 +978,7 @@ exports.getTopics = async (req, res) => {
         name: s.name,
         created_at: s.created_at
       }))
-    }));
+    })));
     return res.status(200).json({ success: true, topics });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -917,6 +1154,9 @@ exports.createChapter = async (req, res) => {
             subject_id: subjectId,
             name: newChapter.name,
             image_url: newChapter.image_url || image_url || '',
+            image_url_1_1: newChapter.image_url_1_1 || '',
+            image_url_9_16: newChapter.image_url_9_16 || '',
+            image_url_16_9: newChapter.image_url_16_9 || '',
             topics: [],
             created_at: new Date().toISOString()
           });
@@ -971,6 +1211,14 @@ exports.createTopic = async (req, res) => {
               topic_id: newTopic.topic_id,
               chapter_id: chapterId,
               name: newTopic.name,
+              image_url: newTopic.image_url || '',
+              image_url_1_1: newTopic.image_url_1_1 || '',
+              image_url_9_16: newTopic.image_url_9_16 || '',
+              image_url_16_9: newTopic.image_url_16_9 || '',
+              description: newTopic.description || '',
+              video_length: newTopic.video_length !== undefined && newTopic.video_length !== null ? newTopic.video_length : null,
+              script: newTopic.script || '',
+              notes: newTopic.notes || '',
               subtopics: [],
               created_at: new Date().toISOString()
             });
@@ -1913,6 +2161,9 @@ const syncLocalExamTree = async (examId, clientId) => {
         if (url.startsWith('http://') || url.startsWith('https://')) return url;
         return `${apiURL}${url.startsWith('/') ? '' : '/'}${url}`;
       };
+      const existingDoc = await ClassroomExam.findOne({ exam_id: examId, clientId });
+      const mergedTree = mergeTrees(existingDoc?.tree, tree);
+
       await ClassroomExam.findOneAndUpdate(
         { exam_id: examId, clientId },
         {
@@ -1920,7 +2171,7 @@ const syncLocalExamTree = async (examId, clientId) => {
           category: exam.category,
           image_url: formatImageUrl(exam.image_url),
           description: exam.description,
-          tree: tree || [],
+          tree: mergedTree,
           synced_at: new Date()
         }
       );
@@ -1951,14 +2202,21 @@ exports.updateExam = async (req, res) => {
         if (url.startsWith('http://') || url.startsWith('https://')) return url;
         return `${apiURL}${url.startsWith('/') ? '' : '/'}${url}`;
       };
+      const updateData = {
+        name: exam.name || req.body.name,
+        category: exam.category || req.body.category,
+        description: exam.description || req.body.description,
+        image_url: formatImageUrl(exam.image_url || req.body.image_url)
+      };
+      if (req.body.image_url_1_1 !== undefined) updateData.image_url_1_1 = req.body.image_url_1_1;
+      if (req.body.image_url_9_16 !== undefined) updateData.image_url_9_16 = req.body.image_url_9_16;
+      if (req.body.image_url_16_9 !== undefined) updateData.image_url_16_9 = req.body.image_url_16_9;
+      if (req.body.isEnabled !== undefined) {
+        updateData.isEnabled = req.body.isEnabled;
+      }
       await ClassroomExam.findOneAndUpdate(
         { exam_id: examId, clientId },
-        {
-          name: exam.name || req.body.name,
-          category: exam.category || req.body.category,
-          description: exam.description || req.body.description,
-          image_url: formatImageUrl(exam.image_url || req.body.image_url)
-        }
+        updateData
       );
     }
     return res.status(response.status).json(response.data);
@@ -2105,6 +2363,45 @@ exports.deletePaper = async (req, res) => {
     const status = error.response ? error.response.status : 500;
     const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
     return res.status(status).json(message);
+  }
+};
+
+// PATCH /api/classroom-exams/papers/:paperId/status
+exports.togglePaperStatus = async (req, res) => {
+  try {
+    const { paperId } = req.params;
+    const clientId = getClientId(req);
+    console.log('[DEBUG togglePaperStatus] paperId:', paperId, 'clientId:', clientId);
+
+    const exam = await ClassroomExam.findOne({ "tree.paper_id": paperId, clientId });
+    if (!exam) {
+      console.log('[DEBUG togglePaperStatus] Exam not found with paperId & clientId.');
+      const examWithoutClient = await ClassroomExam.findOne({ "tree.paper_id": paperId });
+      if (examWithoutClient) {
+        console.log('[DEBUG togglePaperStatus] Found exam without clientId constraint. Exam name:', examWithoutClient.name, 'Exam clientId:', examWithoutClient.clientId);
+      } else {
+        console.log('[DEBUG togglePaperStatus] Exam not found even without clientId constraint!');
+      }
+      return res.status(404).json({ success: false, message: 'Paper not found' });
+    }
+
+    const pIdx = exam.tree.findIndex(p => p.paper_id === paperId);
+    if (pIdx === -1) return res.status(404).json({ success: false, message: 'Paper not found in tree' });
+
+    const currentStatus = exam.tree[pIdx].isEnabled !== false;
+    exam.tree[pIdx].isEnabled = !currentStatus;
+
+    exam.markModified('tree');
+    await exam.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Paper ${exam.tree[pIdx].isEnabled ? 'enabled' : 'disabled'} successfully`,
+      isEnabled: exam.tree[pIdx].isEnabled
+    });
+  } catch (error) {
+    console.error('Error toggling paper status:', error.message);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -2493,10 +2790,36 @@ exports.generateTopicQuiz = async (req, res) => {
   try {
     const { topicId } = req.params;
     const { apiURL, appToken } = getApiConfig();
-    const response = await axios.post(`${apiURL}/api/classroom/topics/${topicId}/quiz/generate`, req.body, {
+    
+    // Map num_questions to numQuestions for the partner API if present
+    const requestBody = { ...req.body };
+    if (requestBody.num_questions !== undefined) {
+      requestBody.numQuestions = requestBody.num_questions;
+    }
+
+    const response = await axios.post(`${apiURL}/api/classroom/topics/${topicId}/quiz/generate`, requestBody, {
       headers: { 'X-App-Token': appToken, 'Content-Type': 'application/json' }
     });
-    return res.status(response.status).json(response.data);
+
+    const data = response.data;
+    if (data && data.success) {
+      let questions = [];
+      const rawQuiz = data.quiz || data.questions || [];
+      if (Array.isArray(rawQuiz)) {
+        questions = rawQuiz.map(item => ({
+          question: item.question,
+          options: item.options,
+          correct: item.correct !== undefined ? item.correct : item.answer,
+          explanation: item.explanation !== undefined ? item.explanation : item.source
+        }));
+      }
+      return res.status(response.status).json({
+        success: true,
+        questions
+      });
+    }
+
+    return res.status(response.status).json(data);
   } catch (error) {
     console.error('Error generating topic quiz:', error.message);
     const status = error.response ? error.response.status : 500;
@@ -2637,10 +2960,36 @@ exports.generateSubtopicQuiz = async (req, res) => {
   try {
     const { subtopicId } = req.params;
     const { apiURL, appToken } = getApiConfig();
-    const response = await axios.post(`${apiURL}/api/classroom/subtopics/${subtopicId}/quiz/generate`, req.body, {
+    
+    // Map num_questions to numQuestions for the partner API if present
+    const requestBody = { ...req.body };
+    if (requestBody.num_questions !== undefined) {
+      requestBody.numQuestions = requestBody.num_questions;
+    }
+
+    const response = await axios.post(`${apiURL}/api/classroom/subtopics/${subtopicId}/quiz/generate`, requestBody, {
       headers: { 'X-App-Token': appToken, 'Content-Type': 'application/json' }
     });
-    return res.status(response.status).json(response.data);
+
+    const data = response.data;
+    if (data && data.success) {
+      let questions = [];
+      const rawQuiz = data.quiz || data.questions || [];
+      if (Array.isArray(rawQuiz)) {
+        questions = rawQuiz.map(item => ({
+          question: item.question,
+          options: item.options,
+          correct: item.correct !== undefined ? item.correct : item.answer,
+          explanation: item.explanation !== undefined ? item.explanation : item.source
+        }));
+      }
+      return res.status(response.status).json({
+        success: true,
+        questions
+      });
+    }
+
+    return res.status(response.status).json(data);
   } catch (error) {
     console.error('Error generating subtopic quiz:', error.message);
     const status = error.response ? error.response.status : 500;
@@ -3244,5 +3593,209 @@ exports.getPublicSubtopicReels = async (req, res) => {
     const status = error.response ? error.response.status : 500;
     const message = error.response && error.response.data ? error.response.data : { success: false, message: error.message };
     return res.status(status).json(message);
+  }
+};
+
+// POST /api/classroom-exams/exams/:examId/images
+exports.uploadExamImages = async (req, res) => {
+  try {
+    const { examId } = req.params;
+    const clientId = getClientId(req);
+    
+    const exam = await ClassroomExam.findOne({ exam_id: examId, clientId });
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Classroom Exam not found' });
+    }
+
+    const files = req.files || {};
+    const uploadedUrls = {};
+
+    // Helper to upload a buffer to R2
+    const uploadSingle = async (field, ratioLabel) => {
+      if (files[field] && files[field][0]) {
+        const file = files[field][0];
+        const extension = file.originalname.split('.').pop() || 'png';
+        const key = `classroom/clients/${clientId}/exams/${examId}/images/${Date.now()}_${ratioLabel}.${extension}`;
+        
+        await uploadFileToS3(file.buffer, key, file.mimetype);
+        
+        // Save the key in DB
+        exam[`image_url_${ratioLabel}`] = key;
+        
+        // Get signed URL to return to client
+        uploadedUrls[`image_url_${ratioLabel}`] = await formatCustomImageUrl(key);
+      }
+    };
+
+    await uploadSingle('image_1_1', '1_1');
+    await uploadSingle('image_9_16', '9_16');
+    await uploadSingle('image_16_9', '16_9');
+
+    await exam.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Exam images uploaded successfully',
+      urls: uploadedUrls
+    });
+  } catch (error) {
+    console.error('Error uploading exam images:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// POST /api/classroom-exams/papers/:paperId/images
+exports.uploadPaperImages = async (req, res) => {
+  try {
+    const { paperId } = req.params;
+    const clientId = getClientId(req);
+    
+    const exam = await ClassroomExam.findOne({ "tree.paper_id": paperId, clientId });
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Paper not found' });
+    }
+
+    const pIdx = exam.tree.findIndex(p => p.paper_id === paperId);
+    if (pIdx === -1) {
+      return res.status(404).json({ success: false, message: 'Paper not found in classroom tree' });
+    }
+
+    const files = req.files || {};
+    const uploadedUrls = {};
+
+    const uploadSingle = async (field, ratioLabel) => {
+      if (files[field] && files[field][0]) {
+        const file = files[field][0];
+        const extension = file.originalname.split('.').pop() || 'png';
+        const key = `classroom/clients/${clientId}/exams/${exam.exam_id}/papers/${paperId}/images/${Date.now()}_${ratioLabel}.${extension}`;
+        
+        await uploadFileToS3(file.buffer, key, file.mimetype);
+        
+        exam.tree[pIdx][`image_url_${ratioLabel}`] = key;
+        
+        uploadedUrls[`image_url_${ratioLabel}`] = await formatCustomImageUrl(key);
+      }
+    };
+
+    await uploadSingle('image_1_1', '1_1');
+    await uploadSingle('image_9_16', '9_16');
+    await uploadSingle('image_16_9', '16_9');
+
+    exam.markModified('tree');
+    await exam.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Paper images uploaded successfully',
+      urls: uploadedUrls
+    });
+  } catch (error) {
+    console.error('Error uploading paper images:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// POST /api/classroom-exams/subjects/:subjectId/images
+exports.uploadSubjectImages = async (req, res) => {
+  try {
+    const { subjectId } = req.params;
+    const clientId = getClientId(req);
+    
+    const exam = await ClassroomExam.findOne({ "tree.subjects.subject_id": subjectId, clientId });
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Subject not found' });
+    }
+
+    let pIdx = -1;
+    let sIdx = -1;
+    for (let i = 0; i < exam.tree.length; i++) {
+      const idx = exam.tree[i].subjects.findIndex(s => s.subject_id === subjectId);
+      if (idx !== -1) {
+        pIdx = i;
+        sIdx = idx;
+        break;
+      }
+    }
+
+    if (pIdx === -1 || sIdx === -1) {
+      return res.status(404).json({ success: false, message: 'Subject not found in classroom tree' });
+    }
+
+    const files = req.files || {};
+    const uploadedUrls = {};
+
+    const uploadSingle = async (field, ratioLabel) => {
+      if (files[field] && files[field][0]) {
+        const file = files[field][0];
+        const extension = file.originalname.split('.').pop() || 'png';
+        const key = `classroom/clients/${clientId}/exams/${exam.exam_id}/papers/${exam.tree[pIdx].paper_id}/subjects/${subjectId}/images/${Date.now()}_${ratioLabel}.${extension}`;
+        
+        await uploadFileToS3(file.buffer, key, file.mimetype);
+        
+        const fieldName = ratioLabel === '1_1' ? 'image_url' : `image_url_${ratioLabel}`;
+        exam.tree[pIdx].subjects[sIdx][fieldName] = key;
+        
+        uploadedUrls[fieldName] = await formatCustomImageUrl(key);
+      }
+    };
+
+    await uploadSingle('image_1_1', '1_1');
+    await uploadSingle('image_9_16', '9_16');
+    await uploadSingle('image_16_9', '16_9');
+
+    exam.markModified('tree');
+    await exam.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Subject images uploaded successfully',
+      urls: uploadedUrls
+    });
+  } catch (error) {
+    console.error('Error uploading subject images:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// PATCH /api/classroom-exams/subjects/:subjectId/status
+exports.toggleSubjectStatus = async (req, res) => {
+  try {
+    const { subjectId } = req.params;
+    const clientId = getClientId(req);
+
+    const exam = await ClassroomExam.findOne({ "tree.subjects.subject_id": subjectId, clientId });
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Subject not found' });
+    }
+
+    let pIdx = -1;
+    let sIdx = -1;
+    for (let i = 0; i < exam.tree.length; i++) {
+      const idx = exam.tree[i].subjects.findIndex(s => s.subject_id === subjectId);
+      if (idx !== -1) {
+        pIdx = i;
+        sIdx = idx;
+        break;
+      }
+    }
+
+    if (pIdx === -1 || sIdx === -1) {
+      return res.status(404).json({ success: false, message: 'Subject not found in classroom tree' });
+    }
+
+    const currentStatus = exam.tree[pIdx].subjects[sIdx].isEnabled !== false;
+    exam.tree[pIdx].subjects[sIdx].isEnabled = !currentStatus;
+
+    exam.markModified('tree');
+    await exam.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Subject ${exam.tree[pIdx].subjects[sIdx].isEnabled ? 'enabled' : 'disabled'} successfully`,
+      isEnabled: exam.tree[pIdx].subjects[sIdx].isEnabled
+    });
+  } catch (error) {
+    console.error('Error toggling subject status:', error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };

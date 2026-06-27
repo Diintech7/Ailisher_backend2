@@ -159,6 +159,10 @@ router.get(
         obj.isLiked = likedBy.some((id) => id?.toString() === userId?.toString());
         const viewedBy = Array.isArray(obj.viewedBy) ? obj.viewedBy : [];
         obj.isViewed = viewedBy.some((id) => id?.toString() === userId?.toString());
+        
+        delete obj.likedBy;
+        delete obj.viewedBy;
+        delete obj.commentsList;
         return obj;
       });
 
@@ -232,6 +236,10 @@ router.get('/popular',
         obj.isLiked = likedBy.some((id) => id?.toString() === userId?.toString());
         const viewedBy = Array.isArray(obj.viewedBy) ? obj.viewedBy : [];
         obj.isViewed = viewedBy.some((id) => id?.toString() === userId?.toString());
+        
+        delete obj.likedBy;
+        delete obj.viewedBy;
+        delete obj.commentsList;
         return obj;
       });
 

@@ -18,6 +18,18 @@ const ClassroomExamSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  image_url_1_1: {
+    type: String,
+    default: ''
+  },
+  image_url_9_16: {
+    type: String,
+    default: ''
+  },
+  image_url_16_9: {
+    type: String,
+    default: ''
+  },
   description: {
     type: String,
     default: ''
@@ -32,6 +44,26 @@ const ClassroomExamSchema = new mongoose.Schema({
       paper_id: String,
       exam_id: String,
       name: String,
+      isEnabled: {
+        type: Boolean,
+        default: true
+      },
+      image_url: {
+        type: String,
+        default: ''
+      },
+      image_url_1_1: {
+        type: String,
+        default: ''
+      },
+      image_url_9_16: {
+        type: String,
+        default: ''
+      },
+      image_url_16_9: {
+        type: String,
+        default: ''
+      },
       subjects: [
         {
           subject_id: String,
@@ -39,7 +71,11 @@ const ClassroomExamSchema = new mongoose.Schema({
           paper_id: String,
           name: String,
           color: String,
+          isEnabled: { type: Boolean, default: true },
           image_url: { type: String, default: '' },
+          image_url_1_1: { type: String, default: '' },
+          image_url_9_16: { type: String, default: '' },
+          image_url_16_9: { type: String, default: '' },
           chapter_count: Number,
           topic_count: Number,
           subtopic_count: Number,
@@ -49,12 +85,22 @@ const ClassroomExamSchema = new mongoose.Schema({
               subject_id: String,
               name: String,
               image_url: { type: String, default: '' },
+              image_url_1_1: { type: String, default: '' },
+              image_url_9_16: { type: String, default: '' },
+              image_url_16_9: { type: String, default: '' },
               topics: [
                 {
                   topic_id: String,
                   chapter_id: String,
                   name: String,
                   image_url: { type: String, default: '' },
+                  image_url_1_1: { type: String, default: '' },
+                  image_url_9_16: { type: String, default: '' },
+                  image_url_16_9: { type: String, default: '' },
+                  description: { type: String, default: '' },
+                  video_length: { type: Number, default: null },
+                  script: { type: String, default: '' },
+                  notes: { type: String, default: '' },
                   subtopics: [
                     {
                       subtopic_id: String,
@@ -94,6 +140,10 @@ const ClassroomExamSchema = new mongoose.Schema({
   synced_at: {
     type: Date,
     default: Date.now
+  },
+  isEnabled: {
+    type: Boolean,
+    default: true
   }
 });
 

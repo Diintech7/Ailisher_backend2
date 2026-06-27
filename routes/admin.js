@@ -132,7 +132,7 @@ router.post("/paytm/initiate", async (req, res) => {
       ORDER_ID: orderId,
       CUST_ID: customerEmail,
       TXN_AMOUNT: parseFloat(amount).toFixed(2),
-      CALLBACK_URL: "https://ailisher.diintech.com/api/admin/paytm/callback",
+      CALLBACK_URL: "http://localhost:4000/api/admin/paytm/callback",
       EMAIL: customerEmail,
       MOBILE_NO: customerPhone,
     };

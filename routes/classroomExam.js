@@ -76,6 +76,17 @@ router.post('/exams', classroomExamController.createExam);
 router.put('/:examId', classroomExamController.updateExam);
 router.put('/exams/:examId', classroomExamController.updateExam);
 
+router.post('/:examId/images', upload.fields([
+  { name: 'image_1_1', maxCount: 1 },
+  { name: 'image_9_16', maxCount: 1 },
+  { name: 'image_16_9', maxCount: 1 }
+]), classroomExamController.uploadExamImages);
+router.post('/exams/:examId/images', upload.fields([
+  { name: 'image_1_1', maxCount: 1 },
+  { name: 'image_9_16', maxCount: 1 },
+  { name: 'image_16_9', maxCount: 1 }
+]), classroomExamController.uploadExamImages);
+
 router.delete('/:examId', classroomExamController.deleteExam);
 router.delete('/exams/:examId', classroomExamController.deleteExam);
 
@@ -93,6 +104,13 @@ router.post('/exams/:examId/papers', classroomExamController.createPaper);
 
 router.put('/papers/:paperId', classroomExamController.updatePaper);
 router.delete('/papers/:paperId', classroomExamController.deletePaper);
+router.patch('/papers/:paperId/status', classroomExamController.togglePaperStatus);
+
+router.post('/papers/:paperId/images', upload.fields([
+  { name: 'image_1_1', maxCount: 1 },
+  { name: 'image_9_16', maxCount: 1 },
+  { name: 'image_16_9', maxCount: 1 }
+]), classroomExamController.uploadPaperImages);
 
 router.get('/:examId/papers', classroomExamController.getPapers);
 router.get('/exams/:examId/papers', classroomExamController.getPapers);
@@ -114,6 +132,13 @@ router.post('/papers/:paperId/subjects', classroomExamController.createSubject);
 
 router.put('/subjects/:subjectId', classroomExamController.updateSubject);
 router.delete('/subjects/:subjectId', classroomExamController.deleteSubject);
+router.patch('/subjects/:subjectId/status', classroomExamController.toggleSubjectStatus);
+
+router.post('/subjects/:subjectId/images', upload.fields([
+  { name: 'image_1_1', maxCount: 1 },
+  { name: 'image_9_16', maxCount: 1 },
+  { name: 'image_16_9', maxCount: 1 }
+]), classroomExamController.uploadSubjectImages);
 
 router.get('/:examId/subjects/:subjectId/chapters', classroomExamController.getChapters);
 router.get('/subjects/:subjectId/chapters', classroomExamController.getChapters);
