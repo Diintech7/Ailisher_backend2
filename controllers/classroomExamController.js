@@ -787,17 +787,22 @@ exports.getPapers = async (req, res) => {
     const rawPapers = doc.tree || [];
     const filteredPapers = isMobile ? rawPapers.filter(p => p.isEnabled !== false) : rawPapers;
     
-    const papers = await Promise.all(filteredPapers.map(async p => ({
-      paper_id: p.paper_id,
-      exam_id: p.exam_id,
-      name: p.name,
-      isEnabled: p.isEnabled !== false,
-      image_url: await formatCustomImageUrl(p.image_url),
-      image_url_1_1: await formatCustomImageUrl(p.image_url_1_1),
-      image_url_9_16: await formatCustomImageUrl(p.image_url_9_16),
-      image_url_16_9: await formatCustomImageUrl(p.image_url_16_9),
-      created_at: p.created_at
-    })));
+    const papers = await Promise.all(filteredPapers.map(async p => {
+      const rawSubjects = p.subjects || [];
+      const subjectsCount = isMobile ? rawSubjects.filter(s => s.isEnabled !== false).length : rawSubjects.length;
+      return {
+        paper_id: p.paper_id,
+        exam_id: p.exam_id,
+        name: p.name,
+        isEnabled: p.isEnabled !== false,
+        image_url: await formatCustomImageUrl(p.image_url),
+        image_url_1_1: await formatCustomImageUrl(p.image_url_1_1),
+        image_url_9_16: await formatCustomImageUrl(p.image_url_9_16),
+        image_url_16_9: await formatCustomImageUrl(p.image_url_16_9),
+        created_at: p.created_at,
+        subjects_count: subjectsCount
+      };
+    }));
     return res.status(200).json({ success: true, papers });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -1473,6 +1478,22 @@ exports.generateReel = async (req, res) => {
   }
 };
 
+const mapReelOutputList = (reels, fallbackTitle) => {
+  if (!reels || !Array.isArray(reels)) return [];
+  return reels.map(r => {
+    const rObj = r.toObject ? r.toObject() : { ...r };
+    const rawUrl = rObj.video_url || rObj.media_url || '';
+    return {
+      content_id: rObj.content_id || rObj._id || '',
+      title: rObj.title || fallbackTitle || '',
+      video_url: rawUrl,
+      media_url: rawUrl,
+      script: rObj.script || rObj.metadata?.script || rObj.body || '',
+      created_at: rObj.created_at || new Date()
+    };
+  });
+};
+
 // GET /api/classroom-exams/:examId/subtopics/:subtopicId/reels
 exports.getSubtopicReels = async (req, res) => {
   try {
@@ -1556,7 +1577,7 @@ exports.getSubtopicReels = async (req, res) => {
         console.log("Successfully migrated legacy reels to R2 and updated MongoDB.");
       }
 
-      return res.status(200).json({ success: true, reels: formattedReels });
+      return res.status(200).json({ success: true, reels: mapReelOutputList(formattedReels, foundSubtopic?.name) });
     }
 
     // 2. If no local reels cached, fallback to partner server & migrate them to R2
@@ -1615,7 +1636,7 @@ exports.getSubtopicReels = async (req, res) => {
         console.log("Successfully migrated partner reels to R2 and updated MongoDB.");
       }
 
-      return res.status(200).json({ success: true, reels: formattedReels });
+      return res.status(200).json({ success: true, reels: mapReelOutputList(formattedReels, foundSubtopic?.name) });
     } else {
       return res.status(400).json({ success: false, message: 'Failed to fetch reels from partner server' });
     }
@@ -1848,7 +1869,7 @@ exports.getCurrentAffairs = async (req, res) => {
     const { apiURL, appToken } = getApiConfig();
     const { isCustom } = req.query;
 
-    if (isCustom === 'true') {
+    if (isCustom === 'true' || isCustom === true) {
       const localTopics = await ClassroomCurrentAffair.find({ clientId, isCustom: true }).lean();
       const enrichedTopics = localTopics.map(topic => ({
         ...topic,
@@ -1887,7 +1908,11 @@ exports.getCurrentAffairs = async (req, res) => {
         );
       }));
 
-      const localTopics = await ClassroomCurrentAffair.find({ clientId, isCustom: { $ne: true } }).lean();
+      const filter = { clientId };
+      if (isCustom === 'false' || isCustom === false) {
+        filter.isCustom = { $ne: true };
+      }
+      const localTopics = await ClassroomCurrentAffair.find(filter).lean();
 
       // Map external fields (name, title, reel_count) in-memory to preserve dynamic metrics and fallbacks
       const apiTopicMap = {};
@@ -1898,6 +1923,14 @@ exports.getCurrentAffairs = async (req, res) => {
       });
 
       const enrichedTopics = localTopics.map(topic => {
+        if (topic.isCustom) {
+          return {
+            ...topic,
+            title: topic.title || 'Untitled Current Affair',
+            name: topic.title || 'Untitled Current Affair',
+            reel_count: topic.reels ? topic.reels.length : 0
+          };
+        }
         const apiTopic = apiTopicMap[topic.ca_topic_id] || {};
         return {
           ...topic,
@@ -2853,6 +2886,48 @@ exports.getTopicReels = async (req, res) => {
     const response = await axios.get(`${apiURL}/api/classroom/topics/${topicId}/reels`, {
       headers: { 'X-App-Token': appToken, 'Content-Type': 'application/json' }
     });
+    
+    if (response.data && response.data.success && response.data.reels) {
+      const clientId = getClientId(req);
+      const examDoc = await ClassroomExam.findOne({ "tree.subjects.chapters.topics.topic_id": topicId, clientId });
+      let topicName = '';
+      if (examDoc) {
+        for (const paper of examDoc.tree) {
+          for (const subject of paper.subjects) {
+            for (const chap of subject.chapters) {
+              const top = chap.topics.find(t => t.topic_id === topicId);
+              if (top) {
+                topicName = top.name;
+                break;
+              }
+            }
+            if (topicName) break;
+          }
+          if (topicName) break;
+        }
+      }
+      
+      const mappedReels = response.data.reels.map(r => {
+        const rawUrl = r.video_url || r.media_url || '';
+        const video_url = rawUrl.startsWith('http') 
+          ? rawUrl 
+          : `${apiURL}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+        return {
+          content_id: r.content_id || r._id || '',
+          title: r.title || topicName || '',
+          video_url: video_url,
+          media_url: video_url,
+          script: r.script || r.metadata?.script || r.body || '',
+          created_at: r.created_at || new Date()
+        };
+      });
+      
+      return res.status(response.status).json({
+        success: true,
+        reels: mappedReels
+      });
+    }
+    
     return res.status(response.status).json(response.data);
   } catch (error) {
     console.error('Error fetching topic reels:', error.message);
@@ -3587,6 +3662,50 @@ exports.getPublicSubtopicReels = async (req, res) => {
     const response = await axios.get(`${apiURL}/api/classroom/public/subtopics/${subtopicId}/reels`, {
       headers: { 'X-App-Token': appToken, 'Content-Type': 'application/json' }
     });
+    
+    if (response.data && response.data.success && response.data.reels) {
+      const examDoc = await ClassroomExam.findOne({ "tree.subjects.chapters.topics.subtopics.subtopic_id": subtopicId });
+      let subtopicName = '';
+      if (examDoc) {
+        for (const paper of examDoc.tree) {
+          for (const subject of paper.subjects) {
+            for (const chap of subject.chapters) {
+              for (const top of chap.topics) {
+                const sub = top.subtopics.find(s => s.subtopic_id === subtopicId);
+                if (sub) {
+                  subtopicName = sub.name;
+                  break;
+                }
+              }
+              if (subtopicName) break;
+            }
+            if (subtopicName) break;
+          }
+          if (subtopicName) break;
+        }
+      }
+      
+      const mappedReels = response.data.reels.map(r => {
+        const rawUrl = r.video_url || r.media_url || '';
+        const video_url = rawUrl.startsWith('http') 
+          ? rawUrl 
+          : `${apiURL}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+        return {
+          content_id: r.content_id || r._id || '',
+          title: r.title || subtopicName || '',
+          video_url: video_url,
+          media_url: video_url,
+          script: r.script || r.metadata?.script || r.body || '',
+          created_at: r.created_at || new Date()
+        };
+      });
+      
+      return res.status(response.status).json({
+        success: true,
+        reels: mappedReels
+      });
+    }
+    
     return res.status(response.status).json(response.data);
   } catch (error) {
     console.error('Error fetching public subtopic reels:', error.message);

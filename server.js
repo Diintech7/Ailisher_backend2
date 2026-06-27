@@ -68,10 +68,46 @@ const userProfileRoutes = require('./routes/userProfile')
 const adminBannersRoutes = require('./routes/adminBanners');
 const mobileBannersRoutes = require('./routes/mobileBanners');
 
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./swagger.json');
+
 app.use(cors())
 app.use(express.json({ limit: "50mb" }))
 app.use(express.urlencoded({ extended: true, limit: "50mb" }))
 app.use("/uploads", express.static(path.join(__dirname, "uploads")))
+app.use(express.static(path.join(__dirname, "public")))
+
+// Secure Swagger UI with Basic Authentication using credentials from .env
+const swaggerAuth = (req, res, next) => {
+  const swaggerUser = process.env.SWAGGER_USER || 'admin';
+  const swaggerPass = process.env.SWAGGER_PASSWORD || 'admin123';
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="API Docs"');
+    return res.status(401).send('Authentication required.');
+  }
+  try {
+    const auth = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
+    const user = auth[0];
+    const pass = auth[1];
+    if (user === swaggerUser && pass === swaggerPass) {
+      return next();
+    }
+  } catch (err) {
+    // Fail silently and trigger auth prompt again
+  }
+  res.setHeader('WWW-Authenticate', 'Basic realm="API Docs"');
+  return res.status(401).send('Invalid credentials.');
+};
+
+const swaggerOptions = {
+  swaggerOptions: {
+    persistAuthorization: true
+  },
+  customJs: '/swagger-custom.js'
+};
+
+app.use('/api-docs', swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerDocument, swaggerOptions));
 
 mongoose
   .connect(process.env.MONGODB_URI)
@@ -154,7 +190,7 @@ app.use(
     req.clientId = req.params.clientId;
     next();
   },
-  require('./routes/classroomExam')
+  require('./routes/mobileClassroom')
 );
 app.use(
   '/api/clients/:clientId/mobile/classroom-exams',
@@ -163,7 +199,7 @@ app.use(
     req.clientId = req.params.clientId;
     next();
   },
-  require('./routes/classroomExam')
+  require('./routes/mobileClassroom')
 );
 app.use('/api/admin/banners', adminBannersRoutes);
 app.use('/api/app-analytics', require("./routes/userAnalytics"))

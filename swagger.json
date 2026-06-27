@@ -1,0 +1,5931 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Ailisher Mobile App API Documentation",
+    "description": "Unified interactive API documentation compiled automatically from the Postman app developer collections.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000",
+      "description": "Local Development Server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/clients/{clientId}/mobile/auth/onboarding/register-email-password": {
+      "post": {
+        "summary": "Step 1: Register Email & Password",
+        "description": "Registers a new user email and password. This creates a pending user record and sends a 6-digit OTP to the email inbox.",
+        "tags": [
+          "1. Mobile Authentication Collection | 1. 4-Step Registration Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "ayush.student@gmail.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "StudentPassword@2026"
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/onboarding/verify-email-otp": {
+      "post": {
+        "summary": "Step 2: Verify Email OTP",
+        "description": "Verifies the email OTP. On success, returns 'temp_token' which must be stored in variables to authorize subsequent onboarding requests.",
+        "tags": [
+          "1. Mobile Authentication Collection | 1. 4-Step Registration Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "ayush.student@gmail.com"
+                  },
+                  "otp": {
+                    "type": "string",
+                    "example": "123456"
+                  }
+                },
+                "required": [
+                  "email",
+                  "otp"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/onboarding/send-mobile-otp": {
+      "post": {
+        "summary": "Step 3a: Send Mobile OTP (Auth required)",
+        "description": "Sends a verification OTP to the user's mobile number via WhatsApp. Requires temp_token from Step 2.",
+        "tags": [
+          "1. Mobile Authentication Collection | 1. 4-Step Registration Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mobile": {
+                    "type": "string",
+                    "example": "9876543210"
+                  }
+                },
+                "required": [
+                  "mobile"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/onboarding/verify-mobile-otp": {
+      "post": {
+        "summary": "Step 3b: Verify Mobile OTP & Link (Auth required)",
+        "description": "Verifies the WhatsApp OTP and links the mobile number to the onboarding session.",
+        "tags": [
+          "1. Mobile Authentication Collection | 1. 4-Step Registration Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mobile": {
+                    "type": "string",
+                    "example": "9876543210"
+                  },
+                  "otp": {
+                    "type": "string",
+                    "example": "654321"
+                  },
+                  "email": {
+                    "type": "string",
+                    "example": "ayush.student@gmail.com"
+                  }
+                },
+                "required": [
+                  "mobile",
+                  "otp",
+                  "email"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/profile": {
+      "post": {
+        "summary": "Step 4: Create User Profile (Auth required)",
+        "description": "Submits profile details and completes onboarding. On success, returns the final JWT token to unlock full API access.",
+        "tags": [
+          "1. Mobile Authentication Collection | 1. 4-Step Registration Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Ayush Kumar"
+                  },
+                  "age": {
+                    "type": "string",
+                    "example": "19-25"
+                  },
+                  "gender": {
+                    "type": "string",
+                    "example": "Male"
+                  },
+                  "exams": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "example": "UPSC"
+                    }
+                  },
+                  "native_language": {
+                    "type": "string",
+                    "example": "Hindi"
+                  },
+                  "city": {
+                    "type": "string",
+                    "example": "Patna"
+                  },
+                  "pincode": {
+                    "type": "string",
+                    "example": "800001"
+                  }
+                },
+                "required": [
+                  "name",
+                  "age",
+                  "gender",
+                  "exams",
+                  "native_language",
+                  "city",
+                  "pincode"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/onboarding/login-email-password": {
+      "post": {
+        "summary": "Email & Password Login",
+        "description": "Logs in the user using email and password.",
+        "tags": [
+          "1. Mobile Authentication Collection | 2. User Login Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "ayush.student@gmail.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "StudentPassword@2026"
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/login": {
+      "post": {
+        "summary": "WhatsApp Mobile Login - Request OTP",
+        "description": "Requests a login OTP sent to the user's mobile number via WhatsApp.",
+        "tags": [
+          "1. Mobile Authentication Collection | 2. User Login Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mobile": {
+                    "type": "string",
+                    "example": "9876543210"
+                  }
+                },
+                "required": [
+                  "mobile"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/verify-login-otp": {
+      "post": {
+        "summary": "WhatsApp Mobile Login - Verify OTP",
+        "description": "Verifies the WhatsApp login OTP. On success, logs in the user and returns the active JWT token.",
+        "tags": [
+          "1. Mobile Authentication Collection | 2. User Login Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mobile": {
+                    "type": "string",
+                    "example": "9876543210"
+                  },
+                  "otp": {
+                    "type": "string",
+                    "example": "123456"
+                  }
+                },
+                "required": [
+                  "mobile",
+                  "otp"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/check-user": {
+      "post": {
+        "summary": "Check User Status",
+        "description": "Checks if a user exists with the given email or mobile number for the client.",
+        "tags": [
+          "1. Mobile Authentication Collection | 3. Testing Utilities"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "ayush.student@gmail.com"
+                  }
+                },
+                "required": [
+                  "email"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/delete-user": {
+      "post": {
+        "summary": "Delete User Account",
+        "description": "Deletes the user and their associated profile/credits (used for re-testing onboarding flows).",
+        "tags": [
+          "1. Mobile Authentication Collection | 3. Testing Utilities"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "ayush.student@gmail.com"
+                  }
+                },
+                "required": [
+                  "email"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/forgot-password-email": {
+      "post": {
+        "summary": "Option A1: Forgot Password (Email Link)",
+        "description": "Sends a password reset link to the registered email.",
+        "tags": [
+          "1. Mobile Authentication Collection | 4. Forgot & Reset Password Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "ayush.student@gmail.com"
+                  }
+                },
+                "required": [
+                  "email"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/reset-password-email": {
+      "post": {
+        "summary": "Option A2: Reset Password (Email Link)",
+        "description": "Resets user password using the token received in the email reset link.",
+        "tags": [
+          "1. Mobile Authentication Collection | 4. Forgot & Reset Password Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "example": "your_reset_token_from_email_here"
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "example": "NewPassword@2026"
+                  }
+                },
+                "required": [
+                  "token",
+                  "newPassword"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/forgot-password-email-otp": {
+      "post": {
+        "summary": "Option B1: Forgot Password (Email OTP)",
+        "description": "Sends a 6-digit password reset OTP to the registered email (requires USE_BREVO=true).",
+        "tags": [
+          "1. Mobile Authentication Collection | 4. Forgot & Reset Password Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "ayush.student@gmail.com"
+                  }
+                },
+                "required": [
+                  "email"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/auth/reset-password-email-otp": {
+      "post": {
+        "summary": "Option B2: Reset Password (Email OTP)",
+        "description": "Resets user password using the OTP received via email.",
+        "tags": [
+          "1. Mobile Authentication Collection | 4. Forgot & Reset Password Flow"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "ayush.student@gmail.com"
+                  },
+                  "otp": {
+                    "type": "string",
+                    "example": "123456"
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "example": "NewPassword@2026"
+                  }
+                },
+                "required": [
+                  "email",
+                  "otp",
+                  "newPassword"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/banners": {
+      "get": {
+        "summary": "Get Grouped Active Banners",
+        "description": "Fetches all active banners for the client, grouped by placement ('top', 'medium', 'bottom') and sorted by their priority order. Image URLs are dynamically signed using Cloudflare R2 presigned URLs.",
+        "tags": [
+          "2. Mobile Banners Collection | Banners Management"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/exams": {
+      "get": {
+        "summary": "1. Get Classroom Exams List",
+        "description": "Fetches the list of synced classroom exams for the client along with their individual lock and paid statuses.",
+        "tags": [
+          "3. AI Classroom Exams Collection | Classroom Structure"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/{examId}": {
+      "get": {
+        "summary": "Get Exam Details & Lock Status",
+        "description": "Fetches exam details. On evaluation, returns 'isLocked: true' along with 'planDetails' recommended list if user has not purchased it yet.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 2. Classroom Access & Locking Status"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "examId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter examId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/{examId}/papers": {
+      "get": {
+        "summary": "3. Get Papers List in an Exam",
+        "description": "Fetches the list of all papers registered under a specific exam.",
+        "tags": [
+          "3. AI Classroom Exams Collection | Classroom Structure"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "examId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter examId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/{examId}/papers/{paperId}/subjects": {
+      "get": {
+        "summary": "4. Get Subjects in a Paper",
+        "description": "Fetches all subjects registered under a specific paper with their respective lock and subscription plan details.",
+        "tags": [
+          "3. AI Classroom Exams Collection | Classroom Structure"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "examId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter examId"
+          },
+          {
+            "name": "paperId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter paperId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/{examId}/subjects/{subjectId}/chapters": {
+      "get": {
+        "summary": "5. Get Chapters in a Subject",
+        "description": "Fetches all chapters and their nested sub-topic metadata registered inside a specific subject. Requires access rights verification.",
+        "tags": [
+          "3. AI Classroom Exams Collection | Classroom Structure"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "examId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter examId"
+          },
+          {
+            "name": "subjectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "sub-12345"
+            },
+            "description": "Path parameter subjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/{examId}/chapters/{chapterId}/topics": {
+      "get": {
+        "summary": "6. Get Topics in a Chapter",
+        "description": "Fetches all topics and nested sub-topic references inside a chapter. Requires active subscription validation.",
+        "tags": [
+          "3. AI Classroom Exams Collection | Classroom Structure"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "examId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter examId"
+          },
+          {
+            "name": "chapterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "chapter-12345"
+            },
+            "description": "Path parameter chapterId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/{examId}/topics/{topicId}/subtopics": {
+      "get": {
+        "summary": "7. Get Subtopics in a Topic",
+        "description": "Fetches all subtopics categorized under a specific topic.",
+        "tags": [
+          "3. AI Classroom Exams Collection | Classroom Structure"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "examId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter examId"
+          },
+          {
+            "name": "topicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "topic-88d3de5dacc23aac"
+            },
+            "description": "Path parameter topicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/{examId}/subtopics/{subtopicId}": {
+      "get": {
+        "summary": "8. Get Subtopic Details",
+        "description": "Retrieves comprehensive data for a single subtopic, including description summaries, active files, and reel logs.",
+        "tags": [
+          "3. AI Classroom Exams Collection | Classroom Structure"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "examId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter examId"
+          },
+          {
+            "name": "subtopicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "subtopic-038f0092d7f6d0cd"
+            },
+            "description": "Path parameter subtopicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/papers/{paperId}/chat": {
+      "post": {
+        "summary": "Chat with Exam Paper (PDF)",
+        "description": "Submits a question to search and chat with the uploaded PDF paper contents.",
+        "tags": [
+          "3. AI Classroom Exams Collection | AI Operations (Exams/Papers)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "paperId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter paperId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "example": "What is the weightage of physics chapter 1?"
+                  },
+                  "history": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "question",
+                  "history"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/papers/{paperId}/chat/history": {
+      "get": {
+        "summary": "Get Paper Chat History",
+        "description": "Fetches the chat history log for user's interactions with a specific paper context.",
+        "tags": [
+          "3. AI Classroom Exams Collection | AI Operations (Exams/Papers)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "paperId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter paperId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/subtopics/{subtopicId}/download-notes-pdf": {
+      "get": {
+        "summary": "Download Subtopic Notes PDF",
+        "description": "Generates and triggers PDF download buffer for the selected subtopic's study notes.",
+        "tags": [
+          "3. AI Classroom Exams Collection | AI Generation & Learning Tools"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "subtopicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "subtopic-038f0092d7f6d0cd"
+            },
+            "description": "Path parameter subtopicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/subtopics/{subtopicId}/reels": {
+      "get": {
+        "summary": "Get Subtopic Video Reels",
+        "description": "Returns all explanatory reels produced for this subtopic.",
+        "tags": [
+          "7. AI Classroom Generation & TTS Voice Collection | 1. Topic & Subtopic AI Generation"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "subtopicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "subtopic-038f0092d7f6d0cd"
+            },
+            "description": "Path parameter subtopicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/tts/speak": {
+      "post": {
+        "summary": "POST Generate TTS Audio",
+        "description": "Generates narration data and audio endpoints from text context.",
+        "tags": [
+          "7. AI Classroom Generation & TTS Voice Collection | 2. Text-to-Speech (TTS) Voice APIs"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "example": "Welcome to the AI classroom. Today we will cover the French Revolution."
+                  },
+                  "voice": {
+                    "type": "string",
+                    "example": "alloy"
+                  }
+                },
+                "required": [
+                  "text",
+                  "voice"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "GET Stream TTS Audio",
+        "description": "Dynamically streams binary chunks of synthesized speech audio generated from query parameter string.",
+        "tags": [
+          "7. AI Classroom Generation & TTS Voice Collection | 2. Text-to-Speech (TTS) Voice APIs"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "text",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "Namaskar dosto"
+            },
+            "description": "Query parameter text"
+          },
+          {
+            "name": "voice",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "alloy"
+            },
+            "description": "Query parameter voice"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/pyq-sets": {
+      "get": {
+        "summary": "Get PYQ Sets List",
+        "description": "Retrieves all synced and stored PYQ sets for the registered client.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 1. AI PYQ Sets (Mobile Classroom)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/pyq-sets/{pyqSetId}/questions": {
+      "get": {
+        "summary": "Get Extracted PYQ Questions",
+        "description": "Retrieves the full list of extracted questions (objective/subjective) parsed from the uploaded PDF.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 1. AI PYQ Sets (Mobile Classroom)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "pyqSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter pyqSetId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/pyq-sets/{pyqSetId}/chat": {
+      "post": {
+        "summary": "Chat with PYQ Set (AI Assistant)",
+        "description": "Engage in an AI chat session utilizing the vectorized context of the custom PYQ Set.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 1. AI PYQ Sets (Mobile Classroom)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "pyqSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter pyqSetId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "example": "What were the key topics queried in the 2025 BPSC history exam?"
+                  },
+                  "history": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "question",
+                  "history"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/pyq-sets/{pyqSetId}/chat/history": {
+      "get": {
+        "summary": "Get PYQ Chat History",
+        "description": "Fetches the full conversation log history with the AI assistant for this specific PYQ Set.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 1. AI PYQ Sets (Mobile Classroom)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "pyqSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter pyqSetId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/pyq-sets/{pyqSetId}/reels": {
+      "get": {
+        "summary": "Get PYQ Video Reels",
+        "description": "Loads explanation video reels associated with the PYQ Set.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 1. AI PYQ Sets (Mobile Classroom)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "pyqSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter pyqSetId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/pyq-assets/{itemType}/{itemId}/pyqs": {
+      "get": {
+        "summary": "Get PYQs for an Item",
+        "description": "Fetches all PYQ assets bound directly to a target Book, Chapter, Topic, or Subtopic.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 2. General PYQ Assets (Universal CRUD)"
+        ],
+        "parameters": [
+          {
+            "name": "itemType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter itemType"
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter itemId"
+          },
+          {
+            "name": "isWorkbook",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false"
+            },
+            "description": "Set to true if querying a workbook item, false for standard books"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new PYQ Asset",
+        "description": "Creates and links a new PYQ asset under the specified parent item.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 2. General PYQ Assets (Universal CRUD)"
+        ],
+        "parameters": [
+          {
+            "name": "itemType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter itemType"
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter itemId"
+          },
+          {
+            "name": "isWorkbook",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false"
+            },
+            "description": "Query parameter isWorkbook"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "year": {
+                    "type": "string",
+                    "example": "2024"
+                  },
+                  "question": {
+                    "type": "string",
+                    "example": "Which of the following events took place first?"
+                  },
+                  "answer": {
+                    "type": "string",
+                    "example": "Option A explanation and correct answer details"
+                  },
+                  "difficulty": {
+                    "type": "string",
+                    "example": "medium"
+                  },
+                  "source": {
+                    "type": "string",
+                    "example": "UPSC Prelims 2024"
+                  }
+                },
+                "required": [
+                  "year",
+                  "question",
+                  "answer",
+                  "difficulty",
+                  "source"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pyq-assets/pyqs/{pyqId}": {
+      "put": {
+        "summary": "Update a PYQ Asset",
+        "description": "Updates fields of an existing PYQ asset. User must be the owner (creator) or hold an admin role.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 2. General PYQ Assets (Universal CRUD)"
+        ],
+        "parameters": [
+          {
+            "name": "pyqId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter pyqId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "year": {
+                    "type": "string",
+                    "example": "2024"
+                  },
+                  "question": {
+                    "type": "string",
+                    "example": "Which of the following events took place first? (Updated)"
+                  },
+                  "answer": {
+                    "type": "string",
+                    "example": "Option A explanation (Updated)"
+                  },
+                  "difficulty": {
+                    "type": "string",
+                    "example": "hard"
+                  },
+                  "source": {
+                    "type": "string",
+                    "example": "UPSC Prelims 2024 (Updated)"
+                  }
+                },
+                "required": [
+                  "year",
+                  "question",
+                  "answer",
+                  "difficulty",
+                  "source"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a PYQ Asset",
+        "description": "Deletes the PYQ asset from the database. Requires ownership or admin authorization.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 2. General PYQ Assets (Universal CRUD)"
+        ],
+        "parameters": [
+          {
+            "name": "pyqId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter pyqId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/pyq-assets/pyqs/search": {
+      "get": {
+        "summary": "Search PYQ Assets",
+        "description": "Search universally across all PYQ assets using text query and specific metadata filters.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 2. General PYQ Assets (Universal CRUD)"
+        ],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "UPSC"
+            },
+            "description": "Term search in question/answer text"
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "2024"
+            },
+            "description": "Filter by exam year"
+          },
+          {
+            "name": "difficulty",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "medium"
+            },
+            "description": "Filter by difficulty: 'easy', 'medium', 'hard'"
+          },
+          {
+            "name": "itemType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "book"
+            },
+            "description": "Filter by parent type: 'book', 'chapter', 'topic', 'subtopic'"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "1"
+            },
+            "description": "Page number for pagination"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "10"
+            },
+            "description": "Results per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/pyq-assets/pyqs/stats": {
+      "get": {
+        "summary": "Get PYQ Asset Stats",
+        "description": "Fetches matching PYQ statistics (difficulty totals, years count) for a specific item.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 2. General PYQ Assets (Universal CRUD)"
+        ],
+        "parameters": [
+          {
+            "name": "itemType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "book"
+            },
+            "description": "Query parameter itemType"
+          },
+          {
+            "name": "itemId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "60c72b2f9b1d8b2bad68322c"
+            },
+            "description": "Query parameter itemId"
+          },
+          {
+            "name": "isWorkbook",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false"
+            },
+            "description": "Query parameter isWorkbook"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/books/{bookId}/assets/pyqs": {
+      "post": {
+        "summary": "Add PYQ to Book Asset",
+        "description": "Adds a PYQ directly to the book's assets document subdocument array.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 3. Legacy Book-Specific PYQs (Subdocuments)"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "year": {
+                    "type": "string",
+                    "example": "2024"
+                  },
+                  "question": {
+                    "type": "string",
+                    "example": "Sample legacy question from BPSC exam"
+                  },
+                  "answer": {
+                    "type": "string",
+                    "example": "Correct option and logic"
+                  },
+                  "difficulty": {
+                    "type": "string",
+                    "example": "medium"
+                  },
+                  "source": {
+                    "type": "string",
+                    "example": "BPSC 2024"
+                  }
+                },
+                "required": [
+                  "year",
+                  "question",
+                  "answer",
+                  "difficulty",
+                  "source"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/books/{bookId}/assets/pyqs/{pyqId}": {
+      "delete": {
+        "summary": "Delete PYQ from Book Asset",
+        "description": "Removes a PYQ from the book's assets document subdocument array by its subdocument ID.",
+        "tags": [
+          "4. Previous Year Questions (PYQs) Collection | 3. Legacy Book-Specific PYQs (Subdocuments)"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          },
+          {
+            "name": "pyqId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter pyqId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/current-affairs": {
+      "get": {
+        "summary": "Get Current Affairs Topics List",
+        "description": "Fetches current affairs topics from local synced database, merged dynamically with live video reel counts.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 1. AI Current Affairs Topics (Mobile Classroom)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/current-affairs/{caTopicId}/reels": {
+      "get": {
+        "summary": "Get Current Affairs Video Reels",
+        "description": "Retrieves the list of dynamic video reels generated for this specific Current Affairs topic.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 1. AI Current Affairs Topics (Mobile Classroom)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "caTopicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter caTopicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/reels/user": {
+      "get": {
+        "summary": "Get Reels Feed (User)",
+        "description": "Fetches list of all reels published by the client, marking each object with 'isLiked' and 'isViewed' flags evaluated specifically for the authenticated student user.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 2. Mobile Video Reels Feed (Student)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/reels/popular": {
+      "get": {
+        "summary": "Get Popular Reels Feed",
+        "description": "Retrieves the subset of reels marked as 'isPopular = true' and 'isEnabled = true' under the client.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 2. Mobile Video Reels Feed (Student)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/reels/{id}/like": {
+      "post": {
+        "summary": "Toggle Like on Reel",
+        "description": "Toggles the user's like on a reel. If delta: 1 is provided, it attempts to increment. If no body parameters are provided, it operates as a standard toggle.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 2. Mobile Video Reels Feed (Student)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "delta": {
+                    "type": "number",
+                    "example": 1
+                  }
+                },
+                "required": [
+                  "delta"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/reels/{id}/view": {
+      "post": {
+        "summary": "Increment View Count",
+        "description": "Increments the view counter of the reel. The endpoint only records one view per user ID (using the viewedBy array for tracking).",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 2. Mobile Video Reels Feed (Student)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/reels/{id}/share": {
+      "post": {
+        "summary": "Increment Share Count",
+        "description": "Increments the share count in the reel's metrics.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 2. Mobile Video Reels Feed (Student)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/reels/{id}/comment": {
+      "post": {
+        "summary": "Add Comment to Reel",
+        "description": "Adds a new comment text to the reel's internal comments list and updates comment metrics.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 2. Mobile Video Reels Feed (Student)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "example": "Excellent analysis of budget tax policies!"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/reels/{id}/comments": {
+      "get": {
+        "summary": "Get Comments for Reel",
+        "description": "Retrieves the list of comments posted on the reel along with their author ID and timestamp.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 2. Mobile Video Reels Feed (Student)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/reels/upload-url": {
+      "post": {
+        "summary": "Request Reel Upload Presigned URL",
+        "description": "Generates a secure presigned URL in Cloudflare R2 bucket. Mobile client must upload binary payload using PUT method directly to the returned 'uploadUrl'.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 3. Reels Feed Administration"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fileName": {
+                    "type": "string",
+                    "example": "budget_reel_final.mp4"
+                  },
+                  "contentType": {
+                    "type": "string",
+                    "example": "video/mp4"
+                  }
+                },
+                "required": [
+                  "fileName",
+                  "contentType"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reels": {
+      "post": {
+        "summary": "Publish a new Reel",
+        "description": "Creates a new Reel. Admin must either provide the uploaded R2 'videoKey' or a valid 'youtubeLink'.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 3. Reels Feed Administration"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "example": "Union Budget 2026-27 Highlights"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "A detailed analysis of sector budgets and tax alterations."
+                  },
+                  "videoKey": {
+                    "type": "string",
+                    "example": "my-business-client/reels/1782371852722.mp4"
+                  },
+                  "youtubeLink": {
+                    "type": "string",
+                    "example": "https://www.youtube.com/shorts/abcd1234efg"
+                  }
+                },
+                "required": [
+                  "title",
+                  "description",
+                  "videoKey",
+                  "youtubeLink"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Get Published Reels List (Admin)",
+        "description": "Admin list of all reels created by the business client account. Automatically generates refreshed GET presigned URLs for R2 storage.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 3. Reels Feed Administration"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/reels/{id}": {
+      "get": {
+        "summary": "Get Single Reel Details (Admin)",
+        "description": "Fetches all detailed properties of a specific reel.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 3. Reels Feed Administration"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Reel Details",
+        "description": "Updates details or metrics of a specific reel. If a new videoKey is passed, the old file is deleted from S3/R2.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 3. Reels Feed Administration"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "example": "Union Budget 2026-27 Highlights (Updated)"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Comprehensive economy review updates."
+                  },
+                  "metrics": {
+                    "type": "object",
+                    "properties": {
+                      "views": {
+                        "type": "number",
+                        "example": 1500
+                      },
+                      "likes": {
+                        "type": "number",
+                        "example": 230
+                      }
+                    },
+                    "required": [
+                      "views",
+                      "likes"
+                    ]
+                  }
+                },
+                "required": [
+                  "title",
+                  "description",
+                  "metrics"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Toggle Reel Status (Enabled/Disabled)",
+        "description": "Toggles the availability of the reel for end-users on the mobile client feed.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 3. Reels Feed Administration"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "isEnabled": {
+                    "type": "boolean",
+                    "example": false
+                  }
+                },
+                "required": [
+                  "isEnabled"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a Reel",
+        "description": "Removes the reel from the database permanently.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 3. Reels Feed Administration"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/reels/popular/{id}": {
+      "patch": {
+        "summary": "Toggle Popular Status of Reel",
+        "description": "Flags or unflags the reel as popular. Popular reels are shown in a designated tab in the feed.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 3. Reels Feed Administration"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "isPopular": {
+                    "type": "boolean",
+                    "example": true
+                  }
+                },
+                "required": [
+                  "isPopular"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reels/reorder": {
+      "patch": {
+        "summary": "Reorder Reels List",
+        "description": "Performs bulk reordering by reassigning contiguous order integers (1, 2, 3...) to the array of reels.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 3. Reels Feed Administration"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reels": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "_id": {
+                          "type": "string",
+                          "example": "60c72b2f9b1d8b2bad68322d"
+                        },
+                        "videoKey": {
+                          "type": "string",
+                          "example": "my-business-client/reels/1.mp4"
+                        }
+                      },
+                      "required": [
+                        "_id",
+                        "videoKey"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "reels"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reels/{id}/order": {
+      "patch": {
+        "summary": "Update Single Reel Order Position",
+        "description": "Shifts a single reel to a target order index, shifting others to maintain a contiguous order chain.",
+        "tags": [
+          "5. Current Affairs & Video Reels Collection | 3. Reels Feed Administration"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "order": {
+                    "type": "number",
+                    "example": 3
+                  }
+                },
+                "required": [
+                  "order"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/credit/plans": {
+      "get": {
+        "summary": "Get Plans With Bundled Items (Courses/Exams)",
+        "description": "Fetches active credit recharge plans that bundle specific courses or exams.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 1. Recharge & Purchase Plans"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/credit/allPlans": {
+      "get": {
+        "summary": "Get All Active Plans",
+        "description": "Fetches all active credit recharge plans (with and without bundled items) for the client.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 1. Recharge & Purchase Plans"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/credit/plans/without-items": {
+      "get": {
+        "summary": "Get Plans Without Bundled Items (Credits Only)",
+        "description": "Fetches active recharge plans that grant credits only without bundling any courses/workbooks.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 1. Recharge & Purchase Plans"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/credit/plan/{planId}": {
+      "get": {
+        "summary": "Get Plan By ID",
+        "description": "Fetches detailed information for a single plan by its ID.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 1. Recharge & Purchase Plans"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter planId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/credit/account": {
+      "get": {
+        "summary": "Get User Credit Account Details",
+        "description": "Gets the current credit balance and linked purchased plan IDs for the logged-in mobile user.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 1. Recharge & Purchase Plans"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/credit/transactions": {
+      "get": {
+        "summary": "Get Credit Transactions Log",
+        "description": "Fetches a history of all credit transactions (earned/spent) for the logged-in user.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 1. Recharge & Purchase Plans"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/paytm/initiate": {
+      "post": {
+        "summary": "Initiate Credit Recharge",
+        "description": "Initiate credit recharge payment gateway. Generates Paytm order ID, checksum, parameters, and redirects URL.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 3. Direct Credits Paytm Purchase"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "planId": {
+                    "type": "string",
+                    "example": "65cfa7a7b8e123a1a1234567"
+                  },
+                  "customerEmail": {
+                    "type": "string",
+                    "example": "customer@example.com"
+                  },
+                  "customerName": {
+                    "type": "string",
+                    "example": "John Doe"
+                  }
+                },
+                "required": [
+                  "planId",
+                  "customerEmail",
+                  "customerName"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/paytm/callback": {
+      "post": {
+        "summary": "Payment Callback (Webhook Sim)",
+        "description": "Webhook handler callback triggered by Paytm's servers to complete transaction, update status, and add credits.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 3. Direct Credits Paytm Purchase"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/paytm/status/{orderId}": {
+      "get": {
+        "summary": "Check Payment Status (Local DB)",
+        "description": "Checks the current status of payment in the local database using the Order ID.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 3. Direct Credits Paytm Purchase"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "ORDER_1717502400000_abc123xyz"
+            },
+            "description": "Path parameter orderId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/paytm/transaction-status": {
+      "post": {
+        "summary": "Paytm Live Status Inquiry",
+        "description": "Calls Paytm's API directly from the backend to verify actual payment status for a specific Order ID.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 3. Direct Credits Paytm Purchase"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "orderId": {
+                    "type": "string",
+                    "example": "ORDER_1717502400000_abc123xyz"
+                  }
+                },
+                "required": [
+                  "orderId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/paytm/health": {
+      "get": {
+        "summary": "Paytm API Health Check",
+        "description": "Returns status, config environment, and timestamp of the Paytm module backend.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 3. Direct Credits Paytm Purchase"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/paytm/payments": {
+      "get": {
+        "summary": "Fetch All Payments (Admin)",
+        "description": "Fetch all logged payment transactions on the backend (Admin use only).",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 3. Direct Credits Paytm Purchase"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "1"
+            },
+            "description": "Query parameter page"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "10"
+            },
+            "description": "Query parameter limit"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "SUCCESS"
+            },
+            "description": "Query parameter status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/paytm/summary/{projectId}": {
+      "get": {
+        "summary": "Payment Summary by Project (Admin)",
+        "description": "Gets counts and total successful amount of transactions grouped by status for a project ID.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 3. Direct Credits Paytm Purchase"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "AILISHER"
+            },
+            "description": "Path parameter projectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/paytm/transactions": {
+      "get": {
+        "summary": "Fetch All Credit Transactions (Admin)",
+        "description": "Fetches log of all credit account balance increases and deductions (Admin use only).",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 3. Direct Credits Paytm Purchase"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/cart/checkout/item": {
+      "post": {
+        "summary": "Initiate Cart Checkout",
+        "description": "Initiates purchase of items (workbooks) present in the cart, generates a checkout order, and returns Paytm checksum/parameters.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 4. Cart Paytm Purchases"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workbookIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "example": "65cfa7a7b8e123a1a1234567"
+                    }
+                  },
+                  "customerEmail": {
+                    "type": "string",
+                    "example": "customer@example.com"
+                  }
+                },
+                "required": [
+                  "workbookIds",
+                  "customerEmail"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/cart/callback": {
+      "post": {
+        "summary": "Cart Payment Callback (Webhook Sim)",
+        "description": "Paytm callback webhook for cart checkout. Processes order completion, sets workbooks active, and clears cart.",
+        "tags": [
+          "6. Plans & Paytm Locking Collection | 4. Cart Paytm Purchases"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/topics/{topicId}/quiz/generate": {
+      "post": {
+        "summary": "Generate Topic Quiz",
+        "description": "Generates a list of multiple choice practice questions for the topic dynamically from notes context.",
+        "tags": [
+          "7. AI Classroom Generation & TTS Voice Collection | 1. Topic & Subtopic AI Generation"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "topicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "topic-88d3de5dacc23aac"
+            },
+            "description": "Path parameter topicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/topics/{topicId}/reels": {
+      "get": {
+        "summary": "Get Topic Video Reels",
+        "description": "Retrieves explanation video reels mapped directly to this topic.",
+        "tags": [
+          "7. AI Classroom Generation & TTS Voice Collection | 1. Topic & Subtopic AI Generation"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "topicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "topic-88d3de5dacc23aac"
+            },
+            "description": "Path parameter topicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/subtopics/{subtopicId}/quiz/generate": {
+      "post": {
+        "summary": "Generate Subtopic Quiz",
+        "description": "Generates custom MCQ quizzes for the subtopic.",
+        "tags": [
+          "7. AI Classroom Generation & TTS Voice Collection | 1. Topic & Subtopic AI Generation"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "subtopicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "subtopic-038f0092d7f6d0cd"
+            },
+            "description": "Path parameter subtopicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/books/metadata/categories": {
+      "get": {
+        "summary": "Get Bookstore Categories",
+        "description": "Fetches all main book category options available under the client.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 1. Mobile Bookstore Discovery"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/books/metadata/subcategories/{mainCategory}": {
+      "get": {
+        "summary": "Get Bookstore Subcategories",
+        "description": "Fetches subcategories matching a selected main category path.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 1. Mobile Bookstore Discovery"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "mainCategory",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter mainCategory"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/books/metadata/tags": {
+      "get": {
+        "summary": "Get Bookstore Tags",
+        "description": "Fetches all available tag categories mapped to books.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 1. Mobile Bookstore Discovery"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/books/metadata/languages": {
+      "get": {
+        "summary": "Get Bookstore Languages",
+        "description": "Fetches language options available for the catalog.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 1. Mobile Bookstore Discovery"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/books/metadata/authors": {
+      "get": {
+        "summary": "Get Bookstore Authors",
+        "description": "Fetches registered authors catalog list.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 1. Mobile Bookstore Discovery"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/books": {
+      "get": {
+        "summary": "Get Bookstore Books List",
+        "description": "Queries all published books for the client with optional filters and keyword searches.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 1. Mobile Bookstore Discovery"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "1"
+            },
+            "description": "Query parameter page"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "10"
+            },
+            "description": "Query parameter limit"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": ""
+            },
+            "description": "Query parameter search"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": ""
+            },
+            "description": "Query parameter category"
+          },
+          {
+            "name": "subcategory",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": ""
+            },
+            "description": "Query parameter subcategory"
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": ""
+            },
+            "description": "Query parameter language"
+          },
+          {
+            "name": "author",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": ""
+            },
+            "description": "Query parameter author"
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": ""
+            },
+            "description": "Query parameter tag"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/books/{bookId}": {
+      "get": {
+        "summary": "Get Book Details by ID",
+        "description": "Loads complete metadata for a specific book, including pricing, description, author, page count, and chapters tree.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 1. Mobile Bookstore Discovery"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/books/{bookId}/rating": {
+      "post": {
+        "summary": "Rate a Book",
+        "description": "Submit rating values (1-5) for a selected book.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 1. Mobile Bookstore Discovery"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rating": {
+                    "type": "number",
+                    "example": 5
+                  }
+                },
+                "required": [
+                  "rating"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/mybooks/list": {
+      "get": {
+        "summary": "Get User Owned Books",
+        "description": "Returns shelf list of books purchased or claimed by the authenticated student.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 2. User Book Shelf & Notes (My Shelf)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/mybooks/check/{bookId}": {
+      "get": {
+        "summary": "Check Book Ownership",
+        "description": "Quickly checks if a book has been acquired by the user.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 2. User Book Shelf & Notes (My Shelf)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/mybooks/stats": {
+      "get": {
+        "summary": "Get User Books Stats",
+        "description": "Fetches statistics metrics (total owned books, note counts) for the user's shelf.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 2. User Book Shelf & Notes (My Shelf)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/mybooks/add": {
+      "post": {
+        "summary": "Add Book to Shelf",
+        "description": "Acquires a book to the student's personal bookshelf directly (for free/promotional books).",
+        "tags": [
+          "8. Bookstore & Cart Collection | 2. User Book Shelf & Notes (My Shelf)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bookId": {
+                    "type": "string",
+                    "example": "60c72b2f9b1d8b2bad68322c"
+                  }
+                },
+                "required": [
+                  "bookId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/mybooks/remove": {
+      "post": {
+        "summary": "Remove Book from Shelf",
+        "description": "Removes the book entry from the student's shelf.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 2. User Book Shelf & Notes (My Shelf)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bookId": {
+                    "type": "string",
+                    "example": "60c72b2f9b1d8b2bad68322c"
+                  }
+                },
+                "required": [
+                  "bookId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/mybooks/note": {
+      "post": {
+        "summary": "Add Personal Note on Book",
+        "description": "Saves a personal text note associated with a claimed book entry.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 2. User Book Shelf & Notes (My Shelf)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bookId": {
+                    "type": "string",
+                    "example": "60c72b2f9b1d8b2bad68322c"
+                  },
+                  "note": {
+                    "type": "string",
+                    "example": "Revision notes on Chapter 3 regarding Revolt of 1857."
+                  }
+                },
+                "required": [
+                  "bookId",
+                  "note"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/myworkbooks/list": {
+      "get": {
+        "summary": "Get User Active Workbooks",
+        "description": "Returns list of purchased or claimed active workbooks on the student's shelf.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 2. User Book Shelf & Notes (My Shelf)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/myworkbooks/add": {
+      "post": {
+        "summary": "Add Workbook to Active List",
+        "description": "Claims/locks workbook access to the user's active workbook list.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 2. User Book Shelf & Notes (My Shelf)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workbookId": {
+                    "type": "string",
+                    "example": "65cfa7a7b8e123a1a1234567"
+                  }
+                },
+                "required": [
+                  "workbookId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/myworkbooks/remove": {
+      "post": {
+        "summary": "Remove Workbook from Active List",
+        "description": "Removes workbook access logs from user shelf.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 2. User Book Shelf & Notes (My Shelf)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workbookId": {
+                    "type": "string",
+                    "example": "65cfa7a7b8e123a1a1234567"
+                  }
+                },
+                "required": [
+                  "workbookId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/cart": {
+      "get": {
+        "summary": "Get Cart Items",
+        "description": "Fetches current checkout items and total value inside the student's cart.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 3. Shopping Cart Management"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/cart/add": {
+      "post": {
+        "summary": "Add Item to Cart",
+        "description": "Adds a specific course workbook to the shopping cart.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 3. Shopping Cart Management"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workbookId": {
+                    "type": "string",
+                    "example": "65cfa7a7b8e123a1a1234567"
+                  }
+                },
+                "required": [
+                  "workbookId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/cart/update": {
+      "post": {
+        "summary": "Update Cart Item",
+        "description": "Performs bulk modifications/updates on items and quantities in the cart.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 3. Shopping Cart Management"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "workbook": {
+                          "type": "string",
+                          "example": "65cfa7a7b8e123a1a1234567"
+                        },
+                        "quantity": {
+                          "type": "number",
+                          "example": 1
+                        }
+                      },
+                      "required": [
+                        "workbook",
+                        "quantity"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "items"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/cart/clear": {
+      "post": {
+        "summary": "Clear Cart",
+        "description": "Clears all items inside the student's cart.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 3. Shopping Cart Management"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/cart/item/{workbookId}": {
+      "delete": {
+        "summary": "Remove Specific Item from Cart",
+        "description": "Deletes a specific workbook from the student's cart.",
+        "tags": [
+          "8. Bookstore & Cart Collection | 3. Shopping Cart Management"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "workbookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter workbookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/myquestion/questions": {
+      "get": {
+        "summary": "Get Doubts List",
+        "description": "Fetches doubts asked by the logged-in student user.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 1. Student Doubts & QA (My Questions)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Post a new Doubt",
+        "description": "Creates a new text-based or draft doubt.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 1. Student Doubts & QA (My Questions)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "example": "Doubt on Revolt of 1857 leaders"
+                  },
+                  "content": {
+                    "type": "string",
+                    "example": "Who led the revolt in Kanpur and Bihar?"
+                  }
+                },
+                "required": [
+                  "title",
+                  "content"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/myquestion/questions/pending": {
+      "get": {
+        "summary": "Get Pending Doubts",
+        "description": "Fetches the student's doubts that are currently awaiting expert evaluation/answers.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 1. Student Doubts & QA (My Questions)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/myquestion/questions/{questionId}": {
+      "get": {
+        "summary": "Get Doubt Details by ID",
+        "description": "Retrieves comprehensive information for a specific doubt.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 1. Student Doubts & QA (My Questions)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter questionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Doubt Content",
+        "description": "Updates text properties of a pending doubt.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 1. Student Doubts & QA (My Questions)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter questionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "example": "Doubt on Revolt of 1857 leaders (Updated)"
+                  },
+                  "content": {
+                    "type": "string",
+                    "example": "Who led the Kanpur sector?"
+                  }
+                },
+                "required": [
+                  "title",
+                  "content"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a Doubt",
+        "description": "Permanently deletes the doubt from the system.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 1. Student Doubts & QA (My Questions)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter questionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/myquestion/questions/{questionId}/answers": {
+      "get": {
+        "summary": "Get Answers for a Doubt",
+        "description": "Loads answers or explanations submitted by administrators/experts for the doubt.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 1. Student Doubts & QA (My Questions)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter questionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/myquestion/files/presign": {
+      "post": {
+        "summary": "Request Presign Attachment URL",
+        "description": "Generates a presigned storage upload URL (S3/R2) to directly upload doubt image attachments.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 1. Student Doubts & QA (My Questions)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fileName": {
+                    "type": "string",
+                    "example": "doubt_screenshot.png"
+                  },
+                  "contentType": {
+                    "type": "string",
+                    "example": "image/png"
+                  }
+                },
+                "required": [
+                  "fileName",
+                  "contentType"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/myquestion/questions/{questionId}/files/confirm": {
+      "post": {
+        "summary": "Confirm Attachment Upload",
+        "description": "Links the uploaded file attachment to the specified doubt question.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 1. Student Doubts & QA (My Questions)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter questionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fileUrl": {
+                    "type": "string",
+                    "example": "https://pub-4766722e137c4258a9233495746c4f5a.r2.dev/Aishaala/reels/screenshot.png"
+                  },
+                  "fileKey": {
+                    "type": "string",
+                    "example": "Aishaala/reels/screenshot.png"
+                  }
+                },
+                "required": [
+                  "fileUrl",
+                  "fileKey"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/myquestion/questions/{questionId}/activate": {
+      "post": {
+        "summary": "Activate Doubt",
+        "description": "Marks the doubt as active, making it searchable and visible to experts for answers.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 1. Student Doubts & QA (My Questions)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter questionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/userAnswers/questions/{questionId}/answers": {
+      "post": {
+        "summary": "Submit MCQ Question Answer",
+        "description": "Submits option choices selected by the student for an objective question.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 2. MCQ & Subjective Submissions"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter questionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "selectedOptionIndex": {
+                    "type": "number",
+                    "example": 2
+                  },
+                  "timeTaken": {
+                    "type": "number",
+                    "example": 45
+                  }
+                },
+                "required": [
+                  "selectedOptionIndex",
+                  "timeTaken"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/userAnswers/subjective-tests/{testId}/questions/{questionId}/answers": {
+      "post": {
+        "summary": "Submit Subjective Question Answer",
+        "description": "Submits scanned sheets and written paragraphs for a subjective exam question.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 2. MCQ & Subjective Submissions"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "testId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter testId"
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter questionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "answerText": {
+                    "type": "string",
+                    "example": " Kanpur Kanpur Kanpur Kanpur Kanpur Kanpur Kanpur Kanpur"
+                  },
+                  "attachmentKeys": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "example": "Aishaala/mobile-auto-annotations/user-answer.png"
+                    }
+                  }
+                },
+                "required": [
+                  "answerText",
+                  "attachmentKeys"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/userAnswers/{answerId}": {
+      "get": {
+        "summary": "Get Answer Details",
+        "description": "Retrieves the submitted answer details and its evaluation scores.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 2. MCQ & Subjective Submissions"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "answerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter answerId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/userAnswers/myquestion/answers/{answerId}/evaluate": {
+      "post": {
+        "summary": "Trigger AI Evaluation",
+        "description": "Triggers automated AI checking (Gemini/Mistral OCR & scoring) on the submitted written sheet.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 2. MCQ & Subjective Submissions"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "answerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter answerId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/userAnswers/answers/{answerId}/evaluate-manual": {
+      "post": {
+        "summary": "Trigger Manual Evaluation",
+        "description": "Submits a request to route this answer sheet for human expert checking.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 2. MCQ & Subjective Submissions"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "answerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter answerId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/userAnswers/answers/{answerId}/feedback": {
+      "post": {
+        "summary": "Submit Evaluation Feedback",
+        "description": "Allows the student to submit rating feedback on the quality of their exam checking.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 2. MCQ & Subjective Submissions"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "answerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter answerId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rating": {
+                    "type": "number",
+                    "example": 5
+                  },
+                  "comment": {
+                    "type": "string",
+                    "example": "Very clear evaluation details and annotations!"
+                  }
+                },
+                "required": [
+                  "rating",
+                  "comment"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/userAnswers/questions/{questionId}/answers/{answerId}/re-evaluate": {
+      "post": {
+        "summary": "Request Re-evaluation",
+        "description": "Initiates a re-check command if the student disputes the initial evaluation score.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 2. MCQ & Subjective Submissions"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter questionId"
+          },
+          {
+            "name": "answerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter answerId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/evaluations/submissions/evaluated/{userId}": {
+      "get": {
+        "summary": "Get Student Evaluated Submissions",
+        "description": "Returns list of all checks/evaluated submissions for a target student ID.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 3. Submissions Audits & Expert Reviews"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter userId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/evaluations/submissions/evaluations": {
+      "get": {
+        "summary": "Get List of All Evaluations",
+        "description": "List of active evaluated sheets logs under the client profile.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 3. Submissions Audits & Expert Reviews"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/evaluations/{evaluationId}": {
+      "get": {
+        "summary": "Get Specific Evaluation details",
+        "description": "Loads specific evaluation details, annotated images, marks breakdown, and checker commentaries.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 3. Submissions Audits & Expert Reviews"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "evaluationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter evaluationId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/review/request/{answerId}": {
+      "post": {
+        "summary": "Request Expert Review",
+        "description": "Filing an official dispute/review ticket for human checkers to revise the current evaluation results.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 3. Submissions Audits & Expert Reviews"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "answerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter answerId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/review/my-requests": {
+      "get": {
+        "summary": "Get My Review Requests",
+        "description": "Returns a status list of review request tickets filed by this student.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 3. Submissions Audits & Expert Reviews"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/review/{requestId}": {
+      "get": {
+        "summary": "Get Review Details",
+        "description": "Retrieves the status, expert answers, and updates on a filed review request.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 3. Submissions Audits & Expert Reviews"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter requestId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/review/{requestId}/feedback": {
+      "post": {
+        "summary": "Submit Review Feedback",
+        "description": "Submit resolution feedback for a review request.",
+        "tags": [
+          "9. Doubts & Evaluations Collection | 3. Submissions Audits & Expert Reviews"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter requestId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "feedback": {
+                    "type": "string",
+                    "example": "Satisfied with the updated scores."
+                  }
+                },
+                "required": [
+                  "feedback"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/ask/{bookId}": {
+      "post": {
+        "summary": "Ask Book AI",
+        "description": "Submits a textual question to query the book's context index.",
+        "tags": [
+          "10. Public Book Chat Collection | 1. Chat Queries & AI Ask"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "example": "Explain the core themes of the French Revolution as mentioned in this chapter."
+                  }
+                },
+                "required": [
+                  "question"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/ask-enhanced/{bookId}": {
+      "post": {
+        "summary": "Ask Enhanced AI",
+        "description": "Uses enhanced vector retrieval clustering to perform context queries.",
+        "tags": [
+          "10. Public Book Chat Collection | 1. Chat Queries & AI Ask"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "example": "Compare the tax regimes detailed in module 1 and 2."
+                  },
+                  "chatHistory": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "question",
+                  "chatHistory"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/ask-fast/{bookId}": {
+      "post": {
+        "summary": "Ask Fast AI",
+        "description": "Trigger quick AI response using summaries cache values.",
+        "tags": [
+          "10. Public Book Chat Collection | 1. Chat Queries & AI Ask"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "example": "Summarize page 45."
+                  }
+                },
+                "required": [
+                  "question"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/ask-fast-status/{bookId}": {
+      "get": {
+        "summary": "Ask Fast Status Check",
+        "description": "Verifies the status of the quick ask pipeline.",
+        "tags": [
+          "10. Public Book Chat Collection | 1. Chat Queries & AI Ask"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/chat/{bookId}/{itemId}": {
+      "post": {
+        "summary": "Chat with Book Item Context",
+        "description": "Engage in AI chat restricted to the content of a specific Chapter, Topic, or Subtopic.",
+        "tags": [
+          "10. Public Book Chat Collection | 1. Chat Queries & AI Ask"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter itemId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "example": "Explain this section."
+                  },
+                  "itemType": {
+                    "type": "string",
+                    "example": "topic"
+                  }
+                },
+                "required": [
+                  "message",
+                  "itemType"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/chat-book-knowledge-base/{bookId}": {
+      "post": {
+        "summary": "Query Book Knowledge Base",
+        "description": "Searches the document index and returns referenced text chunks/extracts.",
+        "tags": [
+          "10. Public Book Chat Collection | 1. Chat Queries & AI Ask"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "example": "Revolt of 1857 leaders"
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/chat": {
+      "post": {
+        "summary": "Start/Resume General Chat Session",
+        "description": "Appends a new query message to an active chat session.",
+        "tags": [
+          "10. Public Book Chat Collection | 2. Chat Sessions & History"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "chatId": {
+                    "type": "string",
+                    "example": "your_chat_session_id_here"
+                  },
+                  "message": {
+                    "type": "string",
+                    "example": "Next question please."
+                  }
+                },
+                "required": [
+                  "chatId",
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/chats": {
+      "post": {
+        "summary": "Get Chat Sessions List",
+        "description": "Fetches all chat sessions created by the user.",
+        "tags": [
+          "10. Public Book Chat Collection | 2. Chat Sessions & History"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userId": {
+                    "type": "string",
+                    "example": "your_student_user_id"
+                  }
+                },
+                "required": [
+                  "userId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/history": {
+      "post": {
+        "summary": "Get Chat Session History",
+        "description": "Retrieves the full message log (role and text) of the target session.",
+        "tags": [
+          "10. Public Book Chat Collection | 2. Chat Sessions & History"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "chatId": {
+                    "type": "string",
+                    "example": "your_chat_session_id_here"
+                  }
+                },
+                "required": [
+                  "chatId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/chat/delete": {
+      "post": {
+        "summary": "Delete Chat Session",
+        "description": "Deletes the conversation session logs.",
+        "tags": [
+          "10. Public Book Chat Collection | 2. Chat Sessions & History"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "chatId": {
+                    "type": "string",
+                    "example": "your_chat_session_id_here"
+                  }
+                },
+                "required": [
+                  "chatId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/chat/title": {
+      "post": {
+        "summary": "Rename Chat Title",
+        "description": "Updates the display title of the session.",
+        "tags": [
+          "10. Public Book Chat Collection | 2. Chat Sessions & History"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "chatId": {
+                    "type": "string",
+                    "example": "your_chat_session_id_here"
+                  },
+                  "title": {
+                    "type": "string",
+                    "example": "French Revolution Discussion"
+                  }
+                },
+                "required": [
+                  "chatId",
+                  "title"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/history/{bookId}": {
+      "get": {
+        "summary": "Get Book Specific Chat History",
+        "description": "Fetches general chat threads logged for a specific book ID.",
+        "tags": [
+          "10. Public Book Chat Collection | 2. Chat Sessions & History"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/suggestions/{bookId}": {
+      "get": {
+        "summary": "Get Suggestions for Book Chat",
+        "description": "Retrieves automatic recommended prompt suggestions based on chapters index keys.",
+        "tags": [
+          "10. Public Book Chat Collection | 2. Chat Sessions & History"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/books-embedded-status/{clientId}": {
+      "get": {
+        "summary": "Get Client Books Embedding Status",
+        "description": "Returns processing and embedding percentages for all books belonging to the client.",
+        "tags": [
+          "10. Public Book Chat Collection | 3. Indexing & Status Audits"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/book-embedded-status/{bookId}": {
+      "get": {
+        "summary": "Get Specific Book Embedding Status",
+        "description": "Checks vector status and dimensions for a single book.",
+        "tags": [
+          "10. Public Book Chat Collection | 3. Indexing & Status Audits"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/check-book-data/{bookId}": {
+      "get": {
+        "summary": "Verify Book Database Data",
+        "description": "Performs backend validation to verify that page and chapter data schema has no issues.",
+        "tags": [
+          "10. Public Book Chat Collection | 3. Indexing & Status Audits"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/book-status/{bookId}": {
+      "get": {
+        "summary": "Get Book Processing Status",
+        "description": "Retrieves the file parse processing progress status (e.g. pending, completed, failed).",
+        "tags": [
+          "10. Public Book Chat Collection | 3. Indexing & Status Audits"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/book-chat-availability/{bookId}": {
+      "get": {
+        "summary": "Check Book Chat Availability",
+        "description": "Quick availability check to see if the AI Chat feature can be unlocked for the book.",
+        "tags": [
+          "10. Public Book Chat Collection | 3. Indexing & Status Audits"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/check-availability/{bookId}/{itemId}": {
+      "get": {
+        "summary": "Check Item Specific Chat Availability",
+        "description": "Quick availability check to see if the AI Chat feature can be unlocked for a sub-item.",
+        "tags": [
+          "10. Public Book Chat Collection | 3. Indexing & Status Audits"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter itemId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/mobile/public-chat/health/{bookId}": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Basic ping health check for the public chat router.",
+        "tags": [
+          "10. Public Book Chat Collection | 3. Indexing & Status Audits"
+        ],
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter bookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/classroom-exams/topics/{topicId}/reels": {
+      "get": {
+        "summary": "Get Topic Reels",
+        "description": "Fetches all video reels and scripts associated with a specific syllabus topic by its topicId.",
+        "tags": [
+          "11. Classroom Reels Collection | Classroom Reels"
+        ],
+        "parameters": [
+          {
+            "name": "topicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "topic-88d3de5dacc23aac"
+            },
+            "description": "Path parameter topicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/classroom-exams/subtopics/{subtopicId}/reels": {
+      "get": {
+        "summary": "Get Subtopic Reels",
+        "description": "Fetches all dynamic revision reels and signed video streaming URLs for a specific subtopic by its subtopicId.",
+        "tags": [
+          "11. Classroom Reels Collection | Classroom Reels"
+        ],
+        "parameters": [
+          {
+            "name": "subtopicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "subtopic-038f0092d7f6d0cd"
+            },
+            "description": "Path parameter subtopicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/classroom-exams/public/subtopics/{subtopicId}/reels": {
+      "get": {
+        "summary": "Get Public Subtopic Reels",
+        "description": "Public endpoint to fetch published reels for a subtopic. Does not require token authentication (for guest previews).",
+        "tags": [
+          "11. Classroom Reels Collection | Classroom Reels"
+        ],
+        "parameters": [
+          {
+            "name": "subtopicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "subtopic-038f0092d7f6d0cd"
+            },
+            "description": "Path parameter subtopicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/classroom-exams/subtopics/{subtopicId}/generate-reel": {
+      "post": {
+        "summary": "Generate Subtopic Reel",
+        "description": "Triggers the AI video generator engine to compile a new short revision reel for the subtopic. Accepts 'language' ('English', 'Hindi', 'Hinglish') and 'voice_id' ('female', 'male') in body parameters.",
+        "tags": [
+          "11. Classroom Reels Collection | Classroom Reels"
+        ],
+        "parameters": [
+          {
+            "name": "subtopicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "subtopic-038f0092d7f6d0cd"
+            },
+            "description": "Path parameter subtopicId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "example": "English"
+                  },
+                  "voice_id": {
+                    "type": "string",
+                    "example": "female"
+                  }
+                },
+                "required": [
+                  "language",
+                  "voice_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clients/{clientId}/mobile/classroom-exams/current-affairs/reels-feed": {
+      "get": {
+        "summary": "Get Daily Reels Feed",
+        "description": "Fetches a merged chronological feed of AI-generated and custom video reels, filtered by optional category and date parameters.",
+        "tags": [
+          "5. Mobile Current Affairs Video Reels Collection | 2. Current Affairs Topics (Mobile)"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Path parameter clientId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    }
+  }
+}
