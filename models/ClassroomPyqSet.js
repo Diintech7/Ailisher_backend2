@@ -27,6 +27,10 @@ const ClassroomPyqSetSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  isEnabled: {
+    type: Boolean,
+    default: true
+  },
   created_at: {
     type: Date,
     default: Date.now

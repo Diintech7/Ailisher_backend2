@@ -68,6 +68,11 @@ const generatePresignedUrl = async (key, contentType) => {
 // Generate presigned URL for getting/reading an object
 const generateGetPresignedUrl = async (key, expiresIn = 604800) => { // Default 7 days (max allowed)
   try {
+    if (process.env.R2_PUBLIC_URL) {
+      const formattedKey = key.startsWith('/') ? key.slice(1) : key;
+      return `${process.env.R2_PUBLIC_URL}/${formattedKey}`;
+    }
+
     console.log('Generating presigned URL for key:', key);
     console.log('Using bucket:', process.env.R2_BUCKET_NAME);
     console.log('Using region:', process.env.R2_REGION);

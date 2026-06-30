@@ -74,7 +74,8 @@ exports.login = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        userId: user.userId || null
       }
     });
   } catch (error) {
@@ -138,7 +139,9 @@ exports.validate = async (req, res) => {
     res.json({
       success: true,
       role: user.role,
-      name: user.name
+      name: user.name,
+      id: user._id || user.id,
+      userId: user.userId || null
     });
   } catch (error) {
     console.error('Token validation error:', error);

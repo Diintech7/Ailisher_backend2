@@ -2,6 +2,10 @@ const axios = require('axios');
 const ClassroomExam = require('../models/ClassroomExam');
 const ClassroomPyqSet = require('../models/ClassroomPyqSet');
 const ClassroomCurrentAffair = require('../models/ClassroomCurrentAffair');
+const ClassroomQuizQuestion = require('../models/ClassroomQuizQuestion');
+const FlashcardDeck = require('../models/FlashcardDeck');
+const QuestionBank = require('../models/QuestionBank');
+const ObjectiveTestQuestion = require('../models/ObjectiveTestQuestion');
 const User = require('../models/User');
 const PlanItem = require('../models/PlanItem');
 const CreditRechargePlan = require('../models/CreditRechargePlan');
@@ -11,12 +15,13 @@ const FormData = require('form-data');
 
 // Helper to resolve client ID
 const getClientId = (req) => {
+  const user = req.user;
+  if (user) {
+    return user.userId || user.clientId || user._id.toString();
+  }
   if (req.clientId) return req.clientId;
   if (req.params.clientId) return req.params.clientId;
-  
-  const user = req.user;
-  if (!user) return null;
-  return user.role === 'client' && user.userId ? user.userId : user._id.toString();
+  return null;
 };
 
 const formatCustomImageUrl = async (keyOrUrl) => {
@@ -356,6 +361,52 @@ const findIdsForSubtopic = (doc, subtopicId) => {
   }
   return null;
 };
+
+const findDetailsForTopic = (doc, topicId) => {
+  for (const paper of doc.tree) {
+    for (const subject of paper.subjects) {
+      for (const chap of subject.chapters) {
+        const top = chap.topics.find(t => t.topic_id === topicId);
+        if (top) {
+          return {
+            paperId: paper.paper_id,
+            subjectId: subject.subject_id,
+            subjectName: subject.name || '',
+            chapterId: chap.chapter_id,
+            chapterName: chap.name || '',
+            topicName: top.name || ''
+          };
+        }
+      }
+    }
+  }
+  return null;
+};
+
+const findDetailsForSubtopic = (doc, subtopicId) => {
+  for (const paper of doc.tree) {
+    for (const subject of paper.subjects) {
+      for (const chap of subject.chapters) {
+        for (const top of chap.topics) {
+          const sub = top.subtopics.find(s => s.subtopic_id === subtopicId);
+          if (sub) {
+            return {
+              paperId: paper.paper_id,
+              subjectId: subject.subject_id,
+              subjectName: subject.name || '',
+              chapterId: chap.chapter_id,
+              topicId: top.topic_id,
+              topicName: top.name || '',
+              subtopicName: sub.name || ''
+            };
+          }
+        }
+      }
+    }
+  }
+  return null;
+};
+
 
 const getR2ObjectText = async (key) => {
   try {
@@ -1687,16 +1738,32 @@ exports.getPyqSets = async (req, res) => {
         );
       }));
 
-      const localSets = await ClassroomPyqSet.find({ 
+      const filter = { 
         $or: [
           { clientId: clientId },
           { clientId: 'system' }
         ]
-      });
+      };
+
+      const isMobile = req.originalUrl.includes('/mobile/');
+      if (isMobile) {
+        filter.isEnabled = { $ne: false };
+      }
+
+      const localSets = await ClassroomPyqSet.find(filter);
+
+      let returnedSets = localSets;
+      if (isMobile) {
+        returnedSets = localSets.map(s => {
+          const obj = s.toObject ? s.toObject() : { ...s };
+          delete obj.isEnabled;
+          return obj;
+        });
+      }
 
       return res.status(200).json({
         success: true,
-        pyq_sets: localSets
+        pyq_sets: returnedSets
       });
     } else {
       return res.status(response.status).json(response.data);
@@ -2138,6 +2205,7 @@ exports.getCurrentAffairReels = async (req, res) => {
     if (!hasAccess) return res.status(403).json({ success: false, message: 'Unauthorized current affairs access' });
 
     if (hasAccess.isCustom) {
+      const isMobile = req.originalUrl.includes('/mobile/');
       const enrichedReels = await Promise.all((hasAccess.reels || []).map(async r => {
         let playUrl = r.video_url;
         if (r.video_key) {
@@ -2147,14 +2215,17 @@ exports.getCurrentAffairReels = async (req, res) => {
             console.error('Error generating presigned URL for custom reel:', e.message);
           }
         }
-        return {
+        const item = {
           reel_id: r.reel_id,
           title: r.title,
           video_url: playUrl,
-          video_key: r.video_key,
           isEnabled: r.isEnabled !== false,
           created_at: r.created_at
         };
+        if (!isMobile) {
+          item.video_key = r.video_key;
+        }
+        return item;
       }));
       return res.status(200).json({
         success: true,
@@ -2822,13 +2893,27 @@ exports.downloadTopicNotesPdf = async (req, res) => {
 exports.generateTopicQuiz = async (req, res) => {
   try {
     const { topicId } = req.params;
+    const clientId = getClientId(req);
+    
+    // Check if questions are already saved in DB for this topic and client
+    const existingQuestions = await ClassroomQuizQuestion.find({ topicId, clientId });
+    if (existingQuestions && existingQuestions.length > 0) {
+      const questions = existingQuestions.map(q => ({
+        question: q.question,
+        options: q.options,
+        correct: (typeof q.correctAnswer === 'number' && q.options[q.correctAnswer]) ? q.options[q.correctAnswer] : q.correctAnswer,
+        explanation: q.explanation || ''
+      }));
+      return res.status(200).json({
+        success: true,
+        questions
+      });
+    }
+
     const { apiURL, appToken } = getApiConfig();
     
-    // Map num_questions to numQuestions for the partner API if present
-    const requestBody = { ...req.body };
-    if (requestBody.num_questions !== undefined) {
-      requestBody.numQuestions = requestBody.num_questions;
-    }
+    // Always request 20 questions from the partner generator to populate the DB pool
+    const requestBody = { ...req.body, numQuestions: 20 };
 
     const response = await axios.post(`${apiURL}/api/classroom/topics/${topicId}/quiz/generate`, requestBody, {
       headers: { 'X-App-Token': appToken, 'Content-Type': 'application/json' }
@@ -2839,13 +2924,57 @@ exports.generateTopicQuiz = async (req, res) => {
       let questions = [];
       const rawQuiz = data.quiz || data.questions || [];
       if (Array.isArray(rawQuiz)) {
-        questions = rawQuiz.map(item => ({
-          question: item.question,
-          options: item.options,
-          correct: item.correct !== undefined ? item.correct : item.answer,
-          explanation: item.explanation !== undefined ? item.explanation : item.source
-        }));
+        questions = rawQuiz.map(item => {
+          const rawCorrect = item.correct !== undefined ? item.correct : item.answer;
+          const correctText = typeof rawCorrect === 'number'
+            ? item.options[rawCorrect]
+            : rawCorrect;
+          
+          const rawDifficulty = (item.difficulty || req.body.difficulty || 'medium').toLowerCase();
+          const finalDifficulty = ['easy', 'medium', 'hard'].includes(rawDifficulty) ? rawDifficulty : 'medium';
+
+          return {
+            question: item.question,
+            options: item.options,
+            correct: correctText,
+            explanation: item.explanation !== undefined ? item.explanation : item.source,
+            difficulty: finalDifficulty
+          };
+        });
       }
+
+      // Save questions in the database
+      if (questions.length > 0) {
+        const examDoc = await ClassroomExam.findOne({ "tree.subjects.chapters.topics.topic_id": topicId, clientId });
+        if (examDoc) {
+          const details = findDetailsForTopic(examDoc, topicId);
+          if (details) {
+            const questionsToSave = questions.map(q => {
+              const idx = q.options.indexOf(q.correct);
+              return {
+                question: q.question,
+                options: q.options,
+                correctAnswer: idx >= 0 ? idx : 0,
+                explanation: q.explanation || '',
+                difficulty: q.difficulty,
+                examId: examDoc.exam_id,
+                examName: examDoc.name,
+                paperId: details.paperId,
+                subjectId: details.subjectId,
+                subjectName: details.subjectName,
+                chapterId: details.chapterId || null,
+                chapterName: details.chapterName || null,
+                topicId: topicId,
+                topicName: details.topicName,
+                clientId: clientId,
+                createdBy: req.user ? (req.user._id || req.user.id) : null
+              };
+            });
+            await ClassroomQuizQuestion.insertMany(questionsToSave);
+          }
+        }
+      }
+
       return res.status(response.status).json({
         success: true,
         questions
@@ -3034,13 +3163,27 @@ exports.downloadSubtopicNotesPdf = async (req, res) => {
 exports.generateSubtopicQuiz = async (req, res) => {
   try {
     const { subtopicId } = req.params;
+    const clientId = getClientId(req);
+    
+    // Check if questions are already saved in DB for this subtopic and client
+    const existingQuestions = await ClassroomQuizQuestion.find({ subtopicId, clientId });
+    if (existingQuestions && existingQuestions.length > 0) {
+      const questions = existingQuestions.map(q => ({
+        question: q.question,
+        options: q.options,
+        correct: (typeof q.correctAnswer === 'number' && q.options[q.correctAnswer]) ? q.options[q.correctAnswer] : q.correctAnswer,
+        explanation: q.explanation || ''
+      }));
+      return res.status(200).json({
+        success: true,
+        questions
+      });
+    }
+
     const { apiURL, appToken } = getApiConfig();
     
-    // Map num_questions to numQuestions for the partner API if present
-    const requestBody = { ...req.body };
-    if (requestBody.num_questions !== undefined) {
-      requestBody.numQuestions = requestBody.num_questions;
-    }
+    // Always request 20 questions from the partner generator to populate the DB pool
+    const requestBody = { ...req.body, numQuestions: 20 };
 
     const response = await axios.post(`${apiURL}/api/classroom/subtopics/${subtopicId}/quiz/generate`, requestBody, {
       headers: { 'X-App-Token': appToken, 'Content-Type': 'application/json' }
@@ -3051,13 +3194,57 @@ exports.generateSubtopicQuiz = async (req, res) => {
       let questions = [];
       const rawQuiz = data.quiz || data.questions || [];
       if (Array.isArray(rawQuiz)) {
-        questions = rawQuiz.map(item => ({
-          question: item.question,
-          options: item.options,
-          correct: item.correct !== undefined ? item.correct : item.answer,
-          explanation: item.explanation !== undefined ? item.explanation : item.source
-        }));
+        questions = rawQuiz.map(item => {
+          const rawCorrect = item.correct !== undefined ? item.correct : item.answer;
+          const correctText = typeof rawCorrect === 'number'
+            ? item.options[rawCorrect]
+            : rawCorrect;
+          
+          const rawDifficulty = (item.difficulty || req.body.difficulty || 'medium').toLowerCase();
+          const finalDifficulty = ['easy', 'medium', 'hard'].includes(rawDifficulty) ? rawDifficulty : 'medium';
+
+          return {
+            question: item.question,
+            options: item.options,
+            correct: correctText,
+            explanation: item.explanation !== undefined ? item.explanation : item.source,
+            difficulty: finalDifficulty
+          };
+        });
       }
+
+      // Save questions in the database
+      if (questions.length > 0) {
+        const examDoc = await ClassroomExam.findOne({ "tree.subjects.chapters.topics.subtopics.subtopic_id": subtopicId, clientId });
+        if (examDoc) {
+          const details = findDetailsForSubtopic(examDoc, subtopicId);
+          if (details) {
+            const questionsToSave = questions.map(q => {
+              const idx = q.options.indexOf(q.correct);
+              return {
+                question: q.question,
+                options: q.options,
+                correctAnswer: idx >= 0 ? idx : 0,
+                explanation: q.explanation || '',
+                difficulty: q.difficulty,
+                examId: examDoc.exam_id,
+                examName: examDoc.name,
+                paperId: details.paperId,
+                subjectId: details.subjectId,
+                subjectName: details.subjectName,
+                topicId: details.topicId,
+                topicName: details.topicName,
+                subtopicId: subtopicId,
+                subtopicName: details.subtopicName,
+                clientId: clientId,
+                createdBy: req.user ? (req.user._id || req.user.id) : null
+              };
+            });
+            await ClassroomQuizQuestion.insertMany(questionsToSave);
+          }
+        }
+      }
+
       return res.status(response.status).json({
         success: true,
         questions
@@ -3223,15 +3410,20 @@ exports.getDailyReelsFeed = async (req, res) => {
     allReels.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     // 4. Plan/Lock status verification checks
+    const isMobile = req.originalUrl.includes('/mobile/');
     const checkedReels = await Promise.all(allReels.map(async r => {
       const planStatus = await checkCurrentAffairPlanStatus(r.topic_id, clientId, userId);
-      return {
+      const item = {
         ...r,
         isLocked: planStatus.isLocked,
         isPaid: planStatus.isPaid,
         plans: planStatus.plans,
         video_url: planStatus.isLocked ? '' : r.video_url
       };
+      if (isMobile) {
+        delete item.video_key;
+      }
+      return item;
     }));
 
     return res.status(200).json({
@@ -3307,11 +3499,20 @@ exports.createCurrentAffairReel = async (req, res) => {
     if (!topic) return res.status(404).json({ success: false, message: 'Topic not found' });
     if (!topic.isCustom) return res.status(400).json({ success: false, message: 'Cannot add custom reels to partner synced topics' });
 
+    let resolvedVideoUrl = video_url || '';
+    if (video_key && !resolvedVideoUrl) {
+      try {
+        resolvedVideoUrl = await generateGetPresignedUrl(video_key);
+      } catch (err) {
+        console.error('Failed to generate presigned URL for custom video key:', video_key, err);
+      }
+    }
+
     const reelId = `reel-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     const newReel = {
       reel_id: reelId,
       title,
-      video_url: video_url || '',
+      video_url: resolvedVideoUrl,
       video_key: video_key || '',
       isEnabled: true,
       created_at: new Date()
@@ -3402,21 +3603,42 @@ exports.updatePyqSet = async (req, res) => {
     const hasAccess = await ClassroomPyqSet.findOne({ pyq_set_id: pyqSetId, clientId });
     if (!hasAccess) return res.status(403).json({ success: false, message: 'Unauthorized PYQ set access' });
 
-    const response = await axios.put(`${apiURL}/api/classroom/pyq-sets/${pyqSetId}`, req.body, {
+    // Check if we have partner fields to update (name, year, description, etc.)
+    const hasPartnerFields = req.body.name !== undefined || req.body.year !== undefined || req.body.description !== undefined || req.body.question_count !== undefined;
+
+    // Case 1: ONLY updating isEnabled (Status Toggle) - Avoid hitting partner server (fixes 422 error)
+    if (!hasPartnerFields && req.body.isEnabled !== undefined) {
+      const updated = await ClassroomPyqSet.findOneAndUpdate(
+        { pyq_set_id: pyqSetId, clientId },
+        { isEnabled: req.body.isEnabled },
+        { new: true }
+      );
+      return res.status(200).json({ success: true, message: 'Status updated successfully', pyq_set: updated });
+    }
+
+    // Case 2: Updating name/description/year (Full Update) - Strip isEnabled before sending to partner server
+    const partnerBody = { ...req.body };
+    delete partnerBody.isEnabled;
+
+    const response = await axios.put(`${apiURL}/api/classroom/pyq-sets/${pyqSetId}`, partnerBody, {
       headers: { 'X-App-Token': appToken, 'Content-Type': 'application/json' }
     });
 
     if (response.data && response.data.success) {
       const pyqSet = response.data.pyq_set || response.data.data;
       if (pyqSet) {
+        const updateData = {
+          name: pyqSet.name || req.body.name,
+          year: pyqSet.year || req.body.year || null,
+          description: pyqSet.description || req.body.description || '',
+          question_count: pyqSet.question_count || 0
+        };
+        if (req.body.isEnabled !== undefined) {
+          updateData.isEnabled = req.body.isEnabled;
+        }
         await ClassroomPyqSet.findOneAndUpdate(
           { pyq_set_id: pyqSetId, clientId },
-          {
-            name: pyqSet.name || req.body.name,
-            year: pyqSet.year || req.body.year || null,
-            description: pyqSet.description || req.body.description || '',
-            question_count: pyqSet.question_count || 0
-          }
+          updateData
         );
       }
     }
@@ -3915,6 +4137,425 @@ exports.toggleSubjectStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('Error toggling subject status:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /api/clients/:clientId/mobile/classroom/flashcards/quiz
+exports.getDailyFlashcardQuiz = async (req, res) => {
+  try {
+    const clientId = getClientId(req);
+    if (!clientId) {
+      return res.status(400).json({ success: false, message: 'Client ID is required' });
+    }
+
+    const { examId, subjectId, chapterId, topicId } = req.query;
+    
+    // 1. Get Custom Card Decks
+    const customDecksQuery = { clientId: clientId };
+    if (examId) customDecksQuery.examId = examId;
+    if (subjectId) customDecksQuery.subjectId = subjectId;
+    if (chapterId) customDecksQuery.chapterId = chapterId;
+    if (topicId) customDecksQuery.topicId = topicId;
+
+    const customDecks = await FlashcardDeck.find(customDecksQuery).populate('questions');
+    const customCards = customDecks.map(deck => ({
+      cardId: deck._id.toString(),
+      cardName: deck.cardName,
+      difficulty: deck.difficulty,
+      questionsCount: deck.questions.length,
+      questions: deck.questions.map(q => ({
+        id: q._id,
+        question: q.question,
+        options: q.options,
+        correct: q.correctAnswer,
+        explanation: q.explanation || '',
+        subject: q.subjectName,
+        topic: q.topicName,
+        exam: q.examName,
+        difficulty: q.difficulty || 'medium'
+      }))
+    }));
+
+    // 2. Get Dynamic Decks from remaining questions
+    const matchFilter = { clientId: clientId, cardDeckId: { $in: [null, undefined] } };
+    if (examId) {
+      matchFilter.examId = examId;
+    }
+    if (subjectId) {
+      matchFilter.subjectId = subjectId;
+    }
+    if (chapterId) {
+      matchFilter.chapterId = chapterId;
+    }
+    if (topicId) {
+      matchFilter.topicId = topicId;
+    }
+
+    let rawQuestions = [];
+    if (topicId || chapterId) {
+      // If client is filtering by specific topic or chapter, return all matching questions in order
+      rawQuestions = await ClassroomQuizQuestion.find(matchFilter).sort({ createdAt: 1 });
+    } else {
+      // Otherwise, sample 20 random questions from the matched filter pool
+      rawQuestions = await ClassroomQuizQuestion.aggregate([
+        { $match: matchFilter },
+        { $sample: { size: 20 } }
+      ]);
+    }
+
+    // Grouping into cards (Easy, Medium, Hard)
+    const easyQuestions = rawQuestions.filter(q => q.difficulty === 'easy');
+    const mediumQuestions = rawQuestions.filter(q => q.difficulty === 'medium' || !q.difficulty);
+    const hardQuestions = rawQuestions.filter(q => q.difficulty === 'hard');
+
+    const dynamicCards = [];
+    const usedNames = new Set(customCards.map(c => c.cardName.trim().toLowerCase()));
+    let cardIndex = 1;
+
+    const makeCards = (pool, diff) => {
+      const chunkSize = 5; // 5 questions per card
+      for (let i = 0; i < pool.length && (customCards.length + dynamicCards.length) < 20; i += chunkSize) {
+        const chunk = pool.slice(i, i + chunkSize);
+        
+        let uniqueName = `Card ${cardIndex}`;
+        while (usedNames.has(uniqueName.toLowerCase())) {
+          cardIndex++;
+          uniqueName = `Card ${cardIndex}`;
+        }
+        usedNames.add(uniqueName.toLowerCase());
+
+        dynamicCards.push({
+          cardId: `card_${diff}_${cardIndex}`,
+          cardName: uniqueName,
+          difficulty: diff,
+          questionsCount: chunk.length,
+          questions: chunk.map(q => ({
+            id: q._id,
+            question: q.question,
+            options: q.options,
+            correct: q.correctAnswer,
+            explanation: q.explanation || '',
+            subject: q.subjectName,
+            topic: q.topicName,
+            exam: q.examName,
+            difficulty: q.difficulty || 'medium'
+          }))
+        });
+        cardIndex++;
+      }
+    };
+
+    makeCards(easyQuestions, 'easy');
+    makeCards(mediumQuestions, 'medium');
+    makeCards(hardQuestions, 'hard');
+
+    return res.status(200).json({
+      success: true,
+      cards: [...customCards, ...dynamicCards]
+    });
+  } catch (error) {
+    console.error('Error fetching daily flashcard quiz:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /api/clients/:clientId/mobile/classroom/flashcards/db-unused-questions
+exports.getUnusedDatabaseQuestions = async (req, res) => {
+  try {
+    const clientId = getClientId(req);
+    if (!clientId) {
+      return res.status(400).json({ success: false, message: 'Client ID is required' });
+    }
+
+    const { examId, subjectId, topicId } = req.query;
+    const matchFilter = { clientId: clientId, cardDeckId: { $in: [null, undefined] } };
+    if (examId) matchFilter.examId = examId;
+    if (subjectId) matchFilter.subjectId = subjectId;
+    if (topicId) matchFilter.topicId = topicId;
+
+    const questions = await ClassroomQuizQuestion.find(matchFilter).sort({ createdAt: -1 }).limit(100);
+    return res.status(200).json({
+      success: true,
+      questions: questions.map(q => ({
+        id: q._id,
+        question: q.question,
+        options: q.options,
+        correct: q.correctAnswer,
+        explanation: q.explanation || '',
+        subject: q.subjectName,
+        topic: q.topicName,
+        exam: q.examName,
+        difficulty: q.difficulty || 'medium'
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching unused DB questions:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /api/clients/:clientId/mobile/classroom/flashcards/question-bank
+exports.getQuestionBankQuestions = async (req, res) => {
+  try {
+    const { subject, topic, difficulty } = req.query;
+    const matchFilter = { isActive: true };
+    if (subject) {
+      matchFilter.subject = { $regex: new RegExp(subject, 'i') };
+    }
+    if (topic) {
+      matchFilter.topic = { $regex: new RegExp(topic, 'i') };
+    }
+    if (difficulty) {
+      let mappedDiff = 'L2';
+      if (difficulty.toLowerCase() === 'easy') mappedDiff = 'L1';
+      if (difficulty.toLowerCase() === 'hard') mappedDiff = 'L3';
+      matchFilter.difficulty = mappedDiff;
+    }
+
+    const bankQuestions = await ObjectiveTestQuestion.find(matchFilter).sort({ createdAt: -1 }).limit(100);
+    return res.status(200).json({
+      success: true,
+      questions: bankQuestions.map(q => ({
+        id: q._id,
+        question: q.question,
+        options: q.options,
+        correct: q.correctAnswer,
+        explanation: q.solution ? (q.solution.text || '') : '',
+        subject: q.subject || '',
+        topic: q.topic || '',
+        exam: q.tags ? q.tags.join(', ') : '',
+        difficulty: q.difficulty === 'L1' ? 'easy' : (q.difficulty === 'L3' ? 'hard' : 'medium')
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching question bank questions:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// POST /api/clients/:clientId/mobile/classroom/flashcards/deck
+exports.createFlashcardDeck = async (req, res) => {
+  try {
+    const clientId = getClientId(req);
+    if (!clientId) {
+      return res.status(400).json({ success: false, message: 'Client ID is required' });
+    }
+
+    const {
+      cardName,
+      difficulty,
+      examId,
+      examName,
+      subjectId,
+      subjectName,
+      chapterId,
+      chapterName,
+      topicId,
+      topicName,
+      questionsSource,
+      questions
+    } = req.body;
+
+    if (!cardName || !difficulty || !examId || !subjectId || !topicId) {
+      return res.status(400).json({ success: false, message: 'Missing required deck details' });
+    }
+
+    const deck = new FlashcardDeck({
+      clientId,
+      cardName,
+      difficulty,
+      examId,
+      examName: examName || 'Exam',
+      subjectId,
+      subjectName: subjectName || 'Subject',
+      chapterId: chapterId || null,
+      chapterName: chapterName || null,
+      topicId,
+      topicName: topicName || 'Topic',
+      questions: []
+    });
+
+    const savedQuestionsIds = [];
+
+    if (questionsSource === 'manual' || questionsSource === 'question_bank') {
+      if (Array.isArray(questions) && questions.length > 0) {
+        for (const q of questions) {
+          const newQ = new ClassroomQuizQuestion({
+            question: q.question,
+            options: q.options,
+            correctAnswer: typeof q.correct === 'number' ? q.correct : 0,
+            explanation: q.explanation || '',
+            difficulty: difficulty || q.difficulty || 'medium',
+            examId,
+            examName: examName || 'Exam',
+            paperId: 'custom_paper',
+            subjectId,
+            subjectName: subjectName || 'Subject',
+            chapterId: chapterId || null,
+            chapterName: chapterName || null,
+            topicId,
+            topicName: topicName || 'Topic',
+            clientId,
+            cardDeckId: deck._id,
+            createdBy: req.user ? (req.user._id || req.user.id) : null
+          });
+          const savedQ = await newQ.save();
+          savedQuestionsIds.push(savedQ._id);
+        }
+      }
+    } else if (questionsSource === 'database') {
+      if (Array.isArray(questions) && questions.length > 0) {
+        const questionIds = questions.map(q => q.id || q._id || q);
+        await ClassroomQuizQuestion.updateMany(
+          { _id: { $in: questionIds }, clientId },
+          { $set: { cardDeckId: deck._id } }
+        );
+        questionIds.forEach(id => savedQuestionsIds.push(id));
+      }
+    } else if (questionsSource === 'ai') {
+      const { apiURL, appToken } = getApiConfig();
+      const requestBody = { numQuestions: 5, difficulty };
+      
+      const response = await axios.post(`${apiURL}/api/classroom/topics/${topicId}/quiz/generate`, requestBody, {
+        headers: { 'X-App-Token': appToken, 'Content-Type': 'application/json' }
+      });
+
+      const data = response.data;
+      if (data && data.success) {
+        const rawQuiz = data.quiz || data.questions || [];
+        if (Array.isArray(rawQuiz)) {
+          for (const item of rawQuiz) {
+            const rawCorrect = item.correct !== undefined ? item.correct : item.answer;
+            const correctIdx = typeof rawCorrect === 'number'
+              ? rawCorrect
+              : item.options.indexOf(rawCorrect);
+
+            const newQ = new ClassroomQuizQuestion({
+              question: item.question,
+              options: item.options,
+              correctAnswer: correctIdx >= 0 ? correctIdx : 0,
+              explanation: item.explanation !== undefined ? item.explanation : (item.source || ''),
+              difficulty: difficulty || 'medium',
+              examId,
+              examName: examName || 'Exam',
+              paperId: 'custom_paper',
+              subjectId,
+              subjectName: subjectName || 'Subject',
+              chapterId: chapterId || null,
+              chapterName: chapterName || null,
+              topicId,
+              topicName: topicName || 'Topic',
+              clientId,
+              cardDeckId: deck._id,
+              createdBy: req.user ? (req.user._id || req.user.id) : null
+            });
+            const savedQ = await newQ.save();
+            savedQuestionsIds.push(savedQ._id);
+          }
+        }
+      } else {
+        return res.status(500).json({ success: false, message: 'AI generation failed' });
+      }
+    }
+
+    deck.questions = savedQuestionsIds;
+    await deck.save();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Card deck created successfully',
+      deck
+    });
+  } catch (error) {
+    console.error('Error creating custom card deck:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /api/clients/:clientId/mobile/classroom/flashcards/filters
+exports.getFlashcardFilters = async (req, res) => {
+  try {
+    const clientId = getClientId(req);
+    if (!clientId) {
+      return res.status(400).json({ success: false, message: 'Client ID is required' });
+    }
+
+    // Find all exams for this client
+    const examDocs = await ClassroomExam.find({ clientId: clientId });
+
+    const exams = [];
+    const subjects = [];
+    const chapters = [];
+    const topics = [];
+
+    const examIds = new Set();
+    const subjectIds = new Set();
+    const chapterIds = new Set();
+    const topicIds = new Set();
+
+    for (const doc of examDocs) {
+      if (!examIds.has(doc.exam_id)) {
+        examIds.add(doc.exam_id);
+        exams.push({ id: doc.exam_id, name: doc.name });
+      }
+
+      if (Array.isArray(doc.tree)) {
+        for (const paper of doc.tree) {
+          if (Array.isArray(paper.subjects)) {
+            for (const sub of paper.subjects) {
+              const subKey = `${sub.subject_id}_${doc.exam_id}`;
+              if (!subjectIds.has(subKey)) {
+                subjectIds.add(subKey);
+                subjects.push({
+                  id: sub.subject_id,
+                  name: sub.name,
+                  examId: doc.exam_id
+                });
+              }
+
+              if (Array.isArray(sub.chapters)) {
+                for (const chap of sub.chapters) {
+                  if (!chapterIds.has(chap.chapter_id)) {
+                    chapterIds.add(chap.chapter_id);
+                    chapters.push({
+                      id: chap.chapter_id,
+                      name: chap.name,
+                      subjectId: sub.subject_id,
+                      examId: doc.exam_id
+                    });
+                  }
+
+                  if (Array.isArray(chap.topics)) {
+                    for (const top of chap.topics) {
+                      if (!topicIds.has(top.topic_id)) {
+                        topicIds.add(top.topic_id);
+                        topics.push({
+                          id: top.topic_id,
+                          name: top.name,
+                          chapterId: chap.chapter_id,
+                          subjectId: sub.subject_id
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      exams,
+      subjects,
+      chapters,
+      topics
+    });
+  } catch (error) {
+    console.error('Error fetching flashcard filters:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

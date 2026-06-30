@@ -1,15 +1,26 @@
 const express = require('express');
 const router = express.Router();
+const jwt = require('jsonwebtoken');
 const classroomExamController = require('../controllers/classroomExamController');
 const { verifyToken } = require('../middleware/auth');
 const { authenticateMobileUser } = require('../middleware/mobileAuth');
 
 // Support both Web and Mobile app token authentication
 const authenticateWebOrMobileUser = (req, res, next) => {
-  const isMobile = req.params.clientId || req.clientId || req.originalUrl.includes('/mobile/');
-  if (isMobile) {
-    return authenticateMobileUser(req, res, next);
-  } else {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    if (decoded.type === 'mobile') {
+      return authenticateMobileUser(req, res, next);
+    } else {
+      return verifyToken(req, res, next);
+    }
+  } catch (err) {
     return verifyToken(req, res, next);
   }
 };
@@ -98,6 +109,15 @@ router.post('/subtopics/:subtopicId/quiz/generate', classroomExamController.gene
 
 router.get('/:examId/subtopics/:subtopicId/reels', classroomExamController.getSubtopicReels);
 router.get('/subtopics/:subtopicId/reels', classroomExamController.getSubtopicReels);
+
+// ======================================================
+// 🎴 Flashcard Daily Quiz Route (User/Mobile Only)
+// ======================================================
+router.get('/flashcards/quiz', classroomExamController.getDailyFlashcardQuiz);
+router.get('/flashcards/filters', classroomExamController.getFlashcardFilters);
+router.get('/flashcards/db-unused-questions', classroomExamController.getUnusedDatabaseQuestions);
+router.get('/flashcards/question-bank', classroomExamController.getQuestionBankQuestions);
+router.post('/flashcards/deck', classroomExamController.createFlashcardDeck);
 
 // ======================================================
 // 🎙️ Text-to-Speech (TTS) Routes (User/Mobile Only)
