@@ -83,4 +83,32 @@ exports.getAllCategories = async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-}; 
+};
+
+// Delete a category
+exports.deleteCategory = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    const category = await Category.findByIdAndDelete(categoryId);
+    if (!category) return res.status(404).json({ error: 'Category not found' });
+    res.status(200).json({ success: true, message: 'Category deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Delete a subcategory
+exports.deleteSubcategory = async (req, res) => {
+  try {
+    const { categoryId, subcategoryId } = req.params;
+    const category = await Category.findByIdAndUpdate(
+      categoryId,
+      { $pull: { subcategories: { _id: subcategoryId } } },
+      { new: true }
+    );
+    if (!category) return res.status(404).json({ error: 'Category not found' });
+    res.status(200).json({ success: true, category, message: 'Subcategory deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};

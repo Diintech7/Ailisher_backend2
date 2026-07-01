@@ -581,7 +581,7 @@ Operational rules:
                     headers: {
                         'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
                         'Content-Type': 'application/json',
-                        'HTTP-Referer': process.env.APP_PUBLIC_URL || 'http://localhost:4000',
+                        'HTTP-Referer': process.env.APP_PUBLIC_URL || 'https://ailisher.diintech.com',
                         'X-Title': process.env.APP_NAME || 'AI Test Gen'
                     },
                     timeout: 60000

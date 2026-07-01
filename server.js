@@ -132,6 +132,7 @@ if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !pr
 // API routes
 app.use('/api/admin/answers', require('./routes/adminAnswers'));
 app.use('/api/ai', ai);
+app.use('/api/gemini', require('./routes/gemini'));
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/client', clientRoutes);

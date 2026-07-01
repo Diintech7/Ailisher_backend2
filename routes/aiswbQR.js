@@ -384,7 +384,7 @@ router.get('/questions/:questionId/qrcode',
       }
 
       // Generate frontend URL with client name and question ID
-      const frontendBaseUrl = 'https://www.ailisher.com';
+      const frontendBaseUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim() : 'https://ailisher-frontend.vercel.app';
       const encodedClientName = encodeURIComponent(clientInfo.clientName);
       const qrUrl = `${frontendBaseUrl}/question/${questionId}?client=${encodedClientName}&clientId=${clientInfo.clientId}`;
 
@@ -488,7 +488,7 @@ router.get('/sets/:setId/qrcode',
       }
 
       // Generate frontend URL with client name and set ID
-      const frontendBaseUrl = 'https://www.ailisher.com';
+      const frontendBaseUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim() : 'https://ailisher-frontend.vercel.app';
       const encodedClientName = encodeURIComponent(clientInfo.clientName);
       const qrUrl = `${frontendBaseUrl}/set/${setId}?client=${encodedClientName}&clientId=${clientInfo.clientId}`;
 
@@ -589,7 +589,7 @@ router.get('/content/:contentType/:contentId/qrcode',
       }
 
       // Generate frontend URL with client name and content info
-      const frontendBaseUrl = 'https://www.ailisher.com';
+      const frontendBaseUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim() : 'https://ailisher-frontend.vercel.app';
       const encodedClientName = encodeURIComponent(clientInfo.clientName);
       const qrUrl = `${frontendBaseUrl}/${contentType}/${contentId}?client=${encodedClientName}&clientId=${clientInfo.clientId}`;
 
@@ -736,7 +736,7 @@ router.post('/questions/batch/qrcode',
         });
       }
 
-      const frontendBaseUrl = 'https://www.ailisher.com';
+      const frontendBaseUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim() : 'https://ailisher-frontend.vercel.app';
       const qrCodes = [];
 
       const qrCodeOptions = {

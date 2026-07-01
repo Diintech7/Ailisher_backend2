@@ -839,7 +839,7 @@ router.post("/verify-login-otp", validateClient, async (req, res) => {
           // Send Telegram alert for new user
           try {
             await axios.post(
-              `http://localhost:4000/api/clients/${clientId}/telegram/send-text`,
+              `https://ailisher.diintech.com/api/clients/${clientId}/telegram/send-text`,
               {
                 text: `🆕 <b>New User Registered!</b>\n\n📱 <b>Mobile:${mobile}</b>\n#️⃣ <b>User No:</b> ${registrationNumber}\n⏰ <b>Time:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</b>`,
               }
@@ -2317,7 +2317,7 @@ router.post("/profile", authenticateMobileUser, async (req, res) => {
       // Send Telegram alert for new user
       try {
         await axios.post(
-          `http://localhost:4000/api/clients/${clientId}/telegram/send-text`,
+          `https://ailisher.diintech.com/api/clients/${clientId}/telegram/send-text`,
           {
             text: `📄 <b>New Profile Created</b>\n\n👤 Name: ${profile.name || "-"}\n📱 Contact: ${contactLabel}\n🎂 Age: ${profile.age || "-"}\n📝 Exams: ${profile.exams || []}\n🗣️ Native Language: ${profile.nativeLanguage || "-"}\n🏙️ City: ${profile.city || '-'}\n🏷️ Pincode: ${profile.pincode || '-'}\n⏰ Created On: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
           }

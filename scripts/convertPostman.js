@@ -21,7 +21,7 @@ const swaggerSpec = {
   },
   servers: [
     {
-      "url": "http://localhost:4000",
+      "url": "https://ailisher.diintech.com",
       "description": "Local Development Server"
     }
   ],
@@ -115,7 +115,7 @@ for (const file of files) {
         }
       }
     }
-  } catch (err) {}
+  } catch (err) { }
 }
 
 console.log('🔑 Collected global variables:', globalVariables);
@@ -125,7 +125,7 @@ const processItem = (item, parentFolders = []) => {
   if (item.request) {
     const request = item.request;
     const method = request.method.toLowerCase();
-    
+
     // Build raw URL path
     let urlRaw = "";
     if (typeof request.url === "string") {

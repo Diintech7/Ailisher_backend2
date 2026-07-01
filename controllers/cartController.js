@@ -258,7 +258,7 @@ exports.checkoutCart = async (req, res) => {
       ORDER_ID: orderId,
       CUST_ID: customerEmail,
       TXN_AMOUNT: parseFloat(totalAmount).toFixed(2),
-      CALLBACK_URL: `http://localhost:4000/api/clients/${clientId}/mobile/cart/callback`,
+      CALLBACK_URL: `https://ailisher.diintech.com/api/clients/${clientId}/mobile/cart/callback`,
       EMAIL: customerEmail,
       MOBILE_NO: customerPhone,
     };
@@ -279,7 +279,7 @@ exports.checkoutCart = async (req, res) => {
       try {
         const itemTitles = detailedItems.map((i) => i.title).join(", ");
         await axios.post(
-          `http://localhost:4000/api/clients/${clientId}/telegram/send-text`,
+          `https://ailisher.diintech.com/api/clients/${clientId}/telegram/send-text`,
           {
             text: `🆕 <b>INITIATED PAYMENT</b>\n\n👤 ${customerPhone} (${customerName}) has initiated purchase:\n📦 <b>${itemTitles}</b>\n💰 Subtotal: ₹${subtotal}\n🧾 GST: ₹${totalGst}\n💵 Total: ₹${totalAmount}\n⏰ Time: ${new Date().toLocaleString(
               "en-IN",
@@ -427,7 +427,7 @@ exports.paytmCallback = async (req, res) => {
           // Telegram notification
           try {
             await axios.post(
-              `http://localhost:4000/api/clients/${req.clientId}/telegram/send-text`,
+              `https://ailisher.diintech.com/api/clients/${req.clientId}/telegram/send-text`,
               {
                 text: `✅ <b>Payment Successful</b>\n\n💰 ₹${payment.amount}\n👤 ${payment.customerPhone} (${payment.customerName})\n🆔 Order: ${orderId}\n📦 Workbooks: ${payment.workbookIds.length}`,
               }

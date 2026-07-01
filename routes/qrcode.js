@@ -12,6 +12,8 @@ const QuestionSet = require('../models/QuestionSet');
 const Question = require('../models/Question');
 const ObjectiveQuestion = require('../models/ObjectiveQuestion');
 
+const frontendBaseUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim() : 'https://ailisher-frontend.vercel.app';
+
 // Helper function to generate colored QR code
 const generateColoredQRCode = async (url, qrColor, size = 300) => {
   return await QRCode.toDataURL(url, {
@@ -100,7 +102,7 @@ router.get('/books/:bookId', async (req, res) => {
       });
     }
 
-    const bookUrl = `https://www.ailisher.com/mobile-asset-view/${bookId}`;
+    const bookUrl = `${frontendBaseUrl}/mobile-asset-view/${bookId}`;
     const qrCodeDataURL = await generateColoredQRCode(bookUrl, '#0047AB');
 
     res.json({
@@ -186,7 +188,7 @@ router.get('/books/:bookId/chapters/:chapterId', async (req, res) => {
       });
     }
 
-    const chapterUrl = `https://www.ailisher.com/mobile-asset-view/${bookId}/chapters/${chapterId}`;
+    const chapterUrl = `${frontendBaseUrl}/mobile-asset-view/${bookId}/chapters/${chapterId}`;
     const qrCodeDataURL = await generateColoredQRCode(chapterUrl, '#009933');
 
     res.json({
@@ -282,7 +284,7 @@ router.get('/books/:bookId/chapters/:chapterId/topics/:topicId', async (req, res
       });
     }
 
-    const topicUrl = `https://www.ailisher.com/mobile-asset-view/${bookId}/chapters/${chapterId}/topics/${topicId}`;
+    const topicUrl = `${frontendBaseUrl}/mobile-asset-view/${bookId}/chapters/${chapterId}/topics/${topicId}`;
     const qrCodeDataURL = await generateColoredQRCode(topicUrl, '#7B68EE');
 
     res.json({
@@ -388,7 +390,7 @@ router.get('/books/:bookId/chapters/:chapterId/topics/:topicId/subtopics/:subtop
       });
     }
 
-    const subtopicUrl = `https://www.ailisher.com/mobile-asset-view/${bookId}/chapters/${chapterId}/topics/${topicId}/subtopics/${subtopicId}`;
+    const subtopicUrl = `${frontendBaseUrl}/mobile-asset-view/${bookId}/chapters/${chapterId}/topics/${topicId}/subtopics/${subtopicId}`;
     const qrCodeDataURL = await generateColoredQRCode(subtopicUrl, '#FF8C00');
 
     res.json({
